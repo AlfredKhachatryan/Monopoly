@@ -15,7 +15,7 @@ import './CDN/fontAwesomePro.css'
 
 //imported global style
 
-import './Styles/Main.css'
+import './styles/main.css'
 
 //end of import
 
@@ -30,7 +30,7 @@ function App() {
 
     <Routes>
 
-      <Route index element={Main}/>
+      <Route index element={<Main/>}/>
 
     </Routes> 
 
