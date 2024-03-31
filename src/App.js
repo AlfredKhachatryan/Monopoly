@@ -1,5 +1,5 @@
-import * as ReactDOM from 'react-dom';
-import React, {useEffect,Component} from 'react';
+import * as ReactDOM from 'react-dom/client';
+import {React, useEffect,Component} from 'react';
 import {useNavigate, BrowserRouter, Routes, Route } from "react-router-dom";
 
 //end of import
