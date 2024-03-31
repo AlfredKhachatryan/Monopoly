@@ -47,3 +47,49 @@ i {
   align-items: center;
   font-size: 0.5rem;
 }
+.calendar-wrap {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  grid-column-gap: 0px;
+  grid-row-gap: 0px;
+  align-items: center;
+}
+
+.calendar-grid-1 {
+  grid-area: 1 / 1 / 4 / 2;
+  position: relative;
+}
+.calendar-grid-1::after,
+.calendar-grid-1::before {
+  content: "";
+  display: block;
+  border-bottom: 1px solid #aeb8fe;
+  position: absolute;
+  left: -1em;
+  width: calc(100% + 10dvw);
+  overflow: hidden;
+}
+.calendar-grid-2 {
+  grid-area: 1 / 3 / 4 / 4;
+  position: relative;
+}
+.calendar-grid-2::after,
+.calendar-grid-2::before {
+  content: "";
+  display: block;
+  border-bottom: 1px solid #aeb8fe;
+  position: absolute;
+  right: -1em;
+  width: calc(100% + 10dvw);
+  overflow: hidden;
+}
+.calendar-grid-3 {
+  grid-area: 1 / 2 / 2 / 3;
+}
+.calendar-grid-4 {
+  grid-area: 2 / 2 / 3 / 3;
+}
+.calendar-grid-5 {
+  grid-area: 3 / 2 / 4 / 3;
+}
