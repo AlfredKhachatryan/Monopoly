@@ -1,8 +1,8 @@
 import React, { Component } from "react";
 import { Link } from "react-router-dom";
-import Countdown from "react-countdown";
+import Countdown, { zeroPad } from "react-countdown";
 function CountDown({ timeEnd }) {
-  const renderer = ({ days,hours, minutes, seconds, completed }) => {
+  const renderer = ({ days, hours, minutes, seconds, completed }) => {
     if (completed) {
       // Render a completed state
       return <span>Hello World!</span>;
@@ -10,7 +10,28 @@ function CountDown({ timeEnd }) {
       // Render a countdown
       return (
         <>
-          <span>{days}:{hours}:{minutes}:{seconds}</span>
+          <div className="countdown-cont">
+            <span className="countdown-item-cont">
+              {zeroPad(days)}
+              <br />
+              Days
+            </span> :
+            <span className="countdown-item-cont">
+              {zeroPad(hours)}
+              <br />
+              Hours
+            </span> :
+            <span className="countdown-item-cont">
+              {minutes}
+              <br />
+              Minutes
+            </span> :
+            <span className="countdown-item-cont">
+              {seconds}
+              <br />
+              Seconds
+            </span>
+          </div>
         </>
       );
     }
@@ -19,7 +40,7 @@ function CountDown({ timeEnd }) {
     <>
       <article className="">
         <div className="content-wrap">
-          <Countdown date={timeEnd}/>
+          <Countdown date={timeEnd} renderer={renderer} />
         </div>
       </article>
     </>

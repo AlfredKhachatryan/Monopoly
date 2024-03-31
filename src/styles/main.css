@@ -1,9 +1,11 @@
+html {
+  font-size: 2rem;
+}
 * {
   padding: 0;
   margin: 0;
   box-sizing: border-box;
   color: #fff;
-  font-size: 32px;
   text-align: center;
 }
 #root {
@@ -29,7 +31,7 @@ footer {
 i {
   font-size: 36px;
 }
-.page-container{
+.page-container {
   padding: 1em;
 }
 .underline {
@@ -37,4 +39,11 @@ i {
   margin: auto;
   padding-bottom: 5px;
   border-bottom: 1px solid #fff;
+}
+.countdown-cont {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.5rem;
 }
