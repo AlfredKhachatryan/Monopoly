@@ -13,12 +13,7 @@ function Main() {
       <article className="page-container">
         {/* <IconCalendar data={iconCalendarData}></IconCalendar> */}
         {/* <CountDown timeEnd={new Date('2 Apr 2024')}></CountDown> */}
-        <Calendar
-          monthName="August"
-          dayName={"Sunday"}
-          dayNumber={20}
-          yearNumber={2024}
-        ></Calendar>
+        <Calendar dayName={"Sunday"} dateNumber={'24.12.24'} timeNumber={'16:30'} baseInfo={'At Bla Bla Bla'}></Calendar>
       </article>
       <Footer></Footer>
     </>
