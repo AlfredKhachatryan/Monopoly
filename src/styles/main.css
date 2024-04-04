@@ -1,5 +1,7 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@200..1000&display=swap");
+
 html {
-  font-size: 1.5rem;
+  font-size: 1rem;
 }
 * {
   padding: 0;
@@ -14,6 +16,10 @@ html {
   display: flex;
   flex-direction: column;
   background-color: #1d1b29;
+  padding-bottom: 2em;
+}
+body {
+  font-family: "Nunito", sans-serif;
 }
 article {
   flex: 1;
@@ -24,9 +30,13 @@ header {
   padding: 15px;
 }
 footer {
-  min-height: 50px;
+  min-height: 1em;
   background: #aeb8fe;
-  padding: 15px;
+  padding: 5px;
+  position: fixed;
+  width: 100%;
+  bottom: 0;
+  box-sizing: border-box;
 }
 i {
   font-size: 36px;
@@ -59,13 +69,23 @@ i {
   padding: 10px 0;
   position: relative;
 }
-.calendar-item{
+.calendar-item {
   width: 40vw;
 }
-.calendar-vertical-border{
+.calendar-vertical-border {
   position: absolute;
   width: 0px;
   height: 80%;
   border-left: 1px solid #aeb8fe;
   left: 50%;
+}
+.footer-span {
+  text-align: initial;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+footer div{
+  display: flex;
+  justify-content: center;
 }

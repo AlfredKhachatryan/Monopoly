@@ -6,7 +6,9 @@ function Footer() {
     <>
       <footer className="">
         <div className="content-wrap">
-          <span>Magic Memo</span>
+          <span className="footer-span">
+            &nbsp;MagicMemo
+          </span>
         </div>
       </footer>
     </>

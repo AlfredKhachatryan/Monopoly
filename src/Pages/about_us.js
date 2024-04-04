@@ -9,11 +9,80 @@ import { Calendar } from "../Components/Calendar";
 function Main() {
   return (
     <>
-      <Header></Header>
+      {/* <Header></Header> */}
       <article className="page-container">
         {/* <IconCalendar data={iconCalendarData}></IconCalendar> */}
         {/* <CountDown timeEnd={new Date('2 Apr 2024')}></CountDown> */}
-        <Calendar dayName={"Sunday"} dateNumber={'24.12.24'} timeNumber={'16:30'} baseInfo={'At Bla Bla Bla'}></Calendar>
+
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
+        <br />
+        <Calendar
+          dayName={"Sunday"}
+          dateNumber={"24.12.24"}
+          timeNumber={"16:30"}
+          baseInfo={"At Bla Bla Bla"}
+        ></Calendar>
       </article>
       <Footer></Footer>
     </>
