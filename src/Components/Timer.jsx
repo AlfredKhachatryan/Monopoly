@@ -5,7 +5,7 @@ function CountDown({ timeEnd }) {
   const renderer = ({ days, hours, minutes, seconds, completed }) => {
     if (completed) {
       // Render a completed state
-      return <span>Hello World!</span>;
+      return <span>The event is over!</span>;
     } else {
       // Render a countdown
       return (
