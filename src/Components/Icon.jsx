@@ -3,7 +3,7 @@ import { Player } from "@lordicon/react";
 import useCustomIcon from "../Hooks/useCustomIcon";
 export const Icon = ({ size, icon, primary, secondary }) => {
   const playerRef = useRef(null);
-  const customIconRef = useCustomIcon({primary:'#aeb8fe',secondary:'#888'});
+  const customIconRef = useCustomIcon({primary:primary,secondary:secondary});
   useEffect(() => {
     playerRef.current.playFromBeginning();
   }, []);
