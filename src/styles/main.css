@@ -84,7 +84,15 @@ i {
   justify-content: space-between;
   align-items: center;
 }
-footer div{
+footer div {
   display: flex;
   justify-content: center;
+}
+.iconContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+path .primary{
+  stroke: #aeb8fe !important;
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Component } from "react";
+import React, { useEffect, useRef, useState, Component } from "react";
 import { Link } from "react-router-dom";
 import { Footer } from "../Components/Footer";
 import { Header } from "../Components/Header";
@@ -6,7 +6,7 @@ import { IconCalendar } from "../Components/IconCalendar";
 import { iconCalendarData } from "../mockData/testData/data";
 import { CountDown } from "../Components/Timer";
 import { Calendar } from "../Components/Calendar";
-
+import { Player } from "@lordicon/react";
 const backgroundColor = "#1d1b29";
 const footerBackColor = "#aeb8fe";
 const borderColor = "#aeb8fe";
@@ -22,7 +22,7 @@ function Main() {
     >
       {/* <Header></Header> */}
       <article className="page-container">
-        {/* <IconCalendar data={iconCalendarData}></IconCalendar> */}
+        <IconCalendar data={iconCalendarData}></IconCalendar>
         {/* <CountDown timeEnd={new Date('6 Apr 2024')}></CountDown> */}
         <Calendar
           dayName={"Sunday"} //ex. Sunday

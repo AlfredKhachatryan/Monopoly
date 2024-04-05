@@ -1,18 +1,23 @@
-import React, { Component } from "react";
+import React, { useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-
+import { Icon } from "./Icon";
 function IconCalendar({ data }) {
   return (
     <>
       <article className="">
         <div className="content-wrap">
-          {data?.map(({ icon, value, time }) => (
+          {data?.map(({ icon, value, time, primary, secondary }, i) => (
             <>
-              <div>
-                <i className={"fa-regular " + icon}></i>
-                <br />
+              <div className="iconContainer">
+                <div>
+                  <Icon
+                    size={64}
+                    icon={icon}
+                    primary={primary}
+                    secondary={secondary}
+                  ></Icon>
+                </div>
                 <span>{time}</span>
-                <br />
                 <span>{value}</span>
               </div>
               <br />
