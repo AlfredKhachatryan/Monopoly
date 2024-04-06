@@ -3,21 +3,24 @@ import { useEffect, useRef } from "react";
 const useCustomIcon = (styles) => {
   const { primary, secondary } = styles;
   const ref = useRef(null);
+  const styleRef = useRef(null);
   useEffect(() => {
-    if (ref.current) {
+    if (!styleRef.current) {
       const shadowRoot =
         ref.current.childNodes[0].shadowRoot ||
         ref.current.childNodes[0].attachShadow({ mode: "open" });
-      const style = document.createElement("style");
-      style.innerHTML = `.primary {
-                            stroke: ${primary};
-                          }
-                          .secondary{
-                            stroke: ${secondary}
-                          }`;
-      shadowRoot.appendChild(style);
+      styleRef.current = document.createElement("style");
+      shadowRoot.appendChild(styleRef.current);
     }
-  }, [styles]);
+    if (styleRef.current) {
+      styleRef.current.innerHTML = `.primary {
+        stroke: ${primary};
+      }
+      .secondary{
+        stroke: ${secondary}
+      }`;
+    }
+  }, [primary, secondary]);
 
   return ref;
 };

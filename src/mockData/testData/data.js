@@ -8,20 +8,20 @@ export const iconCalendarData = [
     time: "14:00",
     value: "Church Bla Bla",
     primary: "#aeb8fe",
-    secondary: "#fff",
+    secondary: "#1d1b29",
   },
   {
     icon: champagne,
     time: "16:00",
     value: "Restaurant Bla Bla",
     primary: "#aeb8fe",
-    secondary: "#fff",
+    secondary: "#1d1b29",
   },
   {
     icon: plate,
     time: "18:00",
     value: "Restaurant Bla Bla",
     primary: "#aeb8fe",
-    secondary: "#fff",
+    secondary: "#1d1b29",
   },
 ];
