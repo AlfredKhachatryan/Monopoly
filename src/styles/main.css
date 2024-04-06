@@ -93,20 +93,40 @@ footer div {
   flex-direction: column;
   align-items: center;
 }
-path .primary {
-  stroke: #aeb8fe !important;
-}
 .page-container {
   width: 90%;
   height: 50dvh;
-  background: rgba(255, 255, 255, 0.61);
+  background: rgba(255, 255, 255, 0.9);
   border-radius: 16px;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 1);
   z-index: 0;
   margin: auto;
 }
-.span-divider{
+.span-divider {
   font-size: 16px;
-
+  position: relative;
+}
+.span-divider::after {
+  content: '';
+  width: 35px;
+  position: absolute;
+  border-top: 1px solid #aeb8fe;
+  top: calc(50% - 1px);
+  right: 2.5em;
+}
+.span-divider::before {
+  content: '';
+  width: 35px;
+  position: absolute;
+  border-top: 1px solid #aeb8fe;
+  top: calc(50% - 1px);
+  left: 2.5em;
+}
+.mainText {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  height: 4em;
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, Component } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Footer } from "../Components/Footer";
 import { Header } from "../Components/Header";
 import { IconCalendar } from "../Components/IconCalendar";
@@ -26,37 +26,18 @@ const mainContStyle = {
 {
   /* <CountDown timeEnd={new Date('6 Apr 2024')}></CountDown> */
 }
-function Main() {
+function Client2() {
+  const { id } = useParams();
+    
   return (
     <div className="main-cont" style={mainContStyle}>
       <br />
       <article className="page-container">
-        <br />
-        <h3 className="mainText">
-          LEDIGEY
-          <span className="span-divider">and</span>
-          VAZGENUSH
-        </h3>
-        <br />
-        <Calendar
-          dayName={"Sunday"} //ex. Sunday
-          dateNumber={"24.12.24"} // ex. 24.12.24
-          timeNumber={"16:30"} // ex. 16:30
-          baseInfo={"At Bla Bla Bla "} // ex. At This Resturant
-          borderColor={borderColor} // ex. #aeb8fe
-        ></Calendar>
-        <br />
-        <h5>
-          request the honor <br />
-          of your presence <br />
-          at their matrelog
-        </h5>
-        <b8r />
-        <IconCalendar data={iconCalendarData}></IconCalendar>
+        <h1>CLIENT 1 ID:{id}</h1>
       </article>
       <br />
       <Footer backgroundColor={footerBackColor}></Footer>
     </div>
   );
 }
-export { Main };
+export { Client2 };
