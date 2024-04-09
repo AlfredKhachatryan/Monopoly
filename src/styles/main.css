@@ -108,7 +108,7 @@ footer div {
   position: relative;
 }
 .span-divider::after {
-  content: '';
+  content: "";
   width: 35px;
   position: absolute;
   border-top: 1px solid #aeb8fe;
@@ -116,7 +116,7 @@ footer div {
   right: 2.5em;
 }
 .span-divider::before {
-  content: '';
+  content: "";
   width: 35px;
   position: absolute;
   border-top: 1px solid #aeb8fe;

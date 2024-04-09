@@ -20,11 +20,12 @@ import "./styles/main.css";
 import { Main } from "./Pages/about_us";
 import { Client1 } from "./Pages/client1";
 import { Client2 } from "./Pages/client2";
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="1/:id" element={<Main />} />
+        <Route index element={<Main />} />
         <Route path="2/:id" element={<Client1 />} />
         <Route path="3/:id" element={<Client2 />} />
       </Routes>

@@ -3,6 +3,11 @@ import { Link } from "react-router-dom";
 
 function Calendar(data) {
   const { dayName, timeNumber, dateNumber, baseInfo, borderColor } = data;
+  // dayName="Sunday"//ex. string:Sunday
+  // dateNumber="24.12.24" // ex. string:24.12.24
+  // timeNumber="16:30" // ex. string:16:30
+  // baseInfo="At Bla Bla Bla " // ex. string:At This Resturant
+  // borderColor=borderColor // ex. hex color:#aeb8fe
 
   return (
     <>

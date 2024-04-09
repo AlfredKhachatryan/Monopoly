@@ -23,9 +23,6 @@ const mainContStyle = {
   backgroundRepeat: "no-repeat",
 };
 
-{
-  /* <CountDown timeEnd={new Date('6 Apr 2024')}></CountDown> */
-}
 function Main() {
   return (
     <div className="main-cont" style={mainContStyle}>
@@ -39,12 +36,12 @@ function Main() {
         </h3>
         <br />
         <Calendar
-          dayName={"Sunday"} //ex. Sunday
-          dateNumber={"24.12.24"} // ex. 24.12.24
-          timeNumber={"16:30"} // ex. 16:30
-          baseInfo={"At Bla Bla Bla "} // ex. At This Resturant
-          borderColor={borderColor} // ex. #aeb8fe
-        ></Calendar>
+          dayName={"Sunday"} //ex. string:Sunday
+          dateNumber={"24.12.24"} // ex. string:24.12.24
+          timeNumber={"16:30"} // ex. string:16:30
+          baseInfo={"At Bla Bla Bla "} // ex. string:At This Resturant
+          borderColor={borderColor} // ex. string:#aeb8fe
+        />
         <br />
         <h5>
           request the honor <br />
@@ -52,10 +49,17 @@ function Main() {
           at their matrelog
         </h5>
         <b8r />
-        <IconCalendar data={iconCalendarData}></IconCalendar>
+        <IconCalendar
+          data={iconCalendarData} //ex. Object. For More info check component
+          loop={true} //ex. boolean:true || false
+        />
+        <br />
+        <CountDown
+          timeEnd={new Date("12 Apr 2024")} //ex Date : new Date("12 Apr 2024"
+        />
       </article>
       <br />
-      <Footer backgroundColor={footerBackColor}></Footer>
+      <Footer backgroundColor={footerBackColor} />
     </div>
   );
 }
