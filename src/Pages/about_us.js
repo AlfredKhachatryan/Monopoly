@@ -48,7 +48,7 @@ function Main() {
           of your presence <br />
           at their matrelog
         </h5>
-        <b8r />
+        <br />
         <IconCalendar
           data={iconCalendarData} //ex. Object. For More info check component
           loop={true} //ex. boolean:true || false
