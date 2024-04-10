@@ -7,6 +7,8 @@ import { iconCalendarData } from "../mockData/testData/data";
 import { CountDown } from "../Components/Timer";
 import { Calendar } from "../Components/Calendar";
 import medres from "../images/Medres.jpg";
+import { Image } from "../Components/Image";
+import { height } from "@fortawesome/free-solid-svg-icons/fa0";
 const backgroundColor = "";
 const footerBackColor = "#aeb8fe";
 const borderColor = "#aeb8fe";
@@ -16,7 +18,7 @@ const mainContStyle = {
   backgroundColor: backgroundColor,
   color: textColor,
   fontWeight: 400,
-//   backgroundImage: `url(${medres})`,
+  //   backgroundImage: `url(${medres})`,
   backgroundPosition: "center",
   backgroundSize: "cover",
   backgroundRepeat: "no-repeat",
@@ -31,6 +33,11 @@ function TestDesign() {
       <br />
       {/* <article className="page-container">
       </article> */}
+      <Image
+        src={medres} //ex. source of image !!important!!
+        style={{ height: "100dvh" }} //ex. custom react styling
+        img={true} //ex. img === true return img tag else div with background image
+      ></Image>
       <article className=""></article>
       <br />
       <Footer backgroundColor={footerBackColor}></Footer>
