@@ -130,3 +130,8 @@ footer div {
   justify-content: space-between;
   height: 4em;
 }
+.carousel-container {
+}
+.carousel-inner-item {
+  padding: 10px 0 40px 0;
+}

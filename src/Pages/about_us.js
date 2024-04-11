@@ -6,6 +6,7 @@ import { IconCalendar } from "../Components/IconCalendar";
 import { iconCalendarData } from "../mockData/testData/data";
 import { CountDown } from "../Components/Timer";
 import { Calendar } from "../Components/Calendar";
+
 import medres from "../images/Medres.jpg";
 
 const backgroundColor = "#1d1b29";
