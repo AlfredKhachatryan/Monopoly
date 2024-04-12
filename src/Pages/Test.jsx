@@ -60,34 +60,23 @@ function Test() {
       <br />
       <article>
         <br />
-        <h3 className="mainText">
-          LEDIGEY
-          <span className="span-divider">and</span>
-          VAZGENUSH
-        </h3>
-        <br />
         <Calendar
           dayName={"Sunday"} //ex. string:Sunday
-          dateNumber={"24.12.24"} // ex. string:24.12.24
+          dateNumber={"12 24 24"} // ex. string:12 24 24(mm,dd,yr)
           timeNumber={"16:30"} // ex. string:16:30
-          baseInfo={"At Bla Bla Bla "} // ex. string:At This Resturant
+          baseInfo={"At 2 Pm"} // ex. string:At This Resturant
           borderColor={borderColor} // ex. string:#aeb8fe
+          alt={true}
+          altSize={{
+            dayNameSize: "24px",
+            baseSize: "24px",
+            monthSize: "20px",
+            dayNumberSize: "36px",
+            yearSize: "20px",
+          }}
+          color={"#fff"}
         />
         <br />
-        <h5>
-          request the honor <br />
-          of your presence <br />
-          at their matrelog
-        </h5>
-        <br />
-        <IconCalendar
-          data={iconCalendarData} //ex. Object. For More info check component
-          loop={true} //ex. boolean:true || false
-        />
-        <br />
-        <CountDown
-          timeEnd={new Date("12 Apr 2024")} //ex Date : new Date("12 Apr 2024"
-        />
       </article>
       <br />
       <Footer backgroundColor={footerBackColor} />
