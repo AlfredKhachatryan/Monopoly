@@ -13,24 +13,38 @@ function IconCalendar({ data, loop }) {
     <>
       <article className="">
         <div className="content-wrap">
-          {data?.map(({ icon, value, time, primary, secondary }, i) => (
-            <>
-              <div className="iconContainer">
-                <div>
-                  <Icon
-                    size={64}
-                    icon={icon}
-                    primary={primary}
-                    secondary={secondary}
-                    loop={loop}
-                  ></Icon>
+          {data?.map(
+            (
+              {
+                icon,
+                value,
+                time,
+                primary,
+                secondary,
+                iconSize,
+                timeSize,
+                textSize,
+              },
+              i
+            ) => (
+              <>
+                <div className="iconContainer">
+                  <div>
+                    <Icon
+                      size={iconSize || 64}
+                      icon={icon}
+                      primary={primary}
+                      secondary={secondary}
+                      loop={loop}
+                    ></Icon>
+                  </div>
+                  <span style={{ fontSize: timeSize + "px" }}>{time}</span>
+                  <span style={{ fontSize: textSize + "px" }}>{value}</span>
                 </div>
-                <span>{time}</span>
-                <span>{value}</span>
-              </div>
-              <br />
-            </>
-          ))}
+                <br />
+              </>
+            )
+          )}
         </div>
       </article>
     </>
