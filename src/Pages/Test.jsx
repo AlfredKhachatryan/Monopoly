@@ -24,9 +24,9 @@ const iconCalendarData = [
     value: "Church Bla Bla",
     primary: "#aeb8fe",
     secondary: "#fff",
-    iconSize: 128,
-    timeSize: 32,
-    textSize: 20,
+    iconSize: "128px",
+    timeSize: "32px",
+    textSize: "20px",
   },
   {
     icon: champagne,
@@ -60,7 +60,7 @@ function Test() {
       <br />
       <article>
         <br />
-        <Calendar
+        {/* <Calendar
           dayName={"Sunday"} //ex. string:Sunday
           dateNumber={"12 24 24"} // ex. string:12 24 24(mm,dd,yr)
           timeNumber={"16:30"} // ex. string:16:30
@@ -75,7 +75,8 @@ function Test() {
             yearSize: "20px",
           }}
           color={"#fff"}
-        />
+        /> */}
+        <IconCalendar data={iconCalendarData}></IconCalendar>
         <br />
       </article>
       <br />

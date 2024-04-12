@@ -38,8 +38,8 @@ function IconCalendar({ data, loop }) {
                       loop={loop}
                     ></Icon>
                   </div>
-                  <span style={{ fontSize: timeSize + "px" }}>{time}</span>
-                  <span style={{ fontSize: textSize + "px" }}>{value}</span>
+                  <span style={{ fontSize: timeSize }}>{time}</span>
+                  <span style={{ fontSize: textSize }}>{value}</span>
                 </div>
                 <br />
               </>
