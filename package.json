@@ -1,5 +1,5 @@
 {
-  "name": "arfa_med",
+  "name": "magic-memo",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -7,17 +7,23 @@
     "@fortawesome/free-solid-svg-icons": "^6.1.2",
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@googlemaps/react-wrapper": "^1.1.35",
+    "@lordicon/element": "^1.6.0",
+    "@lordicon/react": "^1.6.0",
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.3.0",
     "@testing-library/user-event": "^13.5.0",
     "bootstrap": "^5.2.0",
     "jquery": "^3.6.1",
+    "lottie-web": "^5.12.2",
     "react": "^18.2.0",
     "react-bootstrap": "^2.5.0",
+    "react-countdown": "^2.3.5",
     "react-dom": "^18.2.0",
     "react-helmet": "^6.1.0",
+    "react-multi-carousel": "^2.8.5",
     "react-router": "^6.3.0",
     "react-scripts": "5.0.1",
+    "styled-components": "^6.1.8",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
