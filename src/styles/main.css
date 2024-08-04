@@ -1,0 +1,184 @@
+* {
+  padding: 0;
+  margin: 0;
+}
+:root {
+  --accent: #ff4655;
+}
+body {
+  background-color: #191528;
+  color: white;
+}
+.cont {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100dvh;
+}
+.parent {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  grid-template-rows: repeat(9, calc(100% / 9 - 3px));
+  grid-column-gap: 3px;
+  grid-row-gap: 3px;
+  max-width: 95%;
+  height: 95dvh;
+}
+.item {
+  outline: 1px solid;
+}
+.itemCard1 {
+  grid-area: 9 / 11 / 10 / 12;
+}
+.itemCard2 {
+  grid-area: 9 / 10 / 10 / 11;
+}
+.itemCard3 {
+  grid-area: 9 / 9 / 10 / 10;
+}
+.itemCard4 {
+  grid-area: 9 / 8 / 10 / 9;
+}
+.itemCard5 {
+  grid-area: 9 / 7 / 10 / 8;
+}
+.itemCard6 {
+  grid-area: 9 / 6 / 10 / 7;
+}
+.itemCard7 {
+  grid-area: 9 / 5 / 10 / 6;
+}
+.itemCard8 {
+  grid-area: 9 / 4 / 10 / 5;
+}
+.itemCard9 {
+  grid-area: 9 / 3 / 10 / 4;
+}
+.itemCard10 {
+  grid-area: 9 / 2 / 10 / 3;
+}
+.itemCard11 {
+  grid-area: 9 / 1 / 10 / 2;
+}
+.itemCard12 {
+  grid-area: 8 / 1 / 9 / 2;
+}
+.itemCard13 {
+  grid-area: 7 / 1 / 8 / 2;
+}
+.itemCard14 {
+  grid-area: 6 / 1 / 7 / 2;
+}
+.itemCard15 {
+  grid-area: 5 / 1 / 6 / 2;
+}
+.itemCard16 {
+  grid-area: 4 / 1 / 5 / 2;
+}
+.itemCard17 {
+  grid-area: 3 / 1 / 4 / 2;
+}
+.itemCard18 {
+  grid-area: 2 / 1 / 3 / 2;
+}
+.itemCard19 {
+  grid-area: 1 / 1 / 2 / 2;
+}
+.itemCard20 {
+  grid-area: 1 / 2 / 2 / 3;
+}
+.itemCard21 {
+  grid-area: 1 / 3 / 2 / 4;
+}
+.itemCard22 {
+  grid-area: 1 / 4 / 2 / 5;
+}
+.itemCard23 {
+  grid-area: 1 / 5 / 2 / 6;
+}
+.itemCard24 {
+  grid-area: 1 / 6 / 2 / 7;
+}
+.itemCard25 {
+  grid-area: 1 / 7 / 2 / 8;
+}
+.itemCard26 {
+  grid-area: 1 / 8 / 2 / 9;
+}
+.itemCard27 {
+  grid-area: 1 / 9 / 2 / 10;
+}
+.itemCard28 {
+  grid-area: 1 / 10 / 2 / 11;
+}
+.itemCard29 {
+  grid-area: 1 / 11 / 2 / 12;
+}
+.itemCard30 {
+  grid-area: 2 / 11 / 3 / 12;
+}
+.itemCard31 {
+  grid-area: 3 / 11 / 4 / 12;
+}
+.itemCard32 {
+  grid-area: 4 / 11 / 5 / 12;
+}
+.itemCard33 {
+  grid-area: 5 / 11 / 6 / 12;
+}
+.itemCard34 {
+  grid-area: 6 / 11 / 7 / 12;
+}
+.itemCard35 {
+  grid-area: 7 / 11 / 8 / 12;
+}
+.itemCard36 {
+  grid-area: 8 / 11 / 9 / 12;
+}
+.ChanceOutline {
+  grid-area: 7 / 2 / 9 /5;
+  outline: 1px solid white;
+  margin: 10px;
+}
+.BonusOutline {
+  grid-area: 7 / 8 / 9 / 11;
+  outline: 1px solid white;
+  margin: 10px;
+}
+.flexCent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.PlayerInfo {
+  /* grid-area: 3 / 3 / 6 / 5; */
+  outline: 1px solid white;
+  grid-area: 2 / 2 / 5 / 4;
+  margin: 10px;
+}
+.BaseInfo {
+  outline: 1px solid white;
+  grid-area: 5 / 8 / 6 / 5;
+  margin: 10px;
+}
+.fig {
+  background-size: cover;
+  background-position: center;
+  width: 20px;
+  height: 100%;
+}
+.fig0 {
+  background-image: url("../Images/mon_1.png");
+}
+.fig1 {
+  background-image: url("../Images/mon_2.png");
+}
+.fig2 {
+  background-image: url("../Images/mon_3.png");
+}
+.fig3 {
+  background-image: url("../Images/mon_4.png");
+}
+.disabledFig{
+  filter: grayscale(1);
+}
