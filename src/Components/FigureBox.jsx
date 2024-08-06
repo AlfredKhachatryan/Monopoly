@@ -11,9 +11,11 @@ export function FigureBox({ show }) {
   const [figureNames, setNames] = useState(
     Object.keys(figureDef)?.filter((key) => figureDef[key])
   );
+
   useEffect(() => {
     setNames(Object.keys(show).filter((key) => show[key]));
   }, [show]);
+
   return (
     <div
       style={{
@@ -21,9 +23,13 @@ export function FigureBox({ show }) {
         display: "flex",
       }}
     >
-      {!show
-        ? null
-        : figureNames?.map((e) => <div className={`fig ${e}`} key={e}></div>)}
+      {Object.entries(figureNames).map(
+        (e) =>
+          e[0] && (
+            <div className={`fig ${e[1]}`} key={e[0]}>
+            </div>
+          )
+      )}
     </div>
   );
 }

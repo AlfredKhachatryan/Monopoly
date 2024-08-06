@@ -4,6 +4,7 @@ import FormInput from "../Components/Input";
 import { SelectFigure } from "../Components/SelectFigure";
 import { Link } from "react-router-dom";
 import { updateDB, useFetch, useRealtimeUpdates } from "../Hooks/supabase";
+import ShortUniqueId from "short-unique-id";
 
 export function Login() {
   const [currentFig, setCurrenFig] = useState(null);
@@ -14,7 +15,6 @@ export function Login() {
   const handleInserts = (payload) => {
     SetPlayers(payload.new.Players);
   };
-
   useRealtimeUpdates(handleInserts);
 
   useEffect(() => {
@@ -22,16 +22,33 @@ export function Login() {
   }, [data]);
 
   function insert() {
-    const newPlayer = { name: inp.name, figure: currentFig, money: 100 };
-    var userData = { name: inp.name, figure: currentFig };
-    localStorage.playerInfo = JSON.stringify(userData);
+    const newPlayer = {
+      name: inp.name,
+      figure: currentFig,
+      money: 100,
+    };
+    localStorage.playerInfo = JSON.stringify(newPlayer);
     if (inp.name && currentFig) {
       if (players) {
         updateDB(inp.uuid, {
+          position: {
+            ...data.position,
+            1: {
+              ...data.position[1],
+              [currentFig]: true,
+            },
+          },
           Players: [newPlayer, ...players],
         });
       } else {
         updateDB(inp.uuid, {
+          position: {
+            ...data.position,
+            1: {
+              ...data.position[1],
+              [currentFig]: true,
+            },
+          },
           Players: [newPlayer],
         });
       }

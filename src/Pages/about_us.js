@@ -9,16 +9,16 @@ import { width } from "@fortawesome/free-solid-svg-icons/fa0";
 
 function initialState() {
   const obj = {
-    1: {
-      fig0: true,
-      fig1: true,
-      fig2: true,
-      fig3: true,
-      name: `itemCard${1}`,
-    },
+    // 1: {
+    //   fig0: true,
+    //   fig1: true,
+    //   fig2: true,
+    //   fig3: true,
+    //   name: `itemCard${1}`,
+    // },
   };
 
-  for (let i = 2; i < 37; i++) {
+  for (let i = 1; i < 37; i++) {
     obj[i] = {
       fig0: false,
       fig1: false,
@@ -43,7 +43,6 @@ function Main() {
 
   useEffect(() => {
     if (data) {
-      console.log(data);
       setPos(data.position);
       setUserData(data.Players);
     }
@@ -55,7 +54,7 @@ function Main() {
   };
 
   useEffect(() => {
-    // console.log(pos);
+    console.log(pos);
   }, [pos]);
 
   useRealtimeUpdates(handleInserts);

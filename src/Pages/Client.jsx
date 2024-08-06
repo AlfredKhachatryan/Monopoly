@@ -80,17 +80,23 @@ function Client() {
         </Button>
         <br />
         <Link to="/Login">
-          <Button
-            onClick={() => {
-              updateDB(uuid, {
-                Players: data.Players.filter(
-                  (e) => e.figure !== PlayerInfo.figure
-                ),
-              });
-            }}
-          >
-            Leave
-          </Button>
+        <Button
+          onClick={() => {
+            updateDB(uuid, {
+              position: Object.fromEntries(
+                Object.entries(pos).map(([key, value]) => [
+                  key,
+                  { ...value, [PlayerInfo.figure]: false },
+                ])
+              ),
+              Players: data.Players.filter(
+                (e) => e.figure !== PlayerInfo.figure
+              ),
+            });
+          }}
+        >
+          Leave
+        </Button>
         </Link>
         <br />
       </div>
