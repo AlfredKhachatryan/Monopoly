@@ -5,6 +5,7 @@ import ShortUniqueId from "short-unique-id";
 import { FigureBox } from "../Components/FigureBox";
 import { createClient } from "@supabase/supabase-js";
 import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
+import { width } from "@fortawesome/free-solid-svg-icons/fa0";
 
 function initialState() {
   const obj = {
@@ -36,6 +37,7 @@ function Main() {
   const uuid = "v6Pstf";
 
   const [pos, setPos] = useState(initialState());
+  const [userData, setUserData] = useState(null);
 
   const { data, error, loading } = useFetch(uuid);
 
@@ -43,11 +45,13 @@ function Main() {
     if (data) {
       console.log(data);
       setPos(data.position);
+      setUserData(data.Players);
     }
   }, [data]);
 
   const handleInserts = (payload) => {
     setPos(payload.new.position);
+    setUserData(payload.new.Players);
   };
 
   useEffect(() => {
@@ -73,7 +77,24 @@ function Main() {
         ))}
         <div className="ChanceOutline flexCent">Chance</div>
         <div className="BonusOutline flexCent">Bonus</div>
-        <div className="PlayerInfo flexCent">Info</div>
+        <div className="PlayerInfo flexCent">
+          {userData?.map(({ figure, name, money }) => (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  width: "80%",
+                }}
+              >
+                <div className={`fig ${figure}`} key={name}></div>
+                &nbsp;
+                <span> {name}:</span>
+                <span>{money + "$"}</span>
+              </div>
+            </>
+          ))}
+        </div>
         <div className="BaseInfo flexCent">{uuid}</div>
         <Button
           onClick={() => {

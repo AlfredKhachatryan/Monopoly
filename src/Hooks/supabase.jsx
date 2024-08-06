@@ -18,7 +18,7 @@ const useFetch = (uuid) => {
         let { data: dataBack, error } = await supabase
           .from("test")
           .select("*")
-          .eq("uuid", "v6Pstf");
+          .eq("uuid", uuid);
 
         if (error) throw error;
 

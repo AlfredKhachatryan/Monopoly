@@ -10,24 +10,34 @@ export function SelectFigure({ setParentFig, disabledFig }) {
         .map((player) => player.figure)
         .reduce(
           (acc, figure) => {
-            acc[figure] = true;
+            acc[figure] = false;
             return acc;
           },
           { ...figureDef }
         );
       return updatedFigureDef;
     });
+    console.log(disabledFig);
   }, [disabledFig]);
 
   const figureDef = {
-    fig0: false,
-    fig1: false,
-    fig2: false,
-    fig3: false,
+    fig0: true,
+    fig1: true,
+    fig2: true,
+    fig3: true,
   };
 
   const [figureNames, setNames] = useState(figureDef);
 
+  function click({ value, key }) {
+    console.log(value, key);
+    if (value) {
+      setCurrentFig(key);
+      if (setParentFig) {
+        setParentFig(key);
+      }
+    }
+  }
   return (
     <div>
       <div
@@ -43,14 +53,9 @@ export function SelectFigure({ setParentFig, disabledFig }) {
               justifyContent: "center",
               alignItems: "center",
             }}
-            className={value && "disabledFig"}
+            className={!value && "disabledFig"}
             onClick={() => {
-              if (!value) {
-                setCurrentFig(key);
-                if (setParentFig) {
-                  setParentFig(key);
-                }
-              }
+              click({ value, key });
             }}
             key={key}
           >

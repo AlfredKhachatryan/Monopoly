@@ -3,10 +3,10 @@ import Button from "../Components/Button";
 import Input from "../Components/Input";
 import { SelectFigure } from "../Components/SelectFigure";
 import { useRealtimeUpdates, updateDB, useFetch } from "../Hooks/supabase";
-
+import { Link } from "react-router-dom";
 function Client() {
   const PlayerInfo = JSON.parse(localStorage.playerInfo);
-  const uuid = 'v6Pstf';
+  const uuid = "v6Pstf";
   const [inp, setInp] = useState("");
   const [pos, setPos] = useState(null);
 
@@ -56,7 +56,7 @@ function Client() {
   };
   return (
     <div className="cont">
-      <div className="">
+      <div className="" style={{ display: "flex", flexDirection: "column" }}>
         <h1 style={{ textAlign: "center" }}>
           Name:
           {PlayerInfo.name}
@@ -78,6 +78,20 @@ function Client() {
         >
           Move By
         </Button>
+        <br />
+        <Link to="/Login">
+          <Button
+            onClick={() => {
+              updateDB(uuid, {
+                Players: data.Players.filter(
+                  (e) => e.figure !== PlayerInfo.figure
+                ),
+              });
+            }}
+          >
+            Leave
+          </Button>
+        </Link>
         <br />
       </div>
     </div>
