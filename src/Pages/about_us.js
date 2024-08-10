@@ -41,21 +41,20 @@ function Main() {
 
   const { data, error, loading } = useFetch(uuid);
 
+  function updatePos(pos, user) {
+    setPos(pos);
+    setUserData(user);
+  }
+
   useEffect(() => {
     if (data) {
-      setPos(data.position);
-      setUserData(data.Players);
+      updatePos(data.position, data.Players);
     }
   }, [data]);
 
   const handleInserts = (payload) => {
-    setPos(payload.new.position);
-    setUserData(payload.new.Players);
+    updatePos(payload.new.position, payload.new.Players);
   };
-
-  useEffect(() => {
-    console.log(pos);
-  }, [pos]);
 
   useRealtimeUpdates(handleInserts);
 

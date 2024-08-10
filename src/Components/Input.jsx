@@ -2,7 +2,7 @@ import React from "react";
 import styled from "styled-components";
 
 const Input = styled.input`
-  color: #fff;
+  color: ${({ disabled }) => (disabled ? "gray" : "#fff")};
   font-size: 0.9rem;
   background-color: #14141463;
   width: 100%;
@@ -18,7 +18,7 @@ const Input = styled.input`
     width: 100%;
   }
   &::placeholder {
-    color: #fff !important; /* Set the placeholder color to white */
+    color: ${({ disabled }) => (disabled ? "gray" : "#fff")};
     opacity: 0.9 !important;
   }
 `;
@@ -37,7 +37,7 @@ const InputBorder = styled.span`
 // Styled form control container
 const FormControl = styled.div`
   position: relative;
-  width:100%
+  width: 100%;
 `;
 
 // Alternate styled input component
@@ -48,17 +48,18 @@ const InputAlt = styled(Input)`
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 `;
 
-// Alternate styled input border component
 const InputBorderAlt = styled(InputBorder)`
   height: 3px;
-  background: linear-gradient(90deg, #ff6464 0%, #ff4655 100%);
+  background: ${({ disabled }) =>
+    disabled ? "gray" : "linear-gradient(90deg, #ff6464 0%, #ff4655 100%)"};
+  width: ${({ disabled }) => (disabled ? "100%" : "0%")};
   transition: width 0.25s cubic-bezier(0.42, 0, 0.58, 1);
 `;
 
-const FormInput = ({ alt, ...props }) => (
+const FormInput = ({ alt, disabled, ...props }) => (
   <FormControl>
-    <InputAlt {...props} />
-    <InputBorderAlt className="input-border" />
+    <InputAlt {...props} disabled={disabled} />
+    <InputBorderAlt className="input-border" disabled={disabled} />
   </FormControl>
 );
 

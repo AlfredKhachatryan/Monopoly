@@ -4,24 +4,34 @@ import Input from "../Components/Input";
 import { SelectFigure } from "../Components/SelectFigure";
 import { useRealtimeUpdates, updateDB, useFetch } from "../Hooks/supabase";
 import { Link } from "react-router-dom";
+let current = 0;
 function Client() {
-  const PlayerInfo = JSON.parse(localStorage.playerInfo);
+  const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
   const uuid = "v6Pstf";
-  const [inp, setInp] = useState("");
   const [pos, setPos] = useState(null);
-
+  const [PlayerInfo, setPlayerInfo] = useState(null);
   const { data, error, loading } = useFetch(uuid);
+  const [currentPos, setCurrentPos] = useState(1);
+
+  function setState(pos, player) {
+    setPos(pos);
+    setPlayerInfo(player);
+  }
 
   useEffect(() => {
     if (data) {
-      setPos(data.position);
-      console.log(data);
+      const playerInfo = data.Players.filter((e) => e.playerId == PlayerId)[0];
+      setState(data.position, playerInfo);
+      current = playerInfo.position;
+      setCurrentPos(current);
     }
   }, [data]);
 
   const handleInserts = (payload) => {
-    setPos(payload.new.position);
-    console.log("Update received:", payload);
+    const playerInfo = payload.new.Players.filter(
+      (e) => e.playerId == PlayerId
+    )[0];
+    setState(payload.new.position, playerInfo);
   };
 
   useRealtimeUpdates(handleInserts);
@@ -54,49 +64,68 @@ function Client() {
     }
     return newState;
   };
+
+  function updatePos() {
+    const number = Math.floor(Math.random() * 6) + 1;
+    current += number;
+    console.log(number, current, currentPos);
+    if (current > 36) {
+      current = current - 36;
+      setCurrentPos(current);
+    } else {
+      setCurrentPos(current);
+    }
+
+    setPos(updateItem(PlayerInfo.figure, current));
+
+    const updatedArray = data.Players.map((item) =>
+      item.playerId === PlayerInfo.playerId
+        ? { ...PlayerInfo, position: current }
+        : item
+    );
+    updateDB(uuid, {
+      position: updateItem(PlayerInfo.figure, current),
+      Players: updatedArray,
+    });
+  }
+
   return (
     <div className="cont">
       <div className="" style={{ display: "flex", flexDirection: "column" }}>
         <h1 style={{ textAlign: "center" }}>
           Name:
-          {PlayerInfo.name}
+          {PlayerInfo?.name}
+          <br />
+          Pos:{currentPos}
         </h1>
-        <br />
-        <Input
-          type="text"
-          onChange={(e) => setInp(e.target.value)}
-          placeholder={"Position"}
-        />
         <br />
         <Button
           onClick={() => {
-            setPos(updateItem(PlayerInfo.figure, Number(inp)));
-            updateDB(uuid, {
-              position: updateItem(PlayerInfo.figure, Number(inp)),
-            });
+            updatePos();
           }}
         >
           Move By
         </Button>
         <br />
         <Link to="/Login">
-        <Button
-          onClick={() => {
-            updateDB(uuid, {
-              position: Object.fromEntries(
-                Object.entries(pos).map(([key, value]) => [
-                  key,
-                  { ...value, [PlayerInfo.figure]: false },
-                ])
-              ),
-              Players: data.Players.filter(
-                (e) => e.figure !== PlayerInfo.figure
-              ),
-            });
-          }}
-        >
-          Leave
-        </Button>
+          <Button
+            onClick={() => {
+              localStorage.clear();
+              updateDB(uuid, {
+                position: Object.fromEntries(
+                  Object.entries(pos).map(([key, value]) => [
+                    key,
+                    { ...value, [PlayerInfo.figure]: false },
+                  ])
+                ),
+                Players: data.Players.filter(
+                  (e) => e.figure !== PlayerInfo.figure
+                ),
+              });
+            }}
+          >
+            Leave
+          </Button>
         </Link>
         <br />
       </div>
