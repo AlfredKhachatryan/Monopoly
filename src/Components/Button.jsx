@@ -49,6 +49,7 @@ const ButtonLarge = styled.span`
   background-color: var(--accent);
   overflow: hidden;
   box-shadow: inset 0px 0px 0px 1px transparent;
+  border-radius: 5px;
 `;
 
 const ButtonSlide = styled.span`

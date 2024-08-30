@@ -63,6 +63,14 @@ function Main() {
       <div className="parent">
         {Object.entries(pos).map(([key, value]) => (
           <Card_Map className={value.name} key={key}>
+            {console.log(
+              Object.keys(value)
+                .filter((key) => key !== "name")
+                .reduce((obj, key) => {
+                  obj[key] = value[key];
+                  return obj;
+                }, {})
+            )}
             <FigureBox
               show={Object.keys(value)
                 .filter((key) => key !== "name")
@@ -93,7 +101,10 @@ function Main() {
             </>
           ))}
         </div>
-        <div className="BaseInfo flexCent">{uuid}</div>
+        <div className="BaseInfo flexCent" style={{ textAlign: "center" }}>
+          {uuid}
+          <br /> 192.168.0.221:3000/Login
+        </div>
         <Button
           onClick={() => {
             updateDB(uuid, { position: initialState() });
