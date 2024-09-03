@@ -99,6 +99,7 @@ function Client() {
 
   return (
     <>
+      <div className="bg"></div>
       <div
         style={{
           paddingTop: "1em",
@@ -185,7 +186,7 @@ function Client() {
             onClick={() => {
               setClick(1 + click);
             }}
-            btnCont={{ "--accent": "#41B3A2" }}
+            btnCont={{ "--accent": "#d92650" }}
           >
             Roll The Dice
           </Button>

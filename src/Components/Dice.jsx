@@ -50,12 +50,10 @@ function DiceRoller({ click }) {
     }, 4500);
   };
   useEffect(() => {
-    console.log(click);
     if (click > 0) {
       rollDice();
     }
   }, [click]);
-
   return (
     <div>
       <div id="dice" data-side={side} className={isFirstRoll ? "" : "reRoll"}>

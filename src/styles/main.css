@@ -1,6 +1,7 @@
 * {
   padding: 0;
   margin: 0;
+  color: #fff;
 }
 :root {
   --accent: #ff4655;
@@ -10,7 +11,7 @@
   color: white;
 } */
 body {
-  background-color: #f8fcfc;
+  background-color: #191528;
   color: #000;
   font-family: "Nunito", sans-serif;
 }
@@ -193,28 +194,39 @@ body {
 .disabledFig {
   filter: grayscale(1);
 }
-/* footer {
-  display: flex;
-  margin-top: auto;
-  font-size: 32px;
-  justify-content: space-around;
-  width: 100%;
-  outline: 1px solid;
-  box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.75);
-}
-footer i {
-  padding: 10px;
-  outline: 1px solid;
-} */
 footer {
   padding: 10px;
-  box-shadow: 0px 5px 15px 0px #1a1d2082;
   width: 100%;
   position: fixed;
   bottom: 0;
-  font-size: 18px;
-  background-color: #f8fcfc;
+  font-size: 14px;
   font-weight: 600;
+  background-color: #110e1b;
+
+  /* Background and Blur */
+  background: rgba(17, 14, 27, 0.85);
+  border-radius: 8px 8px 0px 0px;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border: 1px solid rgba(17, 14, 27, 0.3);
+
+  /* Box Shadow */
+  box-shadow: 0px 5px 15px 0px #1a1d2082, 0 0 5px 1px rgba(0, 0, 0, 0.2);
+
+  /* Glowing Border Animation */
+  /* animation: glow 15s infinite alternate; */
+}
+
+@keyframes glow {
+  0% {
+    box-shadow: 0px 5px 15px 0px #1a1d2082, 0 0 5px 1px #d92650;
+  }
+  50% {
+    box-shadow: 0px 5px 15px 0px #1a1d2082, 0 0 5px 1px #7C162E;
+  }
+  100% {
+    box-shadow: 0px 5px 15px 0px #1a1d2082, 0 0 5px 1px #d92650;
+  }
 }
 .footerCont {
   display: flex;
@@ -228,11 +240,12 @@ footer {
   align-items: center;
 }
 .footerNav i {
-  font-size: 32px;
+  font-size: 20px;
 }
 .duotoneColor {
-  --fa-primary-color: #41b3a2;
-  --fa-secondary-color: #41b3a2;
+  --fa-primary-color: #d92650;
+  --fa-secondary-color: #ffffff;
+  --fa-secondary-opacity: 1;
 }
 
 .sideBar {
@@ -240,7 +253,7 @@ footer {
   width: 1.5em;
   height: 10em;
   border-radius: 0px 5px 5px 0px;
-  background-color: #b34152;
+  background-color: #d92650;
   /* background-color: #4F8C5F; */
   color: white;
   display: flex;
@@ -262,7 +275,7 @@ footer {
   align-self: end;
   min-width: 5em;
   height: 2rem;
-  background-color: #b34152;
+  background-color: #d92650;
   position: absolute;
   right: 0;
   z-index: 1;
@@ -279,4 +292,25 @@ footer {
 .divider {
   border: 1px solid white;
   height: 100%;
+}
+.bg {
+  background-image: url("../Images/blob-scene-haikei.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  height: 100vh;
+  width: 100%;
+  position: fixed;
+  z-index: -1;
+}
+.bg::after {
+  content: "";
+  display: block;
+  background-color: #20202062;
+  /* opacity: 0.4; */
+  width: 100%;
+  height: 100%;
+  position: relative;
+  padding: 5px;
+  backdrop-filter: blur(15px);
 }
