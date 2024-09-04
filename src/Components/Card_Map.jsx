@@ -3,7 +3,7 @@ import styled from "styled-components";
 
 const Card = styled.div`
   width: 100%;
-  min-width:100px;
+  min-width: 100px;
   height: 100%;
   background: #f5f5f5;
   padding: 20px 10px 5px 10px;
@@ -44,21 +44,19 @@ const CardSubtitle = styled.div`
   font-size: 12px;
 `;
 
-function Card_Map({ className, children }) {
+function Card_Map({ className, children, color, header, info, price }) {
+  console.log(color);
   return (
     <Card className={className}>
-      <CardAvatar
-        className="card-avatar"
-        style={{ backgroundColor: "#7C162E" }}
-      >
+      <CardAvatar className="card-avatar" style={{ backgroundColor: color }}>
         <CardSubtitle style={{ color: "#fff", padding: "2px" }}>
-          Owned By Me
+          {header}
         </CardSubtitle>
       </CardAvatar>
       <CardInfo className="card-info">
-        <CardTitle>Steve Jobs</CardTitle>
+        <CardTitle>{info}</CardTitle>
         {children}
-        <CardSubtitle>100$</CardSubtitle>
+        <CardSubtitle>{price}$</CardSubtitle>
       </CardInfo>
     </Card>
   );
