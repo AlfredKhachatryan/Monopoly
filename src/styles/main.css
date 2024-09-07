@@ -157,12 +157,13 @@ body {
   grid-area: 10 / 11 / 11 / 12;
 }
 .ChanceOutline {
-  grid-area: 11 / 2 / 9 /5;
+  grid-area: 4 / 8 / 6 / 5;
+
   outline: 1px solid white;
   margin: 10px;
 }
 .BonusOutline {
-  grid-area: 11 / 8 / 9 / 11;
+  grid-area: 6 / 8 / 8 / 5;
   outline: 1px solid white;
   margin: 10px;
 }
@@ -307,6 +308,7 @@ footer {
   grid-row-gap: 10px;
   justify-items: center;
   align-items: center;
+  z-index: 5;
 }
 .divider {
   border: 1px solid white;

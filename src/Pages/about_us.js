@@ -125,10 +125,10 @@ function Main() {
               </>
             ))}
           </div>
-          <div className="BaseInfo flexCent" style={{ textAlign: "center" }}>
+          {/* <div className="BaseInfo flexCent" style={{ textAlign: "center" }}>
             {uuid}
             <br /> 192.168.0.221:3000/Login
-          </div>
+          </div> */}
           <Button
             onClick={() => {
               // updateDB(uuid, { position: initialState() });\
