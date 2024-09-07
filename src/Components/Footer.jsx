@@ -4,6 +4,7 @@ function Footer() {
   return (
     <>
       <footer className="footerDef">
+        <div className="footerBlur"></div>
         <div className="footerCont ">
           <div>
             <div className="footerNav">

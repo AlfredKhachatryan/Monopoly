@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import styled from "styled-components";
-
+import { Icon } from "./Icon";
+import Handcuffs from "../Icons/handcuffs.json";
+import Chest from "../Icons/chest.json";
+import Finish from "../Icons/Finish.json";
+import Bank_Check from "../Icons/Bank_Check.json";
+import Locomotive from "../Icons/Locomotive.json";
+import Garage from "../Icons/Garage.json";
+import Slot from "../Icons/Slot.json";
 const Card = styled.div`
   width: 100%;
   min-width: 100px;
@@ -44,8 +51,7 @@ const CardSubtitle = styled.div`
   font-size: 12px;
 `;
 
-function Card_Map({ className, children, color, header, info, price }) {
-  console.log(color);
+function Card_Map({ className, children, color, header, info, price, start }) {
   return (
     <Card className={className}>
       <CardAvatar className="card-avatar" style={{ backgroundColor: color }}>
@@ -61,4 +67,155 @@ function Card_Map({ className, children, color, header, info, price }) {
     </Card>
   );
 }
-export { Card_Map };
+function CustomCard({
+  className,
+  children,
+  bgColor,
+  subtitle,
+  icon,
+  footer,
+  iconColor,
+  footerText,
+  state,
+  primary,
+  secondary,
+}) {
+  return (
+    <Card className={className}>
+      <CardAvatar style={{ backgroundColor: bgColor }}>
+        <CardSubtitle color="#000">{subtitle}</CardSubtitle>
+      </CardAvatar>
+      <CardInfo>
+        {children}
+        <CardTitle>
+          {icon && (
+            <Icon
+              size={32}
+              icon={icon}
+              primary={primary}
+              secondary={secondary}
+              loop={false}
+              state={state}
+              // delay={iconDelay}
+            ></Icon>
+          )}
+        </CardTitle>
+        <CardSubtitle>{footerText}</CardSubtitle>
+      </CardInfo>
+    </Card>
+  );
+}
+const Start_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle="СТАРТ"
+    footerText="Get 200$"
+    icon={Finish}
+    primary={"#d92650"}
+    secondary={"#f5786c"}
+  />
+);
+
+const Community_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle="Community"
+    footerText="Take The Card"
+    icon={Chest}
+    primary={"#de951f"}
+    secondary={"#f5786c"}
+  />
+);
+
+const Tax_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle="Tax"
+    footerText="Pay$$$"
+    icon={Bank_Check}
+    primary={"#1f8f5d"}
+    secondary={"#29bc7a"}
+  />
+);
+
+const RailRoad_Card = (props) => (
+  <CustomCard
+    {...props}
+    subtitle={props.info}
+    bgColor="#f5f5f5"
+    footerText="200$"
+    icon={Locomotive}
+    primary={"#de951f"}
+    secondary={"#865a13"}
+  />
+);
+const Chance_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle="Chance"
+    footerText="Take The Card"
+    icon={Slot}
+    primary={"#d92650"}
+    secondary={"#e05273"}
+  />
+);
+const Jail_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle="Jail"
+    footerText="In Jail :((("
+    icon={Handcuffs}
+    primary={"#000"}
+    secondary={"#767676"}
+  />
+);
+const Communal_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle={props.info + " Company"}
+    footerText="150$"
+    icon={props.icon}
+  >
+    {console.log(props)}
+  </CustomCard>
+);
+const Park_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle={props.info}
+    footerText="0$"
+    icon={Garage}
+    primary={"#767676"}
+    secondary={"#b0b0b0"}
+  />
+);
+const GTJ_Card = (props) => (
+  <CustomCard
+    {...props}
+    bgColor="#f5f5f5"
+    subtitle={props.info}
+    footerText="Unlucky"
+    icon={Handcuffs}
+    primary={"#000"}
+    secondary={"#767676"}
+  />
+);
+export {
+  Card_Map,
+  Start_Card,
+  Community_Card,
+  Tax_Card,
+  RailRoad_Card,
+  Chance_Card,
+  Jail_Card,
+  Communal_Card,
+  Park_Card,
+  GTJ_Card,
+};

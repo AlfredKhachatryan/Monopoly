@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 
 export function FigureBox({ show, style }) {
-  console.log(show);
   const figureDef = {
     fig0: false,
     fig1: false,

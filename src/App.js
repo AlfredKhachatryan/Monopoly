@@ -7,7 +7,7 @@ import { useNavigate, BrowserRouter, Routes, Route } from "react-router-dom";
 //imported CDNs
 
 import "./CDN/bootstrap.min.css";
-import "./CDN/fontAwesomePro.css";
+// import "./CDN/fontAwesomePro.css";
 
 //end of import
 

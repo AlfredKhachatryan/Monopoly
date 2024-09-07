@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
 import { FigureBox } from "../Components/FigureBox";
+import Card_Info from "../Components/Card_info";
 let current = 0;
 function Client() {
   // const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
@@ -109,6 +110,7 @@ function Client() {
           // minHeight: "100dvh",
         }}
       >
+        <Card_Info></Card_Info>
         <div style={{ position: "relative", height: "10em", width: "100%" }}>
           <div className="sideBar">
             <div className="sideBarItem">
@@ -211,7 +213,6 @@ function Client() {
           </Link> */}
           <br />
         </div>
-
         <Footer></Footer>
       </div>
     </>

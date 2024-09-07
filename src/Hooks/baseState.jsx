@@ -1,0 +1,103 @@
+import Bolt from "../Icons/Bolt.json";
+import Ocean from "../Icons/Ocean.json";
+function initialState() {
+  const obj = {};
+  const baseItems = [
+    { header: "Старт", info: "Старт", color: "#000", start: true },
+    { header: "Зайка", info: "Ownd By ''", color: "#d92650", price: 60 },
+    { header: "Community", community: true, info: "Community", color: "#000" },
+    { header: "Статуя Гая", info: "Ownd By ''", color: "#d92650", price: 60 },
+    { header: "Tax", tax: true, info: "Tax", color: "#000" },
+    { header: "RailRoad", road: true, info: "Support", color: "#000" },
+    { header: "Фирмини", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
+    { header: "Chance", chance: true, info: "Chance", color: "#000" },
+    { header: "Чинар", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
+    { header: "Циран", info: "Ownd By ''", color: "#6F6CF5", price: 120 },
+    { header: "Jail", jail: true, info: "Jail", color: "#000" },
+    { header: "Дом Афо", info: "Ownd By ''", color: "#F5786C", price: 140 },
+    {
+      header: "Communal",
+      communal: true,
+      icon: Bolt,
+      info: "Light",
+      color: "#000",
+      state: "loop-charging",
+      primary: "#de951f",
+      secondary: "#e9b563",
+      state: "loop-charging",
+    },
+    { header: "Дом Эро", info: "Ownd By ''", color: "#F5786C", price: 140 },
+    { header: "Дом Коли", info: "Ownd By ''", color: "#F5786C", price: 160 },
+    { header: "RailRoad", road: true, info: "Offlane", color: "#000" },
+    { header: "Далма Молл", info: "Ownd By ''", color: "#1F8F5D", price: 160 },
+    { header: "Community", community: true, info: "Community", color: "#000" },
+    { header: "Ереван Молл", info: "Ownd By ''", color: "#1F8F5D", price: 180 },
+    { header: "Мега Молл", info: "Ownd By ''", color: "#1F8F5D", price: 200 },
+    { header: "Park", parking: true, info: "Free Park", color: "#000" },
+    { header: "Minecraft", info: "Ownd By ''", color: "#1F8FFF", price: 220 },
+    { header: "Chance", chance: true, info: "Chance", color: "#000" },
+    { header: "LOL", info: "Ownd By ''", color: "#1F8FFF", price: 220 },
+    { header: "For Honor", info: "Ownd By ''", color: "#1F8FFF", price: 240 },
+    { header: "RailRoad", road: true, info: "Midlane", color: "#000" },
+    { header: "Ubisoft", info: "Ownd By ''", color: "#F56CC6", price: 260 },
+    {
+      header: "Communal",
+      communal: true,
+      icon: Ocean,
+      info: "Water",
+      color: "#000",
+      primary: "#0942b3",
+      secondary: "#1f8fff",
+      state: "hover-pinch",
+    },
+    { header: "EGS", info: "Ownd By ''", color: "#F56CC6", price: 260 },
+    { header: "Steam", info: "Ownd By ''", color: "#F56CC6", price: 280 },
+    { header: "Jail", GTJ: true, info: "Go To Jail", color: "#000" },
+    { header: "Spotify", info: "Ownd By ''", color: "#0942B3", price: 300 },
+    { header: "Community", community: true, info: "Community", color: "#000" },
+    { header: "Discord", info: "Ownd By ''", color: "#0942B3", price: 300 },
+    { header: "Windows", info: "Ownd By ''", color: "#0942B3", price: 320 },
+    { header: "RailRoad", road: true, info: "Carry", color: "#000" },
+    { header: "Chance", chance: true, info: "Chance", color: "#000" },
+    {
+      header: "Rainbox 6 Siege",
+      info: "Ownd By ''",
+      color: "#DE951F",
+      price: 350,
+    },
+    { header: "Tax", tax: true, info: "Luxury Tax", color: "#000" },
+    { header: "Dota 2", info: "Ownd By ''", color: "#DE951F", price: 400 },
+  ];
+
+  for (let i = 1; i <= baseItems.length; i++) {
+    obj[i] = {
+      fig0: false,
+      fig1: false,
+      fig2: false,
+      fig3: false,
+      name: `itemCard${i}`,
+      color: baseItems[i - 1].color,
+      header: baseItems[i - 1].header,
+      info: baseItems[i - 1].info,
+      price: baseItems[i - 1].price,
+      start: baseItems[i - 1].start,
+      community: baseItems[i - 1].community,
+      tax: baseItems[i - 1].tax,
+      road: baseItems[i - 1].road,
+      chance: baseItems[i - 1].chance,
+      jail: baseItems[i - 1].jail,
+      communal: baseItems[i - 1].communal,
+      parking: baseItems[i - 1].parking,
+      GTJ: baseItems[i - 1].GTJ,
+      icon: baseItems[i - 1].icon,
+      primary: baseItems[i - 1].primary,
+      secondary: baseItems[i - 1].secondary,
+      state: baseItems[i - 1].state,
+    };
+  }
+  console.log(obj);
+
+  return obj;
+}
+
+export { initialState };
