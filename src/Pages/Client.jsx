@@ -10,36 +10,37 @@ import { FigureBox } from "../Components/FigureBox";
 import Card_Info from "../Components/Card_info";
 import { Card_Map } from "../Components/Card_Map";
 import styled from "styled-components";
+import { initialState } from "../Hooks/baseState";
 let current = 0;
-function initialState() {
+function BoughtCards() {
   const obj = {};
   const baseItems = [
-    { header: "Зайка", info: "Ownd By ''", color: "#d92650", price: 60 },
-    { header: "Статуя Гая", info: "Ownd By ''", color: "#d92650", price: 60 },
-    { header: "Фирмини", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
-    { header: "Чинар", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
-    { header: "Циран", info: "Ownd By ''", color: "#6F6CF5", price: 120 },
-    { header: "Дом Афо", info: "Ownd By ''", color: "#F5786C", price: 140 },
-    { header: "Дом Эро", info: "Ownd By ''", color: "#F5786C", price: 140 },
-    { header: "Дом Коли", info: "Ownd By ''", color: "#F5786C", price: 160 },
-    { header: "Далма Молл", info: "Ownd By ''", color: "#1F8F5D", price: 160 },
-    { header: "Ереван Молл", info: "Ownd By ''", color: "#1F8F5D", price: 180 },
-    { header: "Мега Молл", info: "Ownd By ''", color: "#1F8F5D", price: 200 },
-    { header: "Minecraft", info: "Ownd By ''", color: "#1F8FFF", price: 220 },
-    { header: "For Honor", info: "Ownd By ''", color: "#1F8FFF", price: 240 },
-    { header: "Ubisoft", info: "Ownd By ''", color: "#F56CC6", price: 260 },
-    { header: "EGS", info: "Ownd By ''", color: "#F56CC6", price: 260 },
-    { header: "Steam", info: "Ownd By ''", color: "#F56CC6", price: 280 },
-    { header: "Spotify", info: "Ownd By ''", color: "#0942B3", price: 300 },
-    { header: "Discord", info: "Ownd By ''", color: "#0942B3", price: 300 },
-    { header: "Windows", info: "Ownd By ''", color: "#0942B3", price: 320 },
-    {
-      header: "Rainbox 6 Siege",
-      info: "Ownd By ''",
-      color: "#DE951F",
-      price: 350,
-    },
-    { header: "Dota 2", info: "Ownd By ''", color: "#DE951F", price: 400 },
+    // { header: "Зайка", info: "Ownd By ''", color: "#d92650", price: 60 },
+    // { header: "Статуя Гая", info: "Ownd By ''", color: "#d92650", price: 60 },
+    // { header: "Фирмини", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
+    // { header: "Чинар", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
+    // { header: "Циран", info: "Ownd By ''", color: "#6F6CF5", price: 120 },
+    // { header: "Дом Афо", info: "Ownd By ''", color: "#F5786C", price: 140 },
+    // { header: "Дом Эро", info: "Ownd By ''", color: "#F5786C", price: 140 },
+    // { header: "Дом Коли", info: "Ownd By ''", color: "#F5786C", price: 160 },
+    // { header: "Далма Молл", info: "Ownd By ''", color: "#1F8F5D", price: 160 },
+    // { header: "Ереван Молл", info: "Ownd By ''", color: "#1F8F5D", price: 180 },
+    // { header: "Мега Молл", info: "Ownd By ''", color: "#1F8F5D", price: 200 },
+    // { header: "Minecraft", info: "Ownd By ''", color: "#1F8FFF", price: 220 },
+    // { header: "For Honor", info: "Ownd By ''", color: "#1F8FFF", price: 240 },
+    // { header: "Ubisoft", info: "Ownd By ''", color: "#F56CC6", price: 260 },
+    // { header: "EGS", info: "Ownd By ''", color: "#F56CC6", price: 260 },
+    // { header: "Steam", info: "Ownd By ''", color: "#F56CC6", price: 280 },
+    // { header: "Spotify", info: "Ownd By ''", color: "#0942B3", price: 300 },
+    // { header: "Discord", info: "Ownd By ''", color: "#0942B3", price: 300 },
+    // { header: "Windows", info: "Ownd By ''", color: "#0942B3", price: 320 },
+    // {
+    //   header: "Rainbox 6 Siege",
+    //   info: "Ownd By ''",
+    //   color: "#DE951F",
+    //   price: 350,
+    // },
+    // { header: "Dota 2", info: "Ownd By ''", color: "#DE951F", price: 400 },
   ];
 
   for (let i = 1; i <= baseItems.length; i++) {
@@ -58,11 +59,6 @@ function initialState() {
 
   return obj;
 }
-const sortedItems = Object.entries(initialState()).sort(
-  ([keyA, valueA], [keyB, valueB]) => {
-    return valueA.color.localeCompare(valueB.color);
-  }
-);
 
 const groupByColor = (items) => {
   return items.reduce((acc, [key, value]) => {
@@ -177,10 +173,10 @@ const SidebarCard = styled(Sidebar)`
 const ButtonStyled = styled(Button)`
   /* You can move Button styles here */
 `;
-
+let result = 0;
 function Client() {
-  // const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
-  let PlayerId;
+  const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
+  // let PlayerId;
   const uuid = "v6Pstf";
   const [pos, setPos] = useState(null);
   const [show, setShow] = useState(false); //show Card
@@ -191,11 +187,9 @@ function Client() {
   const { data, error, loading } = useFetch(uuid);
   const [currentPos, setCurrentPos] = useState(1);
   const [click, setClick] = useState(0);
-  const [dice1Value, setDice1Value] = useState(0);
-  const [dice2Value, setDice2Value] = useState(0);
   const [isReveal, setIsReveal] = useState(false);
 
-  const items = Object.entries(initialState());
+  const items = Object.entries(BoughtCards());
 
   // Группируем элементы по цветам
   const groupedItems = groupByColor(items);
@@ -213,13 +207,13 @@ function Client() {
     await wait(150);
     setHide(state);
   }
-  // useEffect(() => {
-  //   if (data) {
-  //     const playerInfo = data.Players.filter((e) => e.playerId == PlayerId)[0];
-  //     setState(data.position, playerInfo, data.Players, current);
-  //     current = playerInfo?.position;
-  //   }
-  // }, [data]);
+  useEffect(() => {
+    if (data) {
+      const playerInfo = data.Players.filter((e) => e.playerId == PlayerId)[0];
+      setState(data.position, playerInfo, data.Players, current);
+      current = playerInfo?.position;
+    }
+  }, [data]);
 
   const handleInserts = (payload) => {
     const playerInfo = payload.new.Players.filter(
@@ -227,9 +221,15 @@ function Client() {
     )[0];
     current = playerInfo?.position;
     setState(payload.new.position, playerInfo, payload.new.Players, current);
+    setHide(true);
+    setShow(true);
   };
 
-  // useRealtimeUpdates(handleInserts);
+  useRealtimeUpdates(handleInserts);
+
+  useEffect(() => {
+    console.log(hideElem);
+  }, [hideElem]);
 
   const updateItem = (figKey, newPosition) => {
     const newState = { ...pos };
@@ -261,7 +261,15 @@ function Client() {
   };
 
   function updatePos() {
-    const number = Math.floor(Math.random() * 6) + 1;
+    setClick(1 + click);
+    setIsReveal(false);
+    setTimeout(() => {
+      setIsReveal(true);
+    }, 1500);
+    setTimeout(() => {
+      setIsReveal(false);
+    }, 4500);
+    const number = result;
     current += number;
     if (current > 36) {
       current = current - 36;
@@ -269,7 +277,6 @@ function Client() {
     } else {
       setCurrentPos(current);
     }
-
     setPos(updateItem(PlayerInfo.figure, current));
 
     const updatedArray = Players.map((item) =>
@@ -281,6 +288,8 @@ function Client() {
       position: updateItem(PlayerInfo.figure, current),
       Players: updatedArray,
     });
+    console.log(result);
+    result = 0;
   }
 
   return (
@@ -290,8 +299,8 @@ function Client() {
         {hideElem && (
           <Card_Info
             className={`fadeElem ${!show ? "fadeElem-exit" : ""}`}
-            name="Статуя Гая"
-            price={60}
+            name={initialState()[PlayerInfo?.position]?.header}
+            price={initialState()[PlayerInfo?.position]?.price}
             housePrice={50}
             show={hide}
           />
@@ -305,7 +314,6 @@ function Client() {
               <i className="fa-duotone fa-house"></i>&nbsp;<span>Houses</span>
             </div>
           </Sidebar>
-
           <div
             className={`HouseContainer ${sidebar && "HouseContainerShow"}`}
             onClick={() => setSidebar(false)}
@@ -331,7 +339,6 @@ function Client() {
               ))}
             </FlexColumn>
           </div>
-
           <ClientMoneyContainer>
             <span>$2500</span>
             <Divider />
@@ -342,7 +349,6 @@ function Client() {
               ></i>
             </div>
           </ClientMoneyContainer>
-
           <SidebarCard>
             <div className="sideBarItem">
               <i className="fa-duotone fa-cards-blank"></i>&nbsp;
@@ -358,36 +364,53 @@ function Client() {
           <DiceContainer>
             <DiceRoller
               click={click}
-              setResult={setDice1Value}
+              setResult={(e) => {
+                result += e;
+              }}
               setIsReveal={setIsReveal}
             />
-            <DiceRoller click={click} setResult={setDice2Value} />
+            <DiceRoller
+              click={click}
+              setResult={(e) => {
+                result += e;
+              }}
+            />
           </DiceContainer>
           <br />
           <ButtonStyled
             onClick={() => {
-              setClick(1 + click);
-              setIsReveal(false);
-              setTimeout(() => {
-                setIsReveal(true);
-              }, 1500);
-              setTimeout(() => {
-                setIsReveal(false);
-              }, 4500);
+              updatePos();
             }}
             btnCont={{ "--accent": "#d92650" }}
           >
             Roll The Dice
           </ButtonStyled>
           <br />
-          {/* <Link to="/Login">
-            <Button>Leave</Button>
-          </Link> */}
+          <Link to="/Login">
+            <Button
+              onClick={() => {
+                localStorage.clear();
+                updateDB(uuid, {
+                  position: Object.fromEntries(
+                    Object.entries(pos).map(([key, value]) => [
+                      key,
+                      { ...value, [PlayerInfo.figure]: false },
+                    ])
+                  ),
+                  Players: Players.filter(
+                    (e) => e.figure !== PlayerInfo.figure
+                  ),
+                });
+              }}
+            >
+              Leave
+            </Button>
+          </Link>
           <br />
         </CenteredContent>
         <Footer />
         <div id="diceResult" className={isReveal ? "reveal" : "hide"}>
-          You've got: {dice1Value + dice2Value}
+          You've got: {result}
         </div>
       </MainContainer>
     </>

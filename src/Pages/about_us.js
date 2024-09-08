@@ -101,7 +101,10 @@ function Main() {
                 secondary={secondary}
                 state={state}
               >
-                <FigureBox show={figures}></FigureBox>
+                <FigureBox
+                  show={figures}
+                  style={{ height: "30px", position: "absolute", zIndex: 2 }}
+                ></FigureBox>
               </Component>
             );
           })}
@@ -131,7 +134,7 @@ function Main() {
           </div> */}
           <Button
             onClick={() => {
-              // updateDB(uuid, { position: initialState() });\
+              updateDB(uuid, { position: initialState() });
               setPos(initialState());
             }}
           >

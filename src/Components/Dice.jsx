@@ -4,7 +4,6 @@ function DiceRoller({ click, setResult, setIsReveal }) {
   const prevSide = useRef();
   const [side, setSide] = useState(0);
   const [isFirstRoll, setIsFirstRoll] = useState(true);
-  const [resultText, setResultText] = useState("Click to roll the dice!");
 
   useEffect(() => {
     prevSide.current = side;
@@ -40,7 +39,6 @@ function DiceRoller({ click, setResult, setIsReveal }) {
       setSide(result);
     }
     setResult(result);
-    setResultText(`You've got ${result}`);
   };
   useEffect(() => {
     if (click > 0) {
