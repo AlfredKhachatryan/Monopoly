@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import "../styles/dice.css";
-function DiceRoller({ click }) {
+function DiceRoller({ click, setResult, setIsReveal }) {
   const prevSide = useRef();
   const [side, setSide] = useState(0);
   const [isFirstRoll, setIsFirstRoll] = useState(true);
   const [resultText, setResultText] = useState("Click to roll the dice!");
-  const [isReveal, setIsReveal] = useState(false);
 
   useEffect(() => {
     prevSide.current = side;
@@ -40,14 +39,8 @@ function DiceRoller({ click }) {
     } else {
       setSide(result);
     }
-    setIsReveal(false);
+    setResult(result);
     setResultText(`You've got ${result}`);
-    setTimeout(() => {
-      setIsReveal(true);
-    }, 1500);
-    setTimeout(() => {
-      setIsReveal(false);
-    }, 4500);
   };
   useEffect(() => {
     if (click > 0) {
@@ -64,9 +57,6 @@ function DiceRoller({ click }) {
             ))}
           </div>
         ))}
-      </div>
-      <div id="diceResult" className={isReveal ? "reveal" : "hide"}>
-        {resultText}
       </div>
     </div>
   );

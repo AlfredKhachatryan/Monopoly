@@ -51,9 +51,9 @@ const CardSubtitle = styled.div`
   font-size: 12px;
 `;
 
-function Card_Map({ className, children, color, header, info, price, start }) {
+function Card_Map({ className, children, color, header, info, price,onClick }) {
   return (
-    <Card className={className}>
+    <Card className={className} onClick={onClick}>
       <CardAvatar className="card-avatar" style={{ backgroundColor: color }}>
         <CardSubtitle style={{ color: "#fff", padding: "2px" }}>
           {header}
@@ -182,7 +182,6 @@ const Communal_Card = (props) => (
     footerText="150$"
     icon={props.icon}
   >
-    {console.log(props)}
   </CustomCard>
 );
 const Park_Card = (props) => (

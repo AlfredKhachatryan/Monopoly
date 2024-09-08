@@ -281,6 +281,8 @@ footer {
   align-items: center;
   flex-direction: column;
   z-index: 1;
+  transition: 0.35s ease-in-out;
+  left: 0;
 }
 .sideBarItem {
   rotate: 90deg;
@@ -288,31 +290,6 @@ footer {
   font-weight: 600;
   display: flex;
   align-items: center;
-}
-.ClientMoney {
-  font-size: 14px;
-  font-weight: 500;
-  align-self: end;
-  min-width: 5em;
-  height: 2rem;
-  background-color: #d92650;
-  position: absolute;
-  right: 0;
-  z-index: 1;
-  border-radius: 5px 0px 0px 5px;
-  padding: 0px 5px;
-  display: grid;
-  grid-template-columns: 1fr 2px 1em;
-  grid-template-rows: 1fr;
-  grid-column-gap: 10px;
-  grid-row-gap: 10px;
-  justify-items: center;
-  align-items: center;
-  z-index: 5;
-}
-.divider {
-  border: 1px solid white;
-  height: 100%;
 }
 .bg {
   /* background-image: url("../Images/blob-scene-haikei.svg"); */
@@ -324,6 +301,7 @@ footer {
   width: 100%;
   position: fixed;
   z-index: -1;
+  animation: bg 15s infinite;
 }
 .bg::after {
   content: "";
@@ -336,7 +314,20 @@ footer {
   padding: 5px;
   backdrop-filter: blur(15px);
 }
-
+@keyframes bg {
+  0% {
+    transform: scale(1);
+    background-position: 0%;
+  }
+  50% {
+    transform: scale(1.2);
+    background-position: 50%;
+  }
+  100% {
+    transform: scale(1);
+    background-position: 0%;
+  }
+}
 .cardTest {
   background-image: repeating-linear-gradient(
     to right,
@@ -445,4 +436,46 @@ footer {
   100% {
     background-position: 40px 40px;
   }
+}
+.fadeElem {
+  opacity: 1;
+  transition: 0.15s linear;
+}
+.fadeElem-exit {
+  opacity: 0;
+}
+.HouseContainer {
+  width: 85vw;
+  height: calc(100vh - 63px);
+  position: absolute;
+  left: calc(-85vw - 15px);
+  top: -1em;
+  background-color: #1e1e1efa;
+
+  transition: 0.35s ease-in-out;
+  z-index: 6;
+  box-shadow: 0 0 15px 5px #000000c4;
+  border-radius: 0px 5px 5px 0px;
+  padding: 1em 10px;
+  overflow: scroll;
+}
+.HouseContainerShow {
+  left: 0vw;
+}
+.clientCard {
+  width: 5em !important;
+  height: 7em !important;
+  box-shadow: 0 0 15px 5px #000000c4;
+}
+.sideBarRight {
+  left: 85vw;
+  z-index: 7;
+  box-shadow: 0 0 15px 5px #00000063;
+}
+.sideBarCards{
+  left: unset;
+  right: 0;
+  height: 7em;
+  bottom: 0;
+  border-Radius: 5px 0px 0px 5px;
 }

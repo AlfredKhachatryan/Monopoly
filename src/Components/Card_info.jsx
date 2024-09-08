@@ -93,63 +93,84 @@ const IconBlock = ({ count, icon, price, housePrice }) => (
     </Button>
   </IconContainer>
 );
-const Card_Info = () => {
+const Card_Info = ({ name, price, housePrice, show, className = "" }) => {
   return (
     <>
-      <CardOverlay></CardOverlay>
-      <Card>
-        <Card2>
-          <CardBody>
-            <CardTitle>Статуя Гая</CardTitle>
-            <HotelContainer>
-              <IconBlock
-                count={1}
-                icon={House}
-                price={(5 * 60) / 10}
-                housePrice={50}
-              ></IconBlock>
-              <IconBlock
-                count={2}
-                icon={House}
-                price={(15 * 60) / 10}
-                housePrice={50}
-              ></IconBlock>
-              <IconBlock
-                count={3}
-                icon={House}
-                price={(45 * 60) / 10}
-                housePrice={50}
-              ></IconBlock>
-              <IconBlock
-                count={4}
-                icon={House}
-                price={(62.5 * 60) / 10}
-                housePrice={50}
-              ></IconBlock>
-              <IconBlock
-                count={1}
-                icon={Building}
-                price={(75 * 60) / 10}
-                housePrice={400}
-              ></IconBlock>
-            </HotelContainer>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "0 5px",
+      <div className={className}>
+        <CardOverlay></CardOverlay>
+        <Card>
+          <Card2>
+            <CardBody>
+              <CardTitle>{name}</CardTitle>
+              <CardSubtitle style={{ fontSize: "16px", color: "#999" }}>
+                Price With Rent
+              </CardSubtitle>
+              <HotelContainer>
+                <IconBlock
+                  count={1}
+                  icon={House}
+                  price={(5 * price) / 10}
+                  housePrice={housePrice}
+                ></IconBlock>
+                <IconBlock
+                  count={2}
+                  icon={House}
+                  price={(15 * price) / 10}
+                  housePrice={housePrice}
+                ></IconBlock>
+                <IconBlock
+                  count={3}
+                  icon={House}
+                  price={(45 * price) / 10}
+                  housePrice={housePrice}
+                ></IconBlock>
+                <IconBlock
+                  count={4}
+                  icon={House}
+                  price={(62.5 * price) / 10}
+                  housePrice={housePrice}
+                ></IconBlock>
+                <IconBlock
+                  count={1}
+                  icon={Building}
+                  price={(75 * price) / 10}
+                  housePrice={housePrice * 8}
+                ></IconBlock>
+              </HotelContainer>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "0 5px",
+                }}
+              >
+                <CardSubtitle>Price: {price / 10}$</CardSubtitle>
+                <CardSubtitle>
+                  Colour Set Price: {(2 * price) / 10}$
+                </CardSubtitle>
+              </div>
+            </CardBody>
+          </Card2>
+          <ButtonContainer>
+            <Button
+              btnCont={{ "--accent": "#d92650", width: "45%" }}
+              onClick={() => {
+                show(false);
               }}
             >
-              <CardSubtitle>Price: {60 / 10}$</CardSubtitle>
-              <CardSubtitle>Colour Set Price: {(2 * 60) / 10}$</CardSubtitle>
-            </div>
-          </CardBody>
-        </Card2>
-        <ButtonContainer>
-          <Button btnCont={{ "--accent": "#d92650", width: "45%" }}>Buy</Button>
-          <Button btnCont={{ "--accent": "#444", width: "45%" }}>Pass</Button>
-        </ButtonContainer>
-      </Card>
+              Buy
+            </Button>
+            <Button
+              btnCont={{ "--accent": "#444", width: "45%" }}
+              onClick={() => {
+                show(false);
+              }}
+            >
+              Pass
+            </Button>
+          </ButtonContainer>
+        </Card>
+      </div>
     </>
   );
 };

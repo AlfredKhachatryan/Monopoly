@@ -95,7 +95,6 @@ function initialState() {
       state: baseItems[i - 1].state,
     };
   }
-  console.log(obj);
 
   return obj;
 }

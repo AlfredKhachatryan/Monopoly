@@ -17,7 +17,6 @@ export function SelectFigure({ setParentFig, disabledFig }) {
         );
       return updatedFigureDef;
     });
-    console.log(disabledFig);
   }, [disabledFig]);
 
   const figureDef = {
@@ -30,7 +29,6 @@ export function SelectFigure({ setParentFig, disabledFig }) {
   const [figureNames, setNames] = useState(figureDef);
 
   function click({ value, key }) {
-    console.log(value, key);
     if (value) {
       setCurrentFig(key);
       if (setParentFig) {

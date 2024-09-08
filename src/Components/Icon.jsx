@@ -29,7 +29,6 @@ export const Icon = ({
       playerRef.current.playFromBeginning();
     }
   }
-  console.log("state:" + state);
   // Cleanup interval on component unmount
   return (
     <>

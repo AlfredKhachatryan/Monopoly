@@ -28,7 +28,6 @@ export function Login() {
         setLogged(false);
       }
     }
-    console.log(payload);
   };
 
   useRealtimeUpdates(handleInserts);
