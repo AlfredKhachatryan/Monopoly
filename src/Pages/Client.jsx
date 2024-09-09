@@ -173,7 +173,6 @@ const SidebarCard = styled(Sidebar)`
 const ButtonStyled = styled(Button)`
   /* You can move Button styles here */
 `;
-let result = 0;
 function Client() {
   const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
   // let PlayerId;
@@ -188,6 +187,9 @@ function Client() {
   const [currentPos, setCurrentPos] = useState(1);
   const [click, setClick] = useState(0);
   const [isReveal, setIsReveal] = useState(false);
+
+  const [result, setResult] = useState(0);
+  const [diceRolled, setDiceRolled] = useState(false);
 
   const items = Object.entries(BoughtCards());
 
@@ -221,15 +223,14 @@ function Client() {
     )[0];
     current = playerInfo?.position;
     setState(payload.new.position, playerInfo, payload.new.Players, current);
-    setHide(true);
-    setShow(true);
+    console.log(current);
+    if (current !== 0) {
+      setHide(true);
+      setShow(true);
+    }
   };
 
   useRealtimeUpdates(handleInserts);
-
-  useEffect(() => {
-    console.log(hideElem);
-  }, [hideElem]);
 
   const updateItem = (figKey, newPosition) => {
     const newState = { ...pos };
@@ -261,7 +262,6 @@ function Client() {
   };
 
   function updatePos() {
-    setClick(1 + click);
     setIsReveal(false);
     setTimeout(() => {
       setIsReveal(true);
@@ -288,10 +288,15 @@ function Client() {
       position: updateItem(PlayerInfo.figure, current),
       Players: updatedArray,
     });
-    console.log(result);
-    result = 0;
+    console.log("result: " + result);
+    setResult(0);
   }
 
+  useEffect(() => {
+    if (diceRolled) {
+      updatePos();
+    }
+  }, [diceRolled, result]);
   return (
     <>
       <div className="bg"></div>
@@ -365,21 +370,24 @@ function Client() {
             <DiceRoller
               click={click}
               setResult={(e) => {
-                result += e;
+                setResult((prevResult) => prevResult + e);
               }}
               setIsReveal={setIsReveal}
             />
             <DiceRoller
               click={click}
               setResult={(e) => {
-                result += e;
+                setResult((prevResult) => prevResult + e);
+                setDiceRolled(true);
               }}
             />
           </DiceContainer>
           <br />
           <ButtonStyled
             onClick={() => {
-              updatePos();
+              setClick(1 + click);
+              setResult(0);
+              setDiceRolled(false);
             }}
             btnCont={{ "--accent": "#d92650" }}
           >

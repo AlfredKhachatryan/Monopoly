@@ -95,6 +95,7 @@ export function Login() {
   }
   return (
     <>
+      <div className="bg"></div>
       <div className="cont">
         <div className="">
           <FormInput
