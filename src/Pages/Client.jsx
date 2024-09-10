@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
 import { FigureBox } from "../Components/FigureBox";
-import Card_Info from "../Components/Card_info";
+import { Card_Info, Chance_info } from "../Components/Card_info";
 import { Card_Map } from "../Components/Card_Map";
 import styled from "styled-components";
 import { initialState } from "../Hooks/baseState";
@@ -144,6 +144,7 @@ const ButtonStyled = styled(Button)`
 `;
 function Client() {
   const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
+
   // let PlayerId;
   const uuid = "v6Pstf";
   const [pos, setPos] = useState(null);
@@ -161,11 +162,13 @@ function Client() {
   const [resultShow, setResultShow] = useState(0);
   const [diceRolled, setDiceRolled] = useState(false);
   const [BoughtCards, setBoughtCards] = useState({});
+
+  const prevPos = useRef(currentPos);
+
   function BuyCard(data) {
     const obj = {};
     let baseItems;
     let position = pos;
-
 
     if (Object.keys(BoughtCards).length > 0) {
       baseItems = [...Object.entries(BoughtCards).map((e) => e[1]), data];
@@ -180,16 +183,26 @@ function Client() {
         info: baseItems[i - 1].info,
         price: baseItems[i - 1].price,
         id: baseItems[i - 1].id,
+        start: baseItems[i - 1].start,
+        community: baseItems[i - 1].community,
+        tax: baseItems[i - 1].tax,
+        road: baseItems[i - 1].road,
+        chance: baseItems[i - 1].chance,
+        jail: baseItems[i - 1].jail,
+        communal: baseItems[i - 1].communal,
+        parking: baseItems[i - 1].parking,
+        GTJ: baseItems[i - 1].GTJ,
       };
     }
 
-    setBoughtCards(obj);
-    const newPos = Object.values(obj).forEach((item) => {
+    Object.values(obj).forEach((item) => {
       const id = item.id;
       if (position[id]) {
         position[id].info = JSON.parse(localStorage.playerInfo).name; // Change some property
       }
     });
+
+    setBoughtCards(obj);
     updateDB(uuid, {
       position: position,
     });
@@ -225,12 +238,13 @@ function Client() {
       (e) => e.playerId == PlayerId
     )[0];
     current = playerInfo?.position;
-    setState(payload.new.position, playerInfo, payload.new.Players, current);
-    console.log(current);
-    if (current !== 0 && current !== 1) {
+    console.log(current, prevPos);
+    if (current !== 0 && current !== 1 && current !== prevPos.current) {
       setHide(true);
       setShow(true);
     }
+    prevPos.current = current;
+    setState(payload.new.position, playerInfo, payload.new.Players, current);
   };
 
   useRealtimeUpdates(handleInserts);
@@ -305,17 +319,69 @@ function Client() {
     <>
       <div className="bg"></div>
       <MainContainer onClick={() => sidebar && setSidebar(false)}>
-        {hideElem && (
-          <Card_Info
-            className={`fadeElem ${!show ? "fadeElem-exit" : ""}`}
-            name={initialState()[PlayerInfo?.position]?.header}
-            price={initialState()[PlayerInfo?.position]?.price}
-            housePrice={50}
-            show={hide}
-            buy={BuyCard}
-            card={initialState()[PlayerInfo?.position]}
-          />
-        )}
+        {hideElem &&
+          pos &&
+          pos[PlayerInfo?.position] &&
+          (() => {
+            const currentPos = pos[PlayerInfo?.position]; // Access the current position data
+            const {
+              start,
+              community,
+              tax,
+              road,
+              chance,
+              jail,
+              communal,
+              parking,
+              GTJ,
+            } = currentPos; // Destructure the keys from the current position object
+
+            // Function to get the appropriate component based on the keys
+            const getComponent = () => {
+              {
+                /* if (start) return Start_Card; */
+              }
+              {
+                /* if (community) return Community_Card; */
+              }
+              {
+                /* if (tax) return Tax_Card; */
+              }
+              {
+                /* if (road) return RailRoad_Card; */
+              }
+              if (chance) return Chance_info;
+              {
+                /* if (jail) return Jail_Card; */
+              }
+              {
+                /* if (communal) return Communal_Card; */
+              }
+              {
+                /* if (parking) return Park_Card; */
+              }
+              {
+                /* if (GTJ) return GTJ_Card; */
+              }
+
+              return Card_Info; // Fallback in case none of the above matches
+            };
+
+            const Component = getComponent(); // Get the component to render
+            const currentCard = initialState()[PlayerInfo?.position]; // Retrieve current card info from the state
+
+            return (
+              <Component
+                className={`fadeElem ${!show ? "fadeElem-exit" : ""}`}
+                name={currentCard?.header}
+                price={currentCard?.price}
+                housePrice={50}
+                show={hide}
+                buy={BuyCard}
+                card={currentCard}
+              />
+            );
+          })()}
         <RelativeDiv>
           <Sidebar
             className={` ${sidebar && "sideBarRight"}`}
@@ -333,16 +399,12 @@ function Client() {
               {Object.entries(groupedItems).map(([color, items], index) => (
                 <FlexRow key={index}>
                   {items.map(([key, value]) => {
-                    const { name, header, info, price } = value;
+                    const { name, ...props } = value;
                     return (
                       <Card_Map
                         className={`${name} clientCard`}
-                        key={key}
-                        color={color}
-                        header={header}
-                        info={info}
-                        price={price}
                         onClick={(e) => e.stopPropagation()}
+                        {...value}
                       />
                     );
                   })}
@@ -427,11 +489,11 @@ function Client() {
             onClick={() => {
               const updatedArray = Players.map((item) =>
                 item.playerId === PlayerInfo.playerId
-                  ? { ...PlayerInfo, position: 1 }
+                  ? { ...PlayerInfo, position: 8 }
                   : item
               );
               updateDB(uuid, {
-                position: updateItem(PlayerInfo.figure, 1),
+                position: updateItem(PlayerInfo.figure, 8),
                 Players: updatedArray,
               });
             }}

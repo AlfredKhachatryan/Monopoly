@@ -70,9 +70,9 @@ function Main() {
               primary,
               secondary,
               state,
+              id,
               ...figures
             } = value;
-
             const getComponent = () => {
               if (start) return Start_Card;
               if (community) return Community_Card;
@@ -87,7 +87,6 @@ function Main() {
             };
 
             const Component = getComponent();
-
             return (
               <Component
                 className={name}
