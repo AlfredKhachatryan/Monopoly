@@ -134,7 +134,9 @@ function Main() {
           </div> */}
           <Button
             onClick={() => {
-              updateDB(uuid, { position: initialState() });
+              updateDB(uuid, {
+                position: initialState(),
+              });
               setPos(initialState());
             }}
           >

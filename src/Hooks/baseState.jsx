@@ -18,7 +18,6 @@ function initialState() {
     {
       header: "Communal",
       communal: true,
-      icon: Bolt,
       info: "Light",
       color: "#000",
       state: "loop-charging",
@@ -43,7 +42,6 @@ function initialState() {
     {
       header: "Communal",
       communal: true,
-      icon: Ocean,
       info: "Water",
       color: "#000",
       primary: "#0942b3",

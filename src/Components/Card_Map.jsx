@@ -8,6 +8,9 @@ import Bank_Check from "../Icons/Bank_Check.json";
 import Locomotive from "../Icons/Locomotive.json";
 import Garage from "../Icons/Garage.json";
 import Slot from "../Icons/Slot.json";
+import Bolt from "../Icons/Bolt.json";
+import Ocean from "../Icons/Ocean.json";
+
 const Card = styled.div`
   width: 100%;
   min-width: 100px;
@@ -51,7 +54,15 @@ const CardSubtitle = styled.div`
   font-size: 12px;
 `;
 
-function Card_Map({ className, children, color, header, info, price,onClick }) {
+function Card_Map({
+  className,
+  children,
+  color,
+  header,
+  info,
+  price,
+  onClick,
+}) {
   return (
     <Card className={className} onClick={onClick}>
       <CardAvatar className="card-avatar" style={{ backgroundColor: color }}>
@@ -180,9 +191,8 @@ const Communal_Card = (props) => (
     bgColor="#f5f5f5"
     subtitle={props.info + " Company"}
     footerText="150$"
-    icon={props.icon}
-  >
-  </CustomCard>
+    icon={props.info == "Water" ? Ocean : Bolt}
+  ></CustomCard>
 );
 const Park_Card = (props) => (
   <CustomCard

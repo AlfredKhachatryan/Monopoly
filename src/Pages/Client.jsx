@@ -12,60 +12,30 @@ import { Card_Map } from "../Components/Card_Map";
 import styled from "styled-components";
 import { initialState } from "../Hooks/baseState";
 let current = 0;
-function BoughtCards() {
-  const obj = {};
-  const baseItems = [
-    // { header: "Зайка", info: "Ownd By ''", color: "#d92650", price: 60 },
-    // { header: "Статуя Гая", info: "Ownd By ''", color: "#d92650", price: 60 },
-    // { header: "Фирмини", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
-    // { header: "Чинар", info: "Ownd By ''", color: "#6F6CF5", price: 100 },
-    // { header: "Циран", info: "Ownd By ''", color: "#6F6CF5", price: 120 },
-    // { header: "Дом Афо", info: "Ownd By ''", color: "#F5786C", price: 140 },
-    // { header: "Дом Эро", info: "Ownd By ''", color: "#F5786C", price: 140 },
-    // { header: "Дом Коли", info: "Ownd By ''", color: "#F5786C", price: 160 },
-    // { header: "Далма Молл", info: "Ownd By ''", color: "#1F8F5D", price: 160 },
-    // { header: "Ереван Молл", info: "Ownd By ''", color: "#1F8F5D", price: 180 },
-    // { header: "Мега Молл", info: "Ownd By ''", color: "#1F8F5D", price: 200 },
-    // { header: "Minecraft", info: "Ownd By ''", color: "#1F8FFF", price: 220 },
-    // { header: "For Honor", info: "Ownd By ''", color: "#1F8FFF", price: 240 },
-    // { header: "Ubisoft", info: "Ownd By ''", color: "#F56CC6", price: 260 },
-    // { header: "EGS", info: "Ownd By ''", color: "#F56CC6", price: 260 },
-    // { header: "Steam", info: "Ownd By ''", color: "#F56CC6", price: 280 },
-    // { header: "Spotify", info: "Ownd By ''", color: "#0942B3", price: 300 },
-    // { header: "Discord", info: "Ownd By ''", color: "#0942B3", price: 300 },
-    // { header: "Windows", info: "Ownd By ''", color: "#0942B3", price: 320 },
-    // {
-    //   header: "Rainbox 6 Siege",
-    //   info: "Ownd By ''",
-    //   color: "#DE951F",
-    //   price: 350,
-    // },
-    // { header: "Dota 2", info: "Ownd By ''", color: "#DE951F", price: 400 },
-  ];
-
-  for (let i = 1; i <= baseItems.length; i++) {
-    obj[i] = {
-      fig0: false,
-      fig1: false,
-      fig2: false,
-      fig3: false,
-      name: `ClientCard`,
-      color: baseItems[i - 1].color,
-      header: baseItems[i - 1].header,
-      info: baseItems[i - 1].info,
-      price: baseItems[i - 1].price,
-    };
-  }
-
-  return obj;
-}
 
 const groupByColor = (items) => {
-  return items.reduce((acc, [key, value]) => {
+  const colorOrder = [
+    "#d92650",
+    "#6f6cf5",
+    "#f5786c",
+    "#1F8F5D",
+    "#1F8FFF",
+    "#F56CC6",
+    "#0942B3",
+    "#DE951F",
+  ];
+  const grouped = items.reduce((acc, [key, value]) => {
     if (!acc[value.color]) {
       acc[value.color] = [];
     }
     acc[value.color].push([key, value]);
+    return acc;
+  }, {});
+
+  return colorOrder.reduce((acc, color) => {
+    if (grouped[color]) {
+      acc[color] = grouped[color];
+    }
     return acc;
   }, {});
 };
@@ -189,17 +159,41 @@ function Client() {
   const [isReveal, setIsReveal] = useState(false);
 
   const [result, setResult] = useState(0);
+  const [resultShow, setResultShow] = useState(0);
   const [diceRolled, setDiceRolled] = useState(false);
+  const [BoughtCards, setBoughtCards] = useState({});
+  function BuyCard(data) {
+    const obj = {};
+    let baseItems;
 
-  const items = Object.entries(BoughtCards());
+    if (Object.keys(BoughtCards).length > 0) {
+      baseItems = [...Object.entries(BoughtCards).map((e) => e[1]), data];
+    } else {
+      baseItems = [data];
+    }
+    for (let i = 1; i <= baseItems.length; i++) {
+      obj[i] = {
+        name: `ClientCard`,
+        color: baseItems[i - 1].color,
+        header: baseItems[i - 1].header,
+        info: baseItems[i - 1].info,
+        price: baseItems[i - 1].price,
+      };
+    }
+
+    setBoughtCards(obj);
+    
+  }
+
+  const items = Object.entries(BoughtCards);
 
   // Группируем элементы по цветам
   const groupedItems = groupByColor(items);
-
+  console.log(groupByColor(items));
   function setState(pos, curPlayer, Players, curPos) {
     setPos(pos);
     setPlayerInfo(curPlayer);
-    setCurrentPos(curPos);
+    setCurrentPos(curPos);  
     setPlayers(Players);
   }
 
@@ -224,7 +218,7 @@ function Client() {
     current = playerInfo?.position;
     setState(payload.new.position, playerInfo, payload.new.Players, current);
     console.log(current);
-    if (current !== 0) {
+    if (current !== 0 && current !== 1) {
       setHide(true);
       setShow(true);
     }
@@ -268,6 +262,7 @@ function Client() {
     }, 1500);
     setTimeout(() => {
       setIsReveal(false);
+      setResultShow(0);
     }, 4500);
     const number = result;
     current += number;
@@ -308,6 +303,8 @@ function Client() {
             price={initialState()[PlayerInfo?.position]?.price}
             housePrice={50}
             show={hide}
+            buy={BuyCard}
+            card={initialState()[PlayerInfo?.position]}
           />
         )}
         <RelativeDiv>
@@ -371,6 +368,7 @@ function Client() {
               click={click}
               setResult={(e) => {
                 setResult((prevResult) => prevResult + e);
+                setResultShow((prevResult) => prevResult + e);
               }}
               setIsReveal={setIsReveal}
             />
@@ -378,6 +376,7 @@ function Client() {
               click={click}
               setResult={(e) => {
                 setResult((prevResult) => prevResult + e);
+                setResultShow((prevResult) => prevResult + e);
                 setDiceRolled(true);
               }}
             />
@@ -415,10 +414,25 @@ function Client() {
             </Button>
           </Link>
           <br />
+          <Button
+            onClick={() => {
+              const updatedArray = Players.map((item) =>
+                item.playerId === PlayerInfo.playerId
+                  ? { ...PlayerInfo, position: 1 }
+                  : item
+              );
+              updateDB(uuid, {
+                position: updateItem(PlayerInfo.figure, 1),
+                Players: updatedArray,
+              });
+            }}
+          >
+            Reset
+          </Button>
         </CenteredContent>
         <Footer />
         <div id="diceResult" className={isReveal ? "reveal" : "hide"}>
-          You've got: {result}
+          You've got: {resultShow}
         </div>
       </MainContainer>
     </>

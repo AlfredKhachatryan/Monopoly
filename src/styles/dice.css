@@ -178,7 +178,7 @@
 
 #diceResult {
   position: absolute;
-  bottom: 7em;
+  bottom: 5em;
   left: 50%;
   transform: translateX(-50%);
   background-color: #b34152;
@@ -187,6 +187,7 @@
   padding: 0.5rem 1rem;
   border-radius: 0.25rem;
   box-shadow: 0 0 3px rgba(0, 0, 0, 0.25);
+  z-index: 10;
 }
 #diceResult.hide {
   opacity: 0;
@@ -209,13 +210,13 @@
 
   100% {
     opacity: 1;
-    bottom: 7em;
+    bottom: 5em;
   }
 }
 @keyframes fadeDown {
   0% {
     opacity: 1;
-    bottom: 7em;
+    bottom: 5em;
   }
 
   100% {

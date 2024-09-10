@@ -447,7 +447,7 @@ footer {
 }
 .HouseContainer {
   width: 85vw;
-  height: calc(100vh - 63px);
+  height: calc(100dvh - 63px);
   position: absolute;
   left: calc(-85vw - 15px);
   top: -1em;
@@ -473,10 +473,10 @@ footer {
   z-index: 7;
   box-shadow: 0 0 15px 5px #00000063;
 }
-.sideBarCards{
+.sideBarCards {
   left: unset;
   right: 0;
   height: 7em;
   bottom: 0;
-  border-Radius: 5px 0px 0px 5px;
+  border-radius: 5px 0px 0px 5px;
 }

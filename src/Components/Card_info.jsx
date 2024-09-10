@@ -93,7 +93,7 @@ const IconBlock = ({ count, icon, price, housePrice }) => (
     </Button>
   </IconContainer>
 );
-const Card_Info = ({ name, price, housePrice, show, className = "" }) => {
+const Card_Info = ({ name, price, housePrice, show, className, buy, card }) => {
   return (
     <>
       <div className={className}>
@@ -155,6 +155,7 @@ const Card_Info = ({ name, price, housePrice, show, className = "" }) => {
             <Button
               btnCont={{ "--accent": "#d92650", width: "45%" }}
               onClick={() => {
+                buy(card);
                 show(false);
               }}
             >
