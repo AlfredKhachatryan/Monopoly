@@ -74,6 +74,7 @@ function initialState() {
       fig2: false,
       fig3: false,
       name: `itemCard${i}`,
+      id: i,
       color: baseItems[i - 1].color,
       header: baseItems[i - 1].header,
       info: baseItems[i - 1].info,

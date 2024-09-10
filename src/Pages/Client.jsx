@@ -15,9 +15,9 @@ let current = 0;
 
 const groupByColor = (items) => {
   const colorOrder = [
-    "#d92650",
-    "#6f6cf5",
-    "#f5786c",
+    "#D92650",
+    "#6F6CF5",
+    "#F5786C",
     "#1F8F5D",
     "#1F8FFF",
     "#F56CC6",
@@ -31,7 +31,6 @@ const groupByColor = (items) => {
     acc[value.color].push([key, value]);
     return acc;
   }, {});
-
   return colorOrder.reduce((acc, color) => {
     if (grouped[color]) {
       acc[color] = grouped[color];
@@ -165,6 +164,8 @@ function Client() {
   function BuyCard(data) {
     const obj = {};
     let baseItems;
+    let position = pos;
+
 
     if (Object.keys(BoughtCards).length > 0) {
       baseItems = [...Object.entries(BoughtCards).map((e) => e[1]), data];
@@ -178,22 +179,30 @@ function Client() {
         header: baseItems[i - 1].header,
         info: baseItems[i - 1].info,
         price: baseItems[i - 1].price,
+        id: baseItems[i - 1].id,
       };
     }
 
     setBoughtCards(obj);
-    
+    const newPos = Object.values(obj).forEach((item) => {
+      const id = item.id;
+      if (position[id]) {
+        position[id].info = JSON.parse(localStorage.playerInfo).name; // Change some property
+      }
+    });
+    updateDB(uuid, {
+      position: position,
+    });
   }
 
   const items = Object.entries(BoughtCards);
 
   // Группируем элементы по цветам
   const groupedItems = groupByColor(items);
-  console.log(groupByColor(items));
   function setState(pos, curPlayer, Players, curPos) {
     setPos(pos);
     setPlayerInfo(curPlayer);
-    setCurrentPos(curPos);  
+    setCurrentPos(curPos);
     setPlayers(Players);
   }
 
