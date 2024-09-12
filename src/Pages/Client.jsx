@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
 import { FigureBox } from "../Components/FigureBox";
+import BG from "../Components/BG";
 import {
   Card_Info,
   Chance_info,
@@ -328,7 +329,7 @@ function Client() {
   }, [diceRolled, result]);
   return (
     <>
-      <div className="bg"></div>
+      <BG />
       <MainContainer onClick={() => sidebar && setSidebar(false)}>
         {hideElem &&
           pos &&

@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { updateDB, useFetch, useRealtimeUpdates } from "../Hooks/supabase";
 import ShortUniqueId from "short-unique-id";
 import { useNavigate } from "react-router-dom";
+import BG from "../Components/BG";
 export function Login() {
   const short = new ShortUniqueId({ length: 6 });
 
@@ -95,7 +96,7 @@ export function Login() {
   }
   return (
     <>
-      <div className="bg"></div>
+      <BG />
       <div className="cont">
         <div className="">
           <FormInput

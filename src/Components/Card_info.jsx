@@ -189,7 +189,9 @@ const Base_Card = ({
   <div className={className}>
     <CardLayout
       name={name}
-      buy={buy}
+      buy={() => {
+        console.log(card);
+      }}
       card={card}
       show={show}
       actionText={actionText || "Take a Card"}
