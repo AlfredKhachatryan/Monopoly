@@ -7,7 +7,18 @@ import { Link } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
 import { FigureBox } from "../Components/FigureBox";
-import { Card_Info, Chance_info } from "../Components/Card_info";
+import {
+  Card_Info,
+  Chance_info,
+  Cummunity_info,
+  Tax_Info,
+  RailRoad_Info,
+  Jail_Info,
+  Communal_Info,
+  Park_Info,
+  GTJ_Info,
+  Start_Info,
+} from "../Components/Card_info";
 import { Card_Map } from "../Components/Card_Map";
 import styled from "styled-components";
 import { initialState } from "../Hooks/baseState";
@@ -44,7 +55,7 @@ const MainContainer = styled.div`
   display: flex;
   flex-direction: column;
   /* justify-content: space-between; */
-  /* min-height: 100dvh; */
+  min-height: 100dvh;
 `;
 
 const RelativeDiv = styled.div`
@@ -239,7 +250,7 @@ function Client() {
     )[0];
     current = playerInfo?.position;
     console.log(current, prevPos);
-    if (current !== 0 && current !== 1 && current !== prevPos.current) {
+    if (current !== prevPos.current) {
       setHide(true);
       setShow(true);
     }
@@ -338,31 +349,15 @@ function Client() {
 
             // Function to get the appropriate component based on the keys
             const getComponent = () => {
-              {
-                /* if (start) return Start_Card; */
-              }
-              {
-                /* if (community) return Community_Card; */
-              }
-              {
-                /* if (tax) return Tax_Card; */
-              }
-              {
-                /* if (road) return RailRoad_Card; */
-              }
+              if (start) return Start_Info;
+              if (community) return Cummunity_info;
+              if (tax) return Tax_Info;
+              if (road) return RailRoad_Info;
               if (chance) return Chance_info;
-              {
-                /* if (jail) return Jail_Card; */
-              }
-              {
-                /* if (communal) return Communal_Card; */
-              }
-              {
-                /* if (parking) return Park_Card; */
-              }
-              {
-                /* if (GTJ) return GTJ_Card; */
-              }
+              if (jail) return Jail_Info;
+              if (communal) return Communal_Info;
+              if (parking) return Park_Info;
+              if (GTJ) return GTJ_Info;
 
               return Card_Info; // Fallback in case none of the above matches
             };
@@ -489,11 +484,11 @@ function Client() {
             onClick={() => {
               const updatedArray = Players.map((item) =>
                 item.playerId === PlayerInfo.playerId
-                  ? { ...PlayerInfo, position: 8 }
+                  ? { ...PlayerInfo, position: 1 }
                   : item
               );
               updateDB(uuid, {
-                position: updateItem(PlayerInfo.figure, 8),
+                position: updateItem(PlayerInfo.figure, 1),
                 Players: updatedArray,
               });
             }}
