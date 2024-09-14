@@ -19,7 +19,6 @@ import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
 
 function Main() {
   const short = new ShortUniqueId({ length: 10 });
-
   const uuid = "v6Pstf";
 
   const [pos, setPos] = useState(initialState());

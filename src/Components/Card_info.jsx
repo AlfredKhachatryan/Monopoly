@@ -15,13 +15,25 @@ import Slot from "../Icons/Slot.json";
 import Bolt from "../Icons/Bolt.json";
 import Ocean from "../Icons/Ocean.json";
 
+const hexToRgb = (hex) => {
+  const bigint = parseInt(hex.slice(1), 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `${r}, ${g}, ${b}`;
+};
+
 const Card = styled.div`
   width: 20em;
   height: 30em;
-  background-image: linear-gradient(163deg, #d92650 0%, #d92650 100%);
+  background-image: linear-gradient(
+    163deg,
+    var(--primary) 0%,
+    var(--secondary) 100%
+  );
   border-radius: 20px 20px 10px 10px;
   transition: all 0.3s;
-  box-shadow: 0px 0px 30px 1px rgb(217 38 80 / 30%);
+  box-shadow: 0px 0px 30px 1px rgba(${(props) => hexToRgb(props.primary)}, 0.3);
   position: absolute;
   top: calc(50% - 30em / 2 - 3em);
   left: calc(50% - 20em / 2);
@@ -87,6 +99,8 @@ const PriceContainer = styled.div`
   display: flex;
   justify-content: space-between;
   padding: 0 5px;
+  align-self: stretch;
+  margin-top: auto;
 `;
 
 const Chance_Card = styled.div`
@@ -96,7 +110,7 @@ const Chance_Card = styled.div`
   height: 8em;
   border-radius: 10px;
 `;
-const IconBlock = ({ count, icon, price, housePrice }) => (
+const IconBlock = ({ count, icon, price, housePrice, accent = "#d92650" }) => (
   <IconContainer>
     <div style={{ display: "flex" }}>
       {[...Array(count)].map((_, i) => (
@@ -112,7 +126,7 @@ const IconBlock = ({ count, icon, price, housePrice }) => (
       ))}
     </div>
     <CardSubtitle>{price}$</CardSubtitle>
-    <Button btnCont={{ "--accent": "#d92650", width: "25%" }}>
+    <Button btnCont={{ "--accent": accent, width: "25%" }}>
       {count * housePrice}$
     </Button>
   </IconContainer>
@@ -126,10 +140,18 @@ const CardLayout = ({
   show,
   actionText,
   altAction,
+  primary = "#d92650",
+  secondary = "#d92650",
 }) => (
   <>
     <CardOverlay />
-    <Card>
+    <Card
+      style={{
+        "--primary": primary,
+        "--secondary": secondary,
+      }}
+      primary={secondary}
+    >
       <Card2>
         <CardBody>
           <CardTitle>{name}</CardTitle>
@@ -142,15 +164,23 @@ const CardLayout = ({
         show={show}
         actionText={actionText}
         altAction={altAction}
+        accent={primary}
       />
     </Card>
   </>
 );
 
-const CardActions = ({ buy, card, show, actionText = "Buy", altAction }) => (
+const CardActions = ({
+  buy,
+  card,
+  show,
+  actionText = "Buy",
+  altAction,
+  accent = "#d92650",
+}) => (
   <ButtonContainer>
     <Button
-      btnCont={{ "--accent": "#d92650", width: altAction ? "45%" : null }}
+      btnCont={{ "--accent": accent, width: altAction ? "45%" : null }}
       onClick={() => {
         buy(card);
         show(false);
@@ -185,6 +215,8 @@ const Base_Card = ({
   altAction,
   price,
   state,
+  primary,
+  secondary,
 }) => (
   <div className={className}>
     <CardLayout
@@ -196,6 +228,8 @@ const Base_Card = ({
       show={show}
       actionText={actionText || "Take a Card"}
       altAction={altAction}
+      primary={primaryColor}
+      secondary={secondaryColor}
     >
       <CardSubtitle>{subtitle}</CardSubtitle>
       {price && <CardSubtitle>{price}$</CardSubtitle>}
@@ -248,6 +282,8 @@ const Card_Info = ({ name, price, housePrice, show, className, buy, card }) => {
         card={card}
         show={show}
         altAction={true}
+        primary={card.color}
+        secondary={card.color}
       >
         <CardSubtitle style={{ fontSize: "16px" }}>
           Price With Rent
@@ -259,6 +295,7 @@ const Card_Info = ({ name, price, housePrice, show, className, buy, card }) => {
             icon={icon}
             price={price}
             housePrice={housePrice}
+            accent={card.color}
           />
         ))}
         <PriceContainer>
@@ -330,7 +367,7 @@ const Jail_Info = (props) => (
     {...props}
     icon={Handcuffs}
     altAction={true}
-    primaryColor={"#555"}
+    primaryColor={"#999999"}
     secondaryColor={"#767676"}
     actionText={"Pay"}
     price={200}
@@ -356,8 +393,8 @@ const Park_Info = (props) => (
   <Base_Card
     {...props}
     icon={Garage}
-    primaryColor={"#888"}
-    secondaryColor={"#fff"}
+    primaryColor={"#888888"}
+    secondaryColor={"#ffffff"}
     actionText={"Stay"}
     subtitle={"Just Free Parking"}
   />
@@ -367,7 +404,7 @@ const GTJ_Info = (props) => (
     {...props}
     icon={Handcuffs}
     altAction={true}
-    primaryColor={"#555"}
+    primaryColor={"#999999"}
     secondaryColor={"#767676"}
     actionText={"Go"}
     price={200}

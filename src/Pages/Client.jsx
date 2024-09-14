@@ -181,43 +181,51 @@ function Client() {
     const obj = {};
     let baseItems;
     let position = pos;
+    let Player = PlayerInfo;
 
-    if (Object.keys(BoughtCards).length > 0) {
-      baseItems = [...Object.entries(BoughtCards).map((e) => e[1]), data];
-    } else {
-      baseItems = [data];
-    }
-    for (let i = 1; i <= baseItems.length; i++) {
-      obj[i] = {
-        name: `ClientCard`,
-        color: baseItems[i - 1].color,
-        header: baseItems[i - 1].header,
-        info: baseItems[i - 1].info,
-        price: baseItems[i - 1].price,
-        id: baseItems[i - 1].id,
-        start: baseItems[i - 1].start,
-        community: baseItems[i - 1].community,
-        tax: baseItems[i - 1].tax,
-        road: baseItems[i - 1].road,
-        chance: baseItems[i - 1].chance,
-        jail: baseItems[i - 1].jail,
-        communal: baseItems[i - 1].communal,
-        parking: baseItems[i - 1].parking,
-        GTJ: baseItems[i - 1].GTJ,
-      };
-    }
-
-    Object.values(obj).forEach((item) => {
-      const id = item.id;
-      if (position[id]) {
-        position[id].info = JSON.parse(localStorage.playerInfo).name; // Change some property
+    if (PlayerInfo.money - data.price >= 0) {
+      if (Object.keys(BoughtCards).length > 0) {
+        baseItems = [...Object.entries(BoughtCards).map((e) => e[1]), data];
+      } else {
+        baseItems = [data];
       }
-    });
+      for (let i = 1; i <= baseItems.length; i++) {
+        obj[i] = {
+          name: `ClientCard`,
+          color: baseItems[i - 1].color,
+          header: baseItems[i - 1].header,
+          info: baseItems[i - 1].info,
+          price: baseItems[i - 1].price,
+          id: baseItems[i - 1].id,
+          start: baseItems[i - 1].start,
+          community: baseItems[i - 1].community,
+          tax: baseItems[i - 1].tax,
+          road: baseItems[i - 1].road,
+          chance: baseItems[i - 1].chance,
+          jail: baseItems[i - 1].jail,
+          communal: baseItems[i - 1].communal,
+          parking: baseItems[i - 1].parking,
+          GTJ: baseItems[i - 1].GTJ,
+        };
+      }
 
-    setBoughtCards(obj);
-    updateDB(uuid, {
-      position: position,
-    });
+      Object.values(obj).forEach((item) => {
+        const id = item.id;
+        if (position[id]) {
+          position[id].info = JSON.parse(localStorage.playerInfo).name; // Change some property
+        }
+      });
+
+      setBoughtCards(obj);
+      Player.money = PlayerInfo.money - data.price;
+      setPlayerInfo(Player);
+      updateDB(uuid, {
+        position: position,
+        Players: Players.filter((e) => e.figure == PlayerInfo.figure),
+      });
+    } else {
+      console.log("Not Enough Money");
+    }
   }
 
   const items = Object.entries(BoughtCards);
@@ -237,6 +245,7 @@ function Client() {
     await wait(150);
     setHide(state);
   }
+
   useEffect(() => {
     if (data) {
       const playerInfo = data.Players.filter((e) => e.playerId == PlayerId)[0];
@@ -250,10 +259,11 @@ function Client() {
       (e) => e.playerId == PlayerId
     )[0];
     current = playerInfo?.position;
-    console.log(current, prevPos);
     if (current !== prevPos.current) {
-      setHide(true);
-      setShow(true);
+      setTimeout(() => {
+        setHide(true);
+        setShow(true);
+      }, 1700);
     }
     prevPos.current = current;
     setState(payload.new.position, playerInfo, payload.new.Players, current);
@@ -409,7 +419,7 @@ function Client() {
             </FlexColumn>
           </div>
           <ClientMoneyContainer>
-            <span>$2500</span>
+            <span>${PlayerInfo?.money}</span>
             <Divider />
             <div className="CMItemWallet">
               <i
@@ -485,11 +495,11 @@ function Client() {
             onClick={() => {
               const updatedArray = Players.map((item) =>
                 item.playerId === PlayerInfo.playerId
-                  ? { ...PlayerInfo, position: 1 }
+                  ? { ...PlayerInfo, position: 5 }
                   : item
               );
               updateDB(uuid, {
-                position: updateItem(PlayerInfo.figure, 1),
+                position: updateItem(PlayerInfo.figure, 5),
                 Players: updatedArray,
               });
             }}

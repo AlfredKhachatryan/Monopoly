@@ -52,7 +52,7 @@ export function Login() {
     const newPlayer = {
       name: inp.name,
       figure: currentFig,
-      money: 100,
+      money: 2500,
       position: 0,
       ...(!localStorage.playerInfo !== undefined
         ? {
