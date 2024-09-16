@@ -159,20 +159,25 @@ function Client() {
 
   // let PlayerId;
   const uuid = "v6Pstf";
+
+  const { data, error, loading } = useFetch(uuid);
+
   const [pos, setPos] = useState(null);
+  const [Players, setPlayers] = useState(null);
+  const [PlayerInfo, setPlayerInfo] = useState(null);
+
+  const [currentPos, setCurrentPos] = useState(1);
+  const [click, setClick] = useState(0);
+  const [result, setResult] = useState(0);
+  const [resultShow, setResultShow] = useState(0);
+  const [order, setOrder] = useState(0);
+
+  const [diceRolled, setDiceRolled] = useState(false);
   const [show, setShow] = useState(false); //show Card
   const [hideElem, setHide] = useState(true);
   const [sidebar, setSidebar] = useState(false);
-  const [Players, setPlayers] = useState(null);
-  const [PlayerInfo, setPlayerInfo] = useState(null);
-  const { data, error, loading } = useFetch(uuid);
-  const [currentPos, setCurrentPos] = useState(1);
-  const [click, setClick] = useState(0);
   const [isReveal, setIsReveal] = useState(false);
 
-  const [result, setResult] = useState(0);
-  const [resultShow, setResultShow] = useState(0);
-  const [diceRolled, setDiceRolled] = useState(false);
   const [BoughtCards, setBoughtCards] = useState({});
 
   const prevPos = useRef(currentPos);
@@ -232,11 +237,12 @@ function Client() {
 
   // Группируем элементы по цветам
   const groupedItems = groupByColor(items);
-  function setState(pos, curPlayer, Players, curPos) {
+  function setState(pos, curPlayer, Players, curPos, order) {
     setPos(pos);
     setPlayerInfo(curPlayer);
     setCurrentPos(curPos);
     setPlayers(Players);
+    setOrder(order);
   }
 
   async function hide(state) {
@@ -244,12 +250,21 @@ function Client() {
     setShow(state);
     await wait(150);
     setHide(state);
+    updateDB(uuid, {
+      current_order: changeOrder(order),
+    });
   }
 
   useEffect(() => {
     if (data) {
       const playerInfo = data.Players.filter((e) => e.playerId == PlayerId)[0];
-      setState(data.position, playerInfo, data.Players, current);
+      setState(
+        data.position,
+        playerInfo,
+        data.Players,
+        current,
+        data.current_order
+      );
       current = playerInfo?.position;
     }
   }, [data]);
@@ -266,7 +281,13 @@ function Client() {
       }, 1700);
     }
     prevPos.current = current;
-    setState(payload.new.position, playerInfo, payload.new.Players, current);
+    setState(
+      payload.new.position,
+      playerInfo,
+      payload.new.Players,
+      current,
+      payload.new.current_order
+    );
   };
 
   useRealtimeUpdates(handleInserts);
@@ -299,7 +320,14 @@ function Client() {
     }
     return newState;
   };
-
+  function changeOrder(order) {
+    let currentOrder = order;
+    if (Players.length - 1 <= currentOrder) {
+      return (currentOrder = 0);
+    } else {
+      return ++currentOrder;
+    }
+  }
   function updatePos() {
     setIsReveal(false);
     setTimeout(() => {
@@ -328,15 +356,37 @@ function Client() {
       position: updateItem(PlayerInfo.figure, current),
       Players: updatedArray,
     });
-    console.log("result: " + result);
     setResult(0);
   }
-
+  function removePlayer() {
+    const updatedPlayers = Players.filter(
+      (e) => e.figure !== PlayerInfo.figure
+    );
+    const reorderedPlayers = updatedPlayers.map((player, index) => ({
+      ...player,
+      order: index, // Reassign the order based on their new position in the array
+    }));
+    updateDB(uuid, {
+      position: Object.fromEntries(
+        Object.entries(pos).map(([key, value]) => [
+          key,
+          { ...value, [PlayerInfo.figure]: false },
+        ])
+      ),
+      Players: reorderedPlayers,
+    });
+    localStorage.clear();
+  }
   useEffect(() => {
     if (diceRolled) {
       updatePos();
+      console.log("updatePos");
     }
   }, [diceRolled, result]);
+  useEffect(() => {
+    if (hideElem && pos && pos[PlayerInfo?.position]) {
+    }
+  }, [hideElem]);
   return (
     <>
       <BG />
@@ -461,9 +511,13 @@ function Client() {
           <br />
           <ButtonStyled
             onClick={() => {
-              setClick(1 + click);
-              setResult(0);
-              setDiceRolled(false);
+              if (PlayerInfo.order == order) {
+                setClick(1 + click);
+                setResult(0);
+                setDiceRolled(false);
+              } else {
+                alert(0);
+              }
             }}
             btnCont={{ "--accent": "#d92650" }}
           >
@@ -473,18 +527,7 @@ function Client() {
           <Link to="/Login">
             <Button
               onClick={() => {
-                localStorage.clear();
-                updateDB(uuid, {
-                  position: Object.fromEntries(
-                    Object.entries(pos).map(([key, value]) => [
-                      key,
-                      { ...value, [PlayerInfo.figure]: false },
-                    ])
-                  ),
-                  Players: Players.filter(
-                    (e) => e.figure !== PlayerInfo.figure
-                  ),
-                });
+                removePlayer();
               }}
             >
               Leave

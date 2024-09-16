@@ -49,11 +49,13 @@ export function Login() {
   }, [data]);
 
   function insert() {
+    console.log(players);
     const newPlayer = {
       name: inp.name,
       figure: currentFig,
       money: 2500,
       position: 0,
+      ...(players ? { order: players.length } : { order: 0 }),
       ...(!localStorage.playerInfo !== undefined
         ? {
             playerId: short.rnd(),
