@@ -18,8 +18,8 @@ import { FigureBox } from "../Components/FigureBox";
 import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
 
 function Main() {
-  const short = new ShortUniqueId({ length: 10 });
-  const uuid = "v6Pstf";
+  const short = new ShortUniqueId({ length: 10 }); //genrates uuid for future
+  const uuid = "v6Pstf"; // static uuid
 
   const [pos, setPos] = useState(initialState());
   const [userData, setUserData] = useState(null);
@@ -27,7 +27,9 @@ function Main() {
   const { data, error, loading } = useFetch(uuid);
 
   function updatePos(pos, user) {
-    setPos(pos);
+    if (pos) {
+      setPos(pos);
+    }
     setUserData(user);
   }
 
@@ -40,8 +42,15 @@ function Main() {
   const handleInserts = (payload) => {
     updatePos(payload.new.position, payload.new.Players);
   };
+  
+  const handleClick = () => {
+    updateDB(uuid, {
+      position: initialState(),
+    });
+    setPos(initialState());
+  };
 
-  useRealtimeUpdates(handleInserts);
+  useRealtimeUpdates(handleInserts); //when DB is updated he does some function
 
   return (
     <>
@@ -70,6 +79,7 @@ function Main() {
               secondary,
               state,
               id,
+              bought,
               ...figures
             } = value;
             const getComponent = () => {
@@ -95,14 +105,14 @@ function Main() {
                 info={info}
                 price={price}
                 icon={icon}
-                primary={primary}
-                secondary={secondary}
-                state={state}
+                primary={primary} //colors for icon
+                secondary={secondary} //colors for icon
+                state={state} //animation for icon
               >
                 <FigureBox
-                  show={figures}
+                  show={figures} //in each cell there is {fig0:false,fig1:false ...etc}
                   style={{ height: "30px", position: "absolute", zIndex: 2 }}
-                ></FigureBox>
+                />
               </Component>
             );
           })}
@@ -130,16 +140,7 @@ function Main() {
             {uuid}
             <br /> 192.168.0.221:3000/Login
           </div> */}
-          <Button
-            onClick={() => {
-              updateDB(uuid, {
-                position: initialState(),
-              });
-              setPos(initialState());
-            }}
-          >
-            Click
-          </Button>
+          <Button onClick={() => handleClick()}>Click</Button>
         </div>
       </div>
     </>

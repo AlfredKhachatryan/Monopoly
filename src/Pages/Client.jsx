@@ -1,13 +1,11 @@
 import { useEffect, useState, useRef } from "react";
 import Button from "../Components/Button";
-import Input from "../Components/Input";
-import { SelectFigure } from "../Components/SelectFigure";
 import { useRealtimeUpdates, updateDB, useFetch } from "../Hooks/supabase";
 import { Link } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
-import { FigureBox } from "../Components/FigureBox";
 import BG from "../Components/BG";
+
 import {
   Card_Info,
   Chance_info,
@@ -19,141 +17,30 @@ import {
   Park_Info,
   GTJ_Info,
   Start_Info,
+  Bought_Card_Info,
 } from "../Components/Card_info";
+
+import {
+  MainContainer,
+  RelativeDiv,
+  FlexColumn,
+  FlexRow,
+  Sidebar,
+  ClientMoneyContainer,
+  DiceContainer,
+  CenteredContent,
+  Divider,
+  SidebarCard,
+  ButtonStyled,
+} from "../Components/ClientElements";
+
 import { Card_Map } from "../Components/Card_Map";
-import styled from "styled-components";
 import { initialState } from "../Hooks/baseState";
+
+import { groupByColor } from "../Hooks/groupByColor";
+
 let current = 0;
 
-const groupByColor = (items) => {
-  const colorOrder = [
-    "#D92650",
-    "#6F6CF5",
-    "#F5786C",
-    "#1F8F5D",
-    "#1F8FFF",
-    "#F56CC6",
-    "#0942B3",
-    "#DE951F",
-  ];
-  const grouped = items.reduce((acc, [key, value]) => {
-    if (!acc[value.color]) {
-      acc[value.color] = [];
-    }
-    acc[value.color].push([key, value]);
-    return acc;
-  }, {});
-  return colorOrder.reduce((acc, color) => {
-    if (grouped[color]) {
-      acc[color] = grouped[color];
-    }
-    return acc;
-  }, {});
-};
-
-const MainContainer = styled.div`
-  padding-top: 1em;
-  display: flex;
-  flex-direction: column;
-  /* justify-content: space-between; */
-  min-height: 100dvh;
-`;
-
-const RelativeDiv = styled.div`
-  position: relative;
-  height: 10em;
-  width: 100%;
-`;
-
-const FlexColumn = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2em;
-`;
-
-const FlexRow = styled.div`
-  display: flex;
-  gap: 1em;
-`;
-
-const Sidebar = styled.div`
-  position: absolute;
-  width: 1.5em;
-  height: 10em;
-  border-radius: 0px 5px 5px 0px;
-  background-color: #d92650;
-  /* background-color: #4F8C5F; */
-  color: white;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-direction: column;
-  z-index: 1;
-  transition: 0.35s ease-in-out;
-  left: 0;
-  &.sideBarRight {
-    left: 85vw;
-    z-index: 7;
-    box-shadow: 0 0 15px 5px #00000063;
-  }
-`;
-
-const ClientMoneyContainer = styled.div`
-  display: flex;
-  color: white;
-  align-items: center;
-  font-size: 14px;
-  font-weight: 500;
-  align-self: end;
-  min-width: 5em;
-  height: 2rem;
-  background-color: #d92650;
-  position: absolute;
-  right: 0;
-  z-index: 1;
-  border-radius: 5px 0px 0px 5px;
-  padding: 0px 5px;
-  display: grid;
-  grid-template-columns: 1fr 2px 1em;
-  grid-template-rows: 1fr;
-  grid-column-gap: 10px;
-  grid-row-gap: 10px;
-  justify-items: center;
-  align-items: center;
-  z-index: 5;
-  box-shadow: 0 0 15px 5px #00000052;
-`;
-
-const DiceContainer = styled.div`
-  display: flex;
-  justify-content: space-between;
-  width: calc(180px + 2em);
-`;
-
-const CenteredContent = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 60%;
-  align-self: center;
-`;
-
-const Divider = styled.div`
-  border: 1px solid white;
-  height: 100%;
-`;
-
-const SidebarCard = styled(Sidebar)`
-  left: unset;
-  right: 0;
-  height: 7em;
-  bottom: 0;
-  border-radius: 5px 0px 0px 5px;
-`;
-
-const ButtonStyled = styled(Button)`
-  /* You can move Button styles here */
-`;
 function Client() {
   const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
 
@@ -181,64 +68,72 @@ function Client() {
   const [BoughtCards, setBoughtCards] = useState({});
 
   const prevPos = useRef(currentPos);
-
   function BuyCard(data) {
-    const obj = {};
-    let baseItems;
-    let position = pos;
-    let Player = PlayerInfo;
+    const figure = PlayerInfo.figure;
+    const player = { ...PlayerInfo };
+    const position = { ...pos };
 
-    if (PlayerInfo.money - data.price >= 0) {
-      if (Object.keys(BoughtCards).length > 0) {
-        baseItems = [...Object.entries(BoughtCards).map((e) => e[1]), data];
-      } else {
-        baseItems = [data];
-      }
-      for (let i = 1; i <= baseItems.length; i++) {
-        obj[i] = {
-          name: `ClientCard`,
-          color: baseItems[i - 1].color,
-          header: baseItems[i - 1].header,
-          info: baseItems[i - 1].info,
-          price: baseItems[i - 1].price,
-          id: baseItems[i - 1].id,
-          start: baseItems[i - 1].start,
-          community: baseItems[i - 1].community,
-          tax: baseItems[i - 1].tax,
-          road: baseItems[i - 1].road,
-          chance: baseItems[i - 1].chance,
-          jail: baseItems[i - 1].jail,
-          communal: baseItems[i - 1].communal,
-          parking: baseItems[i - 1].parking,
-          GTJ: baseItems[i - 1].GTJ,
-        };
-      }
-
-      Object.values(obj).forEach((item) => {
-        const id = item.id;
-        if (position[id]) {
-          position[id].info = JSON.parse(localStorage.playerInfo).name; // Change some property
-        }
-      });
-
-      setBoughtCards(obj);
-      Player.money = PlayerInfo.money - data.price;
-      setPlayerInfo(Player);
-      updateDB(uuid, {
-        position: position,
-        Players: Players.filter((e) => e.figure == PlayerInfo.figure),
-      });
-    } else {
+    // Check if the player has enough money
+    if (player.money < data.price) {
       console.log("Not Enough Money");
+      return;
     }
+
+    // Build the list of bought cards, including the new one
+    const baseItems =
+      Object.keys(BoughtCards).length > 0
+        ? [...Object.values(BoughtCards), data]
+        : [data];
+
+    // Create the object to store bought cards
+    const obj = baseItems.reduce((acc, item, index) => {
+      acc[index + 1] = {
+        name: "ClientCard",
+        color: item.color,
+        header: item.header,
+        info: item.info,
+        price: item.price,
+        id: item.id,
+        start: item.start,
+        community: item.community,
+        tax: item.tax,
+        road: item.road,
+        chance: item.chance,
+        jail: item.jail,
+        communal: item.communal,
+        parking: item.parking,
+        GTJ: item.GTJ,
+      };
+      return acc;
+    }, {});
+
+    // Update the position for each bought card based on figure
+    Object.values(obj).forEach(({ id }) => {
+      if (position[id]) {
+        position[id].bought[figure] = true; // Mark the card as bought for this figure
+      }
+    });
+
+    // Update the state with new bought cards and player info
+    setBoughtCards(obj);
+    player.money -= data.price;
+    setPlayerInfo(player);
+
+    // Update the database with the new positions and players
+    updateDB(uuid, { position, Players });
+
+    console.log(Players);
   }
 
   const items = Object.entries(BoughtCards);
 
   // Группируем элементы по цветам
   const groupedItems = groupByColor(items);
+
   function setState(pos, curPlayer, Players, curPos, order) {
-    setPos(pos);
+    if (pos) {
+      setPos(pos);
+    }
     setPlayerInfo(curPlayer);
     setCurrentPos(curPos);
     setPlayers(Players);
@@ -295,7 +190,7 @@ function Client() {
   const updateItem = (figKey, newPosition) => {
     const newState = { ...pos };
     let lastItemKey = null;
-
+    //figX ex.fig0
     // Найти последний объект, где figX было true
     for (const [key, item] of Object.entries(newState)) {
       if (item[figKey] === true) {
@@ -358,7 +253,9 @@ function Client() {
     });
     setResult(0);
   }
+  
   function removePlayer() {
+    let order1 = order;
     const updatedPlayers = Players.filter(
       (e) => e.figure !== PlayerInfo.figure
     );
@@ -374,19 +271,11 @@ function Client() {
         ])
       ),
       Players: reorderedPlayers,
+      current_order: order1 - 1,
     });
     localStorage.clear();
   }
-  useEffect(() => {
-    if (diceRolled) {
-      updatePos();
-      console.log("updatePos");
-    }
-  }, [diceRolled, result]);
-  useEffect(() => {
-    if (hideElem && pos && pos[PlayerInfo?.position]) {
-    }
-  }, [hideElem]);
+
   return (
     <>
       <BG />
@@ -406,6 +295,7 @@ function Client() {
               communal,
               parking,
               GTJ,
+              bought,
             } = currentPos; // Destructure the keys from the current position object
 
             // Function to get the appropriate component based on the keys
@@ -419,7 +309,9 @@ function Client() {
               if (communal) return Communal_Info;
               if (parking) return Park_Info;
               if (GTJ) return GTJ_Info;
-
+              if (Object.values(bought).some((value) => value === true)) {
+                return Bought_Card_Info;
+              }
               return Card_Info; // Fallback in case none of the above matches
             };
 
@@ -435,6 +327,7 @@ function Client() {
                 show={hide}
                 buy={BuyCard}
                 card={currentCard}
+                bought={bought}
               />
             );
           })()}
@@ -515,6 +408,7 @@ function Client() {
                 setClick(1 + click);
                 setResult(0);
                 setDiceRolled(false);
+                updatePos();
               } else {
                 alert(0);
               }

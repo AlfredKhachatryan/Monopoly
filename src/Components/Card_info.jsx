@@ -191,7 +191,9 @@ const CardActions = ({
     {altAction && (
       <Button
         btnCont={{ "--accent": "#444", width: "45%" }}
-        onClick={() => show(false)}
+        onClick={() => {
+          show(false);
+        }}
       >
         Pass
       </Button>
@@ -301,6 +303,35 @@ const Card_Info = ({ name, price, housePrice, show, className, buy, card }) => {
         <PriceContainer>
           <CardSubtitle>Price: {price / 10}$</CardSubtitle>
           <CardSubtitle>Colour Set Price: {(2 * price) / 10}$</CardSubtitle>
+        </PriceContainer>
+      </CardLayout>
+    </div>
+  );
+};
+
+const Bought_Card_Info = ({
+  name,
+  price,
+  housePrice,
+  show,
+  className,
+  buy,
+  card,
+}) => {
+  return (
+    <div className={className}>
+      <CardLayout
+        name={name}
+        buy={buy}
+        card={card}
+        show={show}
+        // altAction={true}
+        primary={card.color}
+        secondary={card.color}
+      >
+        <CardSubtitle style={{ fontSize: "16px" }}>Price</CardSubtitle>
+        <PriceContainer>
+          <CardSubtitle>Price: {price / 10}$</CardSubtitle>
         </PriceContainer>
       </CardLayout>
     </div>
@@ -422,4 +453,5 @@ export {
   Park_Info,
   GTJ_Info,
   Start_Info,
+  Bought_Card_Info,
 };

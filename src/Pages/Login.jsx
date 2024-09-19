@@ -7,65 +7,56 @@ import { updateDB, useFetch, useRealtimeUpdates } from "../Hooks/supabase";
 import ShortUniqueId from "short-unique-id";
 import { useNavigate } from "react-router-dom";
 import BG from "../Components/BG";
-export function Login() {
-  const short = new ShortUniqueId({ length: 6 });
 
-  const [currentFig, setCurrenFig] = useState(null);
-  const [inp, setInp] = useState({});
-  const { data, error, loading } = useFetch(inp.uuid);
-  const [players, SetPlayers] = useState(data ? data.Players : null);
-  const [logged, setLogged] = useState(false);
+export function Login() {
+  const short = new ShortUniqueId({ length: 6 }); //generate uuid for user
+
+  const [currentFig, setCurrenFig] = useState(null); //current figure ex.'fig0'
+
+  const [inp, setInp] = useState({}); //input state
+
+  const { data, error, loading } = useFetch(inp.uuid); //data from db
+
+  const [players, SetPlayers] = useState(data ? data.Players : null); //if there is data  from db then on init its equal to data.Players
+
+  const [logged, setLogged] = useState(false); //state for check if player was before in game
+
   const navigate = useNavigate();
-  const handleInserts = (payload) => {
-    SetPlayers(payload.new.Players);
+
+  function getLogged(Player) {
+    const playerId = JSON.parse(localStorage?.playerInfo).playerId;
     if (localStorage.playerInfo !== undefined) {
-      if (
-        payload.new.Players?.filter(
-          (e) => e.playerId == JSON.parse(localStorage?.playerInfo).playerId
-        ) > 1
-      ) {
+      if (Player?.filter((e) => e.playerId == playerId).length == 1) {
         setLogged(true);
       } else {
         setLogged(false);
       }
     }
+  }
+
+  const handleInserts = (payload) => {
+    SetPlayers(payload.new.Players);
+    getLogged(payload.new?.Players);
   };
 
   useRealtimeUpdates(handleInserts);
 
   useEffect(() => {
     SetPlayers(data?.Players);
-    if (localStorage.playerInfo !== undefined) {
-      if (
-        data?.Players.filter(
-          (e) => e.playerId == JSON.parse(localStorage?.playerInfo).playerId
-        ).length > 1
-      ) {
-        setLogged(true);
-      } else {
-        setLogged(false);
-      }
-    }
+    getLogged(data?.Players);
   }, [data]);
 
   function insert() {
-    console.log(players);
     const newPlayer = {
       name: inp.name,
       figure: currentFig,
       money: 2500,
       position: 0,
-      ...(players ? { order: players.length } : { order: 0 }),
-      ...(!localStorage.playerInfo !== undefined
-        ? {
-            playerId: short.rnd(),
-          }
-        : {
-            playerId: JSON.parse(localStorage.playerInfo).playerId,
-          }),
+      order: players?.length || 0, // Simplified order setting
+      playerId: localStorage.playerInfo
+        ? JSON.parse(localStorage.playerInfo).playerId
+        : short.rnd(), // Assign playerId based on existence in localStorage
     };
-
-    localStorage.playerInfo = JSON.stringify(newPlayer);
 
     const insertingData = {
       position: {
@@ -76,26 +67,24 @@ export function Login() {
         },
       },
     };
+
     if (logged) {
       navigate("/Client");
     } else if (inp.name && currentFig) {
-      if (players) {
-        updateDB(inp.uuid, {
-          ...insertingData,
-          Players: [newPlayer, ...players],
-        });
-      } else {
-        updateDB(inp.uuid, {
-          ...insertingData,
-          Players: [newPlayer],
-        });
-      }
+      localStorage.playerInfo = JSON.stringify(newPlayer); //saving all in localStorage
+
+      const updatedPlayers = players ? [newPlayer, ...players] : [newPlayer]; // Reduce repetition
+
+      updateDB(inp.uuid, { ...insertingData, Players: updatedPlayers });
+
       setCurrenFig(null);
+
       navigate("/Client");
     } else {
-      alert("lox");
+      alert("Wrong Credentials");
     }
   }
+
   return (
     <>
       <BG />

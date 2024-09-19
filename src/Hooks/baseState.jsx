@@ -99,6 +99,12 @@ function initialState() {
       fig3: false,
       name: `itemCard${i}`,
       id: i,
+      bought: {
+        fig0: false,
+        fig1: false,
+        fig2: false,
+        fig3: false,
+      },
       color: baseItems[i - 1].color,
       header: baseItems[i - 1].header,
       info: baseItems[i - 1].info,

@@ -51,7 +51,7 @@ export function SelectFigure({ setParentFig, disabledFig }) {
               justifyContent: "center",
               alignItems: "center",
             }}
-            className={!value && "disabledFig"}
+            className={!value ? "disabledFig" : null}
             onClick={() => {
               click({ value, key });
             }}
