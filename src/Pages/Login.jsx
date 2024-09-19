@@ -24,8 +24,9 @@ export function Login() {
   const navigate = useNavigate();
 
   function getLogged(Player) {
-    const playerId = JSON.parse(localStorage?.playerInfo).playerId;
     if (localStorage.playerInfo !== undefined) {
+      const playerId = JSON.parse(localStorage?.playerInfo).playerId;
+
       if (Player?.filter((e) => e.playerId == playerId).length == 1) {
         setLogged(true);
       } else {

@@ -317,12 +317,13 @@ const Bought_Card_Info = ({
   className,
   buy,
   card,
+  pay,
 }) => {
   return (
     <div className={className}>
       <CardLayout
         name={name}
-        buy={buy}
+        buy={pay}
         card={card}
         show={show}
         // altAction={true}

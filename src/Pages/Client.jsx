@@ -68,6 +68,7 @@ function Client() {
   const [BoughtCards, setBoughtCards] = useState({});
 
   const prevPos = useRef(currentPos);
+
   function BuyCard(data) {
     const figure = PlayerInfo.figure;
     const player = { ...PlayerInfo };
@@ -78,7 +79,6 @@ function Client() {
       console.log("Not Enough Money");
       return;
     }
-
     // Build the list of bought cards, including the new one
     const baseItems =
       Object.keys(BoughtCards).length > 0
@@ -121,10 +121,40 @@ function Client() {
 
     // Update the database with the new positions and players
     updateDB(uuid, { position, Players });
-
-    console.log(Players);
   }
 
+  function Pay(card) {
+    const player = { ...PlayerInfo };
+    const otherPlayers = [...Players];
+    console.log(otherPlayers);
+
+    const cardOwnerId = Object.entries(card.bought).filter(
+      (e) => e[1] == true
+    )[0][0];
+
+    const cardOwnerInfo = Object.entries(otherPlayers)
+      .map((e) => e[1])
+      .filter((e) => e.figure == cardOwnerId)[0];
+
+    let newPlayer = { ...player, money: player?.money - card.price / 10 };
+    let newOwner = {
+      ...cardOwnerInfo,
+      money: cardOwnerInfo?.money + card.price / 10,
+    };
+
+    const updatedPlayers = otherPlayers.map((p) => {
+      if (p.figure === player.figure) {
+        return newPlayer; // Update current player
+      } else if (p.figure === cardOwnerInfo.figure) {
+        return newOwner; // Update card owner
+      }
+      return p; // Leave other players unchanged
+    });
+
+    updateDB(uuid, {
+      Players: updatedPlayers,
+    });
+  }
   const items = Object.entries(BoughtCards);
 
   // Группируем элементы по цветам
@@ -253,7 +283,7 @@ function Client() {
     });
     setResult(0);
   }
-  
+
   function removePlayer() {
     let order1 = order;
     const updatedPlayers = Players.filter(
@@ -309,14 +339,18 @@ function Client() {
               if (communal) return Communal_Info;
               if (parking) return Park_Info;
               if (GTJ) return GTJ_Info;
-              if (Object.values(bought).some((value) => value === true)) {
+              if (
+                Object.values(bought).some((value) => value === true) &&
+                !bought[PlayerInfo.figure]
+              ) {
+                console.log(PlayerInfo);
                 return Bought_Card_Info;
               }
               return Card_Info; // Fallback in case none of the above matches
             };
 
             const Component = getComponent(); // Get the component to render
-            const currentCard = initialState()[PlayerInfo?.position]; // Retrieve current card info from the state
+            const currentCard = pos[PlayerInfo?.position]; // Retrieve current card info from the state
 
             return (
               <Component
@@ -328,6 +362,7 @@ function Client() {
                 buy={BuyCard}
                 card={currentCard}
                 bought={bought}
+                pay={Pay}
               />
             );
           })()}
@@ -432,11 +467,11 @@ function Client() {
             onClick={() => {
               const updatedArray = Players.map((item) =>
                 item.playerId === PlayerInfo.playerId
-                  ? { ...PlayerInfo, position: 5 }
+                  ? { ...PlayerInfo, position: 15 }
                   : item
               );
               updateDB(uuid, {
-                position: updateItem(PlayerInfo.figure, 5),
+                position: updateItem(PlayerInfo.figure, 15),
                 Players: updatedArray,
               });
             }}
