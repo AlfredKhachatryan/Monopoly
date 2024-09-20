@@ -212,12 +212,12 @@ function initialState() {
       price: 350,
       basePrice: 350,
     },
-    { header: "Tax", tax: true, info: "Luxury Tax", color: "#000" },
+    { header: "Tax", tax: true, info: "Luxury Tax", color: "#000" , price: 400},
     {
       header: "Dota 2",
       info: "Ownd By ''",
       color: "#DE951F",
-      price: 400,
+      price: 100,
       basePrice: 400,
     },
   ];
