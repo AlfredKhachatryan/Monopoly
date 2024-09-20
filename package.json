@@ -17,6 +17,7 @@
     "jquery": "^3.6.1",
     "lottie-web": "^5.12.2",
     "react": "^18.2.0",
+    "react-animated-numbers": "^0.18.0",
     "react-bootstrap": "^2.5.0",
     "react-dom": "^18.2.0",
     "react-helmet": "^6.1.0",

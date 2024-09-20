@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
 import BG from "../Components/BG";
-
+import AnimatedNumbers from "react-animated-numbers";
 import {
   Card_Info,
   Chance_info,
@@ -126,7 +126,6 @@ function Client() {
   function Pay(card) {
     const player = { ...PlayerInfo };
     const otherPlayers = [...Players];
-    console.log(otherPlayers);
 
     const cardOwnerId = Object.entries(card.bought).filter(
       (e) => e[1] == true
@@ -137,6 +136,7 @@ function Client() {
       .filter((e) => e.figure == cardOwnerId)[0];
 
     let newPlayer = { ...player, money: player?.money - card.price / 10 };
+
     let newOwner = {
       ...cardOwnerInfo,
       money: cardOwnerInfo?.money + card.price / 10,
@@ -155,6 +155,25 @@ function Client() {
       Players: updatedPlayers,
     });
   }
+
+  function PayTaxes(card) {
+    const player = { ...PlayerInfo };
+    const otherPlayers = [...Players];
+
+    let newPlayer = { ...player, money: player?.money - card.price };
+
+    const updatedPlayers = otherPlayers.map((p) => {
+      if (p.figure === player.figure) {
+        return newPlayer; // Update current player
+      }
+      return p; // Leave other players unchanged
+    });
+
+    updateDB(uuid, {
+      Players: updatedPlayers,
+    });
+  }
+
   const items = Object.entries(BoughtCards);
 
   // Группируем элементы по цветам
@@ -363,6 +382,7 @@ function Client() {
                 card={currentCard}
                 bought={bought}
                 pay={Pay}
+                payTaxes={PayTaxes}
               />
             );
           })()}
@@ -397,7 +417,16 @@ function Client() {
             </FlexColumn>
           </div>
           <ClientMoneyContainer>
-            <span>${PlayerInfo?.money}</span>
+            <span style={{ display: "flex" }}>
+              $
+              <AnimatedNumbers
+                transitions={(index) => ({
+                  type: "spring",
+                  duration: index + 0.3,
+                })}
+                animateToNumber={PlayerInfo?.money}
+              ></AnimatedNumbers>
+            </span>
             <Divider />
             <div className="CMItemWallet">
               <i
@@ -467,11 +496,11 @@ function Client() {
             onClick={() => {
               const updatedArray = Players.map((item) =>
                 item.playerId === PlayerInfo.playerId
-                  ? { ...PlayerInfo, position: 15 }
+                  ? { ...PlayerInfo, position: 5 }
                   : item
               );
               updateDB(uuid, {
-                position: updateItem(PlayerInfo.figure, 15),
+                position: updateItem(PlayerInfo.figure, 5),
                 Players: updatedArray,
               });
             }}

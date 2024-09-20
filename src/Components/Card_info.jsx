@@ -217,14 +217,13 @@ const Base_Card = ({
   altAction,
   price,
   state,
-  primary,
-  secondary,
+  payTaxes,
 }) => (
   <div className={className}>
     <CardLayout
       name={name}
       buy={() => {
-        console.log(card);
+        buy(card);
       }}
       card={card}
       show={show}
@@ -379,6 +378,7 @@ const Tax_Info = (props) => (
     primaryColor={"#1f8f5d"}
     secondaryColor={"#29bc7a"}
     actionText={"Pay"}
+    buy={props.payTaxes}
   />
 );
 

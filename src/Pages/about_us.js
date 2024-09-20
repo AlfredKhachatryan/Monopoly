@@ -42,7 +42,7 @@ function Main() {
   const handleInserts = (payload) => {
     updatePos(payload.new.position, payload.new.Players);
   };
-  
+
   const handleClick = () => {
     updateDB(uuid, {
       position: initialState(),
@@ -120,20 +120,19 @@ function Main() {
           <div className="BonusOutline flexCent">Bonus</div>
           <div className="PlayerInfo flexCent">
             {userData?.map(({ figure, name, money }) => (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "row",
-                    width: "80%",
-                  }}
-                >
-                  <div className={`fig ${figure}`} key={name}></div>
-                  &nbsp;
-                  <span> {name}:</span>
-                  <span>{money + "$"}</span>
-                </div>
-              </>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  width: "80%",
+                }}
+                key={figure}
+              >
+                <div className={`fig ${figure}`} key={name}></div>
+                &nbsp;
+                <span> {name}:</span>
+                <span>{money + "$"}</span>
+              </div>
             ))}
           </div>
           {/* <div className="BaseInfo flexCent" style={{ textAlign: "center" }}>
