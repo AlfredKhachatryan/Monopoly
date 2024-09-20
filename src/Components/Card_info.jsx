@@ -274,7 +274,7 @@ const Card_Info = ({ name, price, housePrice, show, className, buy, card }) => {
       housePrice: housePrice * 8,
     },
   ];
-
+  console.log(buy);
   return (
     <div className={className}>
       <CardLayout

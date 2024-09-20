@@ -74,6 +74,8 @@ function Client() {
     const player = { ...PlayerInfo };
     const position = { ...pos };
 
+    const otherPlayers = [...Players];
+
     // Check if the player has enough money
     if (player.money < data.price) {
       console.log("Not Enough Money");
@@ -119,8 +121,18 @@ function Client() {
     player.money -= data.price;
     setPlayerInfo(player);
 
+    const updatedPlayers = otherPlayers.map((p) => {
+      if (p.figure === player.figure) {
+        return player; // Update current player
+      }
+      return p; // Leave other players unchanged
+    });
+    console.log(updatedPlayers);
     // Update the database with the new positions and players
-    updateDB(uuid, { position, Players });
+    updateDB(uuid, {
+      position: position,
+      Players: updatedPlayers,
+    });
   }
 
   function Pay(card) {
@@ -375,7 +387,7 @@ function Client() {
               <Component
                 className={`fadeElem ${!show ? "fadeElem-exit" : ""}`}
                 name={currentCard?.header}
-                price={currentCard?.price}
+                price={currentCard?.basePrice || currentCard?.price}
                 housePrice={50}
                 show={hide}
                 buy={BuyCard}
