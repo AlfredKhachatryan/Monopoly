@@ -261,7 +261,36 @@ const Base_Card = ({
   </div>
 );
 
-const Card_Info = ({ name, price, housePrice, show, className, buy, card }) => {
+const Card_Info = ({ name, price, show, className, buy, card }) => {
+  return (
+    <div className={className}>
+      <CardLayout
+        name={name}
+        buy={buy}
+        card={card}
+        show={show}
+        altAction={true}
+        primary={card.color}
+        secondary={card.color}
+      >
+        <PriceContainer>
+          <CardSubtitle>Price: {price / 10}$</CardSubtitle>
+          <CardSubtitle>Colour Set Price: {(2 * price) / 10}$</CardSubtitle>
+        </PriceContainer>
+      </CardLayout>
+    </div>
+  );
+};
+
+const Owner_Card_Info = ({
+  name,
+  price,
+  housePrice,
+  show,
+  className,
+  buy,
+  card,
+}) => {
   const iconBlocks = [
     { count: 1, price: (5 * price) / 10 },
     { count: 2, price: (15 * price) / 10 },
@@ -274,12 +303,11 @@ const Card_Info = ({ name, price, housePrice, show, className, buy, card }) => {
       housePrice: housePrice * 8,
     },
   ];
-  console.log(buy);
   return (
     <div className={className}>
       <CardLayout
         name={name}
-        buy={buy}
+        buy={() => console.log("IMPLEMENT ME")}
         card={card}
         show={show}
         altAction={true}
@@ -337,6 +365,7 @@ const Bought_Card_Info = ({
     </div>
   );
 };
+
 const Start_Info = (props) => (
   <Base_Card
     {...props}
@@ -345,6 +374,7 @@ const Start_Info = (props) => (
     secondaryColor={"#f5786c"}
     actionText={"Get Money"}
     subtitle={"You receive 200$"}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 const Chance_info = (props) => (
@@ -356,6 +386,7 @@ const Chance_info = (props) => (
     title={"CHANCE"}
     subtitle={"Take A Card"}
     community={true}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 
@@ -368,6 +399,7 @@ const Cummunity_info = (props) => (
     title={"COMMUNITY"}
     subtitle={"Take A Card"}
     community={true}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 const Tax_Info = (props) => (
@@ -391,6 +423,7 @@ const RailRoad_Info = (props) => (
     secondaryColor={"#865a13"}
     actionText={"Buy"}
     subtitle={"Take The Card"}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 
@@ -404,6 +437,7 @@ const Jail_Info = (props) => (
     actionText={"Pay"}
     price={200}
     subtitle={"Oh No Sister! You Stuck!"}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 
@@ -418,6 +452,7 @@ const Communal_Info = (props) => (
     price={200}
     subtitle={props.card.info + " Company"}
     state={props.card.state}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 
@@ -429,6 +464,7 @@ const Park_Info = (props) => (
     secondaryColor={"#ffffff"}
     actionText={"Stay"}
     subtitle={"Just Free Parking"}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 const GTJ_Info = (props) => (
@@ -441,6 +477,7 @@ const GTJ_Info = (props) => (
     actionText={"Go"}
     price={200}
     subtitle={"Go To Jail"}
+    buy={() => console.log("IMPLEMENT ME!!")}
   />
 );
 export {
@@ -455,4 +492,5 @@ export {
   GTJ_Info,
   Start_Info,
   Bought_Card_Info,
+  Owner_Card_Info
 };

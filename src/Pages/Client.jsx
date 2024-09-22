@@ -5,7 +5,6 @@ import { Link } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
 import BG from "../Components/BG";
-import AnimatedNumbers from "react-animated-numbers";
 import {
   Card_Info,
   Chance_info,
@@ -18,21 +17,20 @@ import {
   GTJ_Info,
   Start_Info,
   Bought_Card_Info,
+  Owner_Card_Info,
 } from "../Components/Card_info";
 
 import {
   MainContainer,
   RelativeDiv,
-  FlexColumn,
-  FlexRow,
-  Sidebar,
-  ClientMoneyContainer,
+  SideBar,
   DiceContainer,
   CenteredContent,
-  Divider,
   SidebarCard,
   ButtonStyled,
-} from "../Components/ClientElements";
+  ClientMoney,
+  HouseContainer,
+} from "../Components/Client/ClientElements";
 
 import { Card_Map } from "../Components/Card_Map";
 import { initialState } from "../Hooks/baseState";
@@ -78,8 +76,7 @@ function Client() {
 
     // Check if the player has enough money
     if (player.money < data.price) {
-      console.log("Not Enough Money");
-      return;
+      return console.log("Not Enough Money");
     }
     // Build the list of bought cards, including the new one
     const baseItems =
@@ -127,12 +124,12 @@ function Client() {
       }
       return p; // Leave other players unchanged
     });
-    console.log(updatedPlayers);
     // Update the database with the new positions and players
     updateDB(uuid, {
       position: position,
       Players: updatedPlayers,
     });
+    console.log(updatedPlayers);
   }
 
   function Pay(card) {
@@ -166,6 +163,7 @@ function Client() {
     updateDB(uuid, {
       Players: updatedPlayers,
     });
+    console.log(updatedPlayers);
   }
 
   function PayTaxes(card) {
@@ -336,7 +334,9 @@ function Client() {
     });
     localStorage.clear();
   }
-
+  useEffect(() => {
+    console.log(PlayerInfo?.money);
+  }, [PlayerInfo]);
   return (
     <>
       <BG />
@@ -374,8 +374,13 @@ function Client() {
                 Object.values(bought).some((value) => value === true) &&
                 !bought[PlayerInfo.figure]
               ) {
-                console.log(PlayerInfo);
                 return Bought_Card_Info;
+              }
+              if (
+                Object.values(bought).some((value) => value === true) &&
+                bought[PlayerInfo.figure]
+              ) {
+                return Owner_Card_Info;
               }
               return Card_Info; // Fallback in case none of the above matches
             };
@@ -399,54 +404,13 @@ function Client() {
             );
           })()}
         <RelativeDiv>
-          <Sidebar
-            className={` ${sidebar && "sideBarRight"}`}
-            onClick={() => setSidebar(!sidebar)}
-          >
-            <div className="sideBarItem">
-              <i className="fa-duotone fa-house"></i>&nbsp;<span>Houses</span>
-            </div>
-          </Sidebar>
-          <div
-            className={`HouseContainer ${sidebar && "HouseContainerShow"}`}
-            onClick={() => setSidebar(false)}
-          >
-            <FlexColumn>
-              {Object.entries(groupedItems).map(([color, items], index) => (
-                <FlexRow key={index}>
-                  {items.map(([key, value]) => {
-                    const { name, ...props } = value;
-                    return (
-                      <Card_Map
-                        className={`${name} clientCard`}
-                        onClick={(e) => e.stopPropagation()}
-                        {...value}
-                      />
-                    );
-                  })}
-                </FlexRow>
-              ))}
-            </FlexColumn>
-          </div>
-          <ClientMoneyContainer>
-            <span style={{ display: "flex" }}>
-              $
-              <AnimatedNumbers
-                transitions={(index) => ({
-                  type: "spring",
-                  duration: index + 0.3,
-                })}
-                animateToNumber={PlayerInfo?.money}
-              ></AnimatedNumbers>
-            </span>
-            <Divider />
-            <div className="CMItemWallet">
-              <i
-                className="fa-regular fa-wallet"
-                style={{ zIndex: 2, position: "relative" }}
-              ></i>
-            </div>
-          </ClientMoneyContainer>
+          <SideBar setSidebar={setSidebar} sidebar={sidebar} />
+          <HouseContainer
+            setSidebar={setSidebar}
+            sidebar={sidebar}
+            groupedItems={groupedItems}
+          />
+          <ClientMoney money={PlayerInfo?.money || 2000} />
           <SidebarCard>
             <div className="sideBarItem">
               <i className="fa-duotone fa-cards-blank"></i>&nbsp;
@@ -454,11 +418,7 @@ function Client() {
             </div>
           </SidebarCard>
         </RelativeDiv>
-
         <CenteredContent>
-          {/* <h1 style={{ textAlign: "center" }}>
-            Name: {PlayerInfo?.name} <br /> Pos:{currentPos}
-          </h1> */}
           <DiceContainer>
             <DiceRoller
               click={click}

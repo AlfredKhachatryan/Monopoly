@@ -1,6 +1,7 @@
 import styled from "styled-components";
-import Button from "../Components/Button";
-
+import Button from "../../Components/Button";
+import AnimatedNumbers from "react-animated-numbers";
+import { Card_Map } from "../Card_Map";
 const MainContainer = styled.div`
   padding-top: 1em;
   display: flex;
@@ -26,7 +27,7 @@ const FlexRow = styled.div`
   gap: 1em;
 `;
 
-const Sidebar = styled.div`
+const SidebarElem = styled.div`
   position: absolute;
   width: 1.5em;
   height: 10em;
@@ -93,7 +94,7 @@ const Divider = styled.div`
   height: 100%;
 `;
 
-const SidebarCard = styled(Sidebar)`
+const SidebarCard = styled(SidebarElem)`
   left: unset;
   right: 0;
   height: 7em;
@@ -105,16 +106,81 @@ const ButtonStyled = styled(Button)`
   /* You can move Button styles here */
 `;
 
+function ClientMoney({ money }) {
+  return (
+    <ClientMoneyContainer>
+      <span style={{ display: "flex" }}>
+        $
+        <AnimatedNumbers
+          transitions={(index) => ({
+            type: "spring",
+            duration: index + 0.3,
+          })}
+          animateToNumber={money}
+        ></AnimatedNumbers>
+      </span>
+      <Divider />
+      <div className="CMItemWallet">
+        <i
+          className="fa-regular fa-wallet"
+          style={{ zIndex: 2, position: "relative" }}
+        ></i>
+      </div>
+    </ClientMoneyContainer>
+  );
+}
+
+function SideBar({ sidebar, setSidebar }) {
+  return (
+    <>
+      <SidebarElem
+        className={` ${sidebar && "sideBarRight"}`}
+        onClick={() => setSidebar(!sidebar)}
+      >
+        <div className="sideBarItem">
+          <i className="fa-duotone fa-house"></i>&nbsp;<span>Houses</span>
+        </div>
+      </SidebarElem>
+    </>
+  );
+}
+function HouseContainer({ sidebar, setSidebar, groupedItems }) {
+  return (
+    <div
+      className={`HouseContainer ${sidebar && "HouseContainerShow"}`}
+      onClick={() => setSidebar(false)}
+    >
+      <FlexColumn>
+        {Object.entries(groupedItems).map(([color, items], index) => (
+          <FlexRow key={index}>
+            {items.map(([key, value]) => {
+              const { name, ...props } = value;
+              return (
+                <Card_Map
+                  className={`${name} clientCard`}
+                  onClick={(e) => e.stopPropagation()}
+                  {...value}
+                />
+              );
+            })}
+          </FlexRow>
+        ))}
+      </FlexColumn>
+    </div>
+  );
+}
 export {
   MainContainer,
   RelativeDiv,
   FlexColumn,
   FlexRow,
-  Sidebar,
+  SideBar,
   ClientMoneyContainer,
   DiceContainer,
   CenteredContent,
   Divider,
   SidebarCard,
   ButtonStyled,
+  ClientMoney,
+  HouseContainer,
 };
