@@ -23,24 +23,29 @@ function Main() {
 
   const [pos, setPos] = useState(initialState());
   const [userData, setUserData] = useState(null);
-
+  const [currentOrder, setCurrentOrder] = useState(null);
   const { data, error, loading } = useFetch(uuid);
 
-  function updatePos(pos, user) {
+  function updatePos(pos, user, order) {
     if (pos) {
       setPos(pos);
     }
     setUserData(user);
+    setCurrentOrder(order);
   }
 
   useEffect(() => {
     if (data) {
-      updatePos(data.position, data.Players);
+      updatePos(data.position, data.Players, data.current_order);
     }
   }, [data]);
 
   const handleInserts = (payload) => {
-    updatePos(payload.new.position, payload.new.Players);
+    updatePos(
+      payload.new.position,
+      payload.new.Players,
+      payload.new.current_order
+    );
   };
 
   const handleClick = () => {
@@ -119,19 +124,28 @@ function Main() {
           <div className="ChanceOutline flexCent">Chance</div>
           <div className="BonusOutline flexCent">Bonus</div>
           <div className="PlayerInfo flexCent">
-            {userData?.map(({ figure, name, money }) => (
+            {userData?.map(({ figure, name, money, order }) => (
               <div
                 style={{
                   display: "flex",
                   flexDirection: "row",
                   width: "80%",
+                  alignItems: "center",
                 }}
                 key={figure}
               >
+                {console.log(order, currentOrder)}
                 <div className={`fig ${figure}`} key={name}></div>
                 &nbsp;
                 <span> {name}:</span>
                 <span>{money + "$"}</span>
+                &nbsp;
+                {order == currentOrder && (
+                  <i
+                    class="fa-solid fa-check fa-xl"
+                    style={{ color: "#63E6BE" }}
+                  ></i>
+                )}
               </div>
             ))}
           </div>

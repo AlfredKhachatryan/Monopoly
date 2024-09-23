@@ -13,7 +13,9 @@ export function Login() {
 
   const [currentFig, setCurrenFig] = useState(null); //current figure ex.'fig0'
 
-  const [inp, setInp] = useState({}); //input state
+  const [inp1, setInp] = useState({}); //input state
+
+  const inp = { name: "losharik", uuid: "v6Pstf" };
 
   const { data, error, loading } = useFetch(inp.uuid); //data from db
 

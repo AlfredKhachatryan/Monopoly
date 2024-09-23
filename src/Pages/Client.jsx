@@ -53,7 +53,7 @@ function Client() {
 
   const [currentPos, setCurrentPos] = useState(1);
   const [click, setClick] = useState(0);
-  const [result, setResult] = useState(0);
+  const [result, setResult] = useState(null);
   const [resultShow, setResultShow] = useState(0);
   const [order, setOrder] = useState(0);
 
@@ -129,7 +129,6 @@ function Client() {
       position: position,
       Players: updatedPlayers,
     });
-    console.log(updatedPlayers);
   }
 
   function Pay(card) {
@@ -163,7 +162,6 @@ function Client() {
     updateDB(uuid, {
       Players: updatedPlayers,
     });
-    console.log(updatedPlayers);
   }
 
   function PayTaxes(card) {
@@ -223,6 +221,9 @@ function Client() {
     }
   }, [data]);
 
+  useEffect(() => {
+    console.log(result);
+  }, [result]);
   const handleInserts = (payload) => {
     const playerInfo = payload.new.Players.filter(
       (e) => e.playerId == PlayerId
@@ -282,7 +283,7 @@ function Client() {
       return ++currentOrder;
     }
   }
-  function updatePos() {
+  function updatePos(result) {
     setIsReveal(false);
     setTimeout(() => {
       setIsReveal(true);
@@ -291,8 +292,7 @@ function Client() {
       setIsReveal(false);
       setResultShow(0);
     }, 4500);
-    const number = result;
-    current += number;
+    current += result;
     if (current > 36) {
       current = current - 36;
       setCurrentPos(current);
@@ -310,7 +310,6 @@ function Client() {
       position: updateItem(PlayerInfo.figure, current),
       Players: updatedArray,
     });
-    setResult(0);
   }
 
   function removePlayer() {
@@ -334,9 +333,6 @@ function Client() {
     });
     localStorage.clear();
   }
-  useEffect(() => {
-    console.log(PlayerInfo?.money);
-  }, [PlayerInfo]);
   return (
     <>
       <BG />
@@ -405,52 +401,57 @@ function Client() {
           })()}
         <RelativeDiv>
           <SideBar setSidebar={setSidebar} sidebar={sidebar} />
+
           <HouseContainer
             setSidebar={setSidebar}
             sidebar={sidebar}
             groupedItems={groupedItems}
           />
           <ClientMoney money={PlayerInfo?.money || 2000} />
+
           <SidebarCard>
             <div className="sideBarItem">
               <i className="fa-duotone fa-cards-blank"></i>&nbsp;
               <span>Cards</span>
             </div>
           </SidebarCard>
+          {PlayerInfo?.order !== order && (
+            <h3
+              style={{
+                position: "absolute",
+                left: " calc(50% - 3em)",
+                bottom: "2em",
+              }}
+            >
+              Not Your Turn
+            </h3>
+          )}
         </RelativeDiv>
+
         <CenteredContent>
           <DiceContainer>
             <DiceRoller
               click={click}
               setResult={(e) => {
-                setResult((prevResult) => prevResult + e);
-                setResultShow((prevResult) => prevResult + e);
+                setResult(e);
+                setResultShow(e);
+                updatePos(e); // Pass the result directly to updatePos
               }}
               setIsReveal={setIsReveal}
-            />
-            <DiceRoller
-              click={click}
-              setResult={(e) => {
-                setResult((prevResult) => prevResult + e);
-                setResultShow((prevResult) => prevResult + e);
-                setDiceRolled(true);
-              }}
             />
           </DiceContainer>
           <br />
           <ButtonStyled
             onClick={() => {
-              if (PlayerInfo.order == order) {
+              if (PlayerInfo?.order == order) {
                 setClick(1 + click);
-                setResult(0);
                 setDiceRolled(false);
-                updatePos();
               } else {
                 alert(0);
               }
             }}
             btnCont={{ "--accent": "#d92650" }}
-            disabled={PlayerInfo.order !== order}
+            disabled={PlayerInfo?.order !== order}
           >
             Roll The Dice
           </ButtonStyled>

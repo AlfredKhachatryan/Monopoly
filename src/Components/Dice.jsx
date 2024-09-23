@@ -2,61 +2,81 @@ import React, { useState, useEffect, useRef } from "react";
 import "../styles/dice.css";
 function DiceRoller({ click, setResult, setIsReveal }) {
   const prevSide = useRef();
-  const [side, setSide] = useState(0);
+  const [side1, setSide1] = useState(0);
+  const [side2, setSide2] = useState(0);
   const [isFirstRoll, setIsFirstRoll] = useState(true);
 
   useEffect(() => {
-    prevSide.current = side;
-  }, [side]);
+    prevSide.current = side1;
+  }, [side1]);
 
   const uniformDis = () => {
-    const fractNum = Math.floor(Math.random() * 6) + 1;
-    let result;
-    if (fractNum >= 0 && fractNum < 1) {
-      result = 1;
-    } else if (fractNum >= 1 && fractNum <= 2) {
-      result = 2;
-    } else if (fractNum > 2 && fractNum <= 3) {
-      result = 3;
-    } else if (fractNum > 3 && fractNum <= 4) {
-      result = 4;
-    } else if (fractNum > 4 && fractNum <= 5) {
-      result = 5;
-    } else {
-      result = 6;
-    }
-    return result;
+    return Math.floor(Math.random() * 6) + 1;
   };
 
   const rollDice = () => {
-    const result = uniformDis();
-    if (prevSide.current == result) {
-      setSide(result - 1);
+    const result1 = uniformDis();
+    const result2 = uniformDis();
+
+    // For the first die
+    if (prevSide.current === result1) {
+      setSide1(result1 - 1);
       setTimeout(() => {
-        setSide(result);
+        setSide1(result1);
       }, 500);
     } else {
-      setSide(result);
+      setSide1(result1);
     }
-    setResult(result);
+
+    // For the second die
+    setSide2(result2);
+
+    // Pass the sum of both dice rolls to the parent component
+    setResult(result1 + result2);
   };
+
   useEffect(() => {
     if (click > 0) {
       rollDice();
     }
   }, [click]);
+
   return (
-    <div>
-      <div id="dice" data-side={side} className={isFirstRoll ? "" : "reRoll"}>
-        {[...Array(6)].map((_, i) => (
-          <div key={i} className={`sides side-${i + 1}`}>
-            {[...Array(i + 1)].map((_, j) => (
-              <span key={j} className={`dot dot-${j + 1}`} />
-            ))}
-          </div>
-        ))}
+    <>
+      {/* First Dice */}
+      <div>
+        <div
+          id="dice"
+          data-side={side1}
+          className={isFirstRoll ? "" : "reRoll"}
+        >
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className={`sides side-${i + 1}`}>
+              {[...Array(i + 1)].map((_, j) => (
+                <span key={j} className={`dot dot-${j + 1}`} />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {/* Second Dice */}
+      <div>
+        <div
+          id="dice"
+          data-side={side2}
+          className={isFirstRoll ? "" : "reRoll"}
+        >
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className={`sides side-${i + 1}`}>
+              {[...Array(i + 1)].map((_, j) => (
+                <span key={j} className={`dot dot-${j + 1}`} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
