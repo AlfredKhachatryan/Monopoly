@@ -330,7 +330,7 @@ function Client() {
         ])
       ),
       Players: reorderedPlayers,
-      current_order: order1 - 1,
+      current_order: order1 > 0 ? order1 - 1 : 0,
     });
     localStorage.clear();
   }
@@ -450,6 +450,7 @@ function Client() {
               }
             }}
             btnCont={{ "--accent": "#d92650" }}
+            disabled={PlayerInfo.order !== order}
           >
             Roll The Dice
           </ButtonStyled>

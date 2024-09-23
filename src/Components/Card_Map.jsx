@@ -16,7 +16,7 @@ const Card = styled.div`
   min-width: 100px;
   height: 100%;
   background: #f5f5f5;
-  padding: 20px 10px 5px 10px;
+  padding: 1.25em 0.625em 0.313em 0.625em;
   transition: box-shadow 0.3s ease, transform 0.2s ease;
   position: relative;
   &:hover {
@@ -45,7 +45,7 @@ const CardAvatar = styled.div`
 `;
 const CardTitle = styled.div`
   color: #333;
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 600;
 `;
 
@@ -101,7 +101,7 @@ function CustomCard({
         <CardTitle>
           {icon && (
             <Icon
-              size={32}
+              size={22}
               icon={icon}
               primary={primary}
               secondary={secondary}
