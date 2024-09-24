@@ -4,8 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = "http://26.115.58.26:54321";
 const supabaseKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
-// const supabase = createClient("http://192.168.0.221:54321", supabaseKey);
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient("http://192.168.0.221:54321", supabaseKey);
 
 const useFetch = (uuid) => {
   const [data, setData] = useState(null);
@@ -54,7 +53,7 @@ const useRealtimeUpdates = (callback) => {
       .channel("test")
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "test" },
+        { event: "UPDATE", schema: "public", table: "test", },
         callback
       )
       .subscribe();
