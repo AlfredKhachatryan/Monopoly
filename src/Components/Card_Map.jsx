@@ -123,7 +123,7 @@ const Start_Card = (props) => (
     subtitle="СТАРТ"
     footerText="Get 200$"
     icon={Finish}
-    primary={"#D92650"}
+    primary={"#d92650"}
     secondary={"#f5786c"}
   />
 );
@@ -170,7 +170,7 @@ const Chance_Card = (props) => (
     subtitle="Chance"
     footerText="Take The Card"
     icon={Slot}
-    primary={"#D92650"}
+    primary={"#d92650"}
     secondary={"#e05273"}
   />
 );
