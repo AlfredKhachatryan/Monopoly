@@ -449,7 +449,7 @@ function Client() {
                 alert(0);
               }
             }}
-            btnCont={{ "--accent": "#d92650" }}
+            btnCont={{ "--accent": "#D92650" }}
             disabled={PlayerInfo?.order !== order}
           >
             Roll The Dice
@@ -480,6 +480,13 @@ function Client() {
           >
             Reset
           </Button>
+          <br />
+          <br />
+          <div style={{ width: "100px", height: "5em" }}>
+            {pos && pos[PlayerInfo?.position] && (
+              <CardRenderer pos={[pos[PlayerInfo?.position]]}></CardRenderer>
+            )}
+          </div>
         </CenteredContent>
         <Footer />
         <div id="diceResult" className={isReveal ? "reveal" : "hide"}>

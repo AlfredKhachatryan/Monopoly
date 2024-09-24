@@ -110,7 +110,7 @@ const Chance_Card = styled.div`
   height: 8em;
   border-radius: 10px;
 `;
-const IconBlock = ({ count, icon, price, housePrice, accent = "#d92650" }) => (
+const IconBlock = ({ count, icon, price, housePrice, accent = "#D92650" }) => (
   <IconContainer>
     <div style={{ display: "flex" }}>
       {[...Array(count)].map((_, i) => (
@@ -140,8 +140,8 @@ const CardLayout = ({
   show,
   actionText,
   altAction,
-  primary = "#d92650",
-  secondary = "#d92650",
+  primary = "#D92650",
+  secondary = "#D92650",
 }) => (
   <>
     <CardOverlay />
@@ -176,7 +176,7 @@ const CardActions = ({
   show,
   actionText = "Buy",
   altAction,
-  accent = "#d92650",
+  accent = "#D92650",
 }) => (
   <ButtonContainer>
     <Button
@@ -370,7 +370,7 @@ const Start_Info = (props) => (
   <Base_Card
     {...props}
     icon={Finish}
-    primaryColor={"#d92650"}
+    primaryColor={"#D92650"}
     secondaryColor={"#f5786c"}
     actionText={"Get Money"}
     subtitle={"You receive 200$"}
@@ -381,7 +381,7 @@ const Chance_info = (props) => (
   <Base_Card
     {...props}
     icon={Slot}
-    primaryColor={"#d92650"}
+    primaryColor={"#D92650"}
     secondaryColor={"#e05273"}
     title={"CHANCE"}
     subtitle={"Take A Card"}
