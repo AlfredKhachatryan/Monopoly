@@ -32,8 +32,7 @@ import {
   HouseContainer,
 } from "../Components/Client/ClientElements";
 
-import { Card_Map } from "../Components/Card_Map";
-import { initialState } from "../Hooks/baseState";
+import CardRenderer from "../Components/CardRenderer";
 
 import { groupByColor } from "../Hooks/groupByColor";
 
@@ -292,7 +291,9 @@ function Client() {
       setIsReveal(false);
       setResultShow(0);
     }, 4500);
+
     current += result;
+
     if (current > 36) {
       current = current - 36;
       setCurrentPos(current);
@@ -399,9 +400,9 @@ function Client() {
               />
             );
           })()}
+
         <RelativeDiv>
           <SideBar setSidebar={setSidebar} sidebar={sidebar} />
-
           <HouseContainer
             setSidebar={setSidebar}
             sidebar={sidebar}
@@ -482,6 +483,19 @@ function Client() {
             Reset
           </Button>
         </CenteredContent>
+        <br />
+        <br />
+        <div
+          style={{
+            width: "100px",
+            height: "5em",
+            alignSelf: "center",
+          }}
+        >
+          {pos && pos[PlayerInfo?.position] && (
+            <CardRenderer pos={[pos[PlayerInfo?.position]]}></CardRenderer>
+          )}
+        </div>
         <Footer />
         <div id="diceResult" className={isReveal ? "reveal" : "hide"}>
           You've got: {resultShow}

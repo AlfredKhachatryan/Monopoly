@@ -37,7 +37,7 @@ const Card = styled.div`
   position: absolute;
   top: calc(50% - 30em / 2 - 3em);
   left: calc(50% - 20em / 2);
-  z-index: 2;
+  z-index: 3;
 `;
 
 const Card2 = styled.div`
