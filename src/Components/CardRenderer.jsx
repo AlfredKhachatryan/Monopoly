@@ -13,6 +13,7 @@ import {
 import { FigureBox } from "./FigureBox";
 
 const CardRenderer = ({ pos }) => {
+  console.log(pos);
   return (
     <>
       {Object.entries(pos).map(([key, value]) => {
