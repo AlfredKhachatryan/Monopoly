@@ -7,7 +7,7 @@ function initialState() {
     {
       header: "Зайка",
       info: "Ownd By ''",
-      color: "#d92650",
+      color: "#D92650",
       price: 60,
       basePrice: 60,
     },
@@ -15,7 +15,7 @@ function initialState() {
     {
       header: "Статуя Гая",
       info: "Ownd By ''",
-      color: "#d92650",
+      color: "#D92650",
       price: 60,
       basePrice: 60,
     },

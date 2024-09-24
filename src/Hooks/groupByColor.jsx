@@ -9,6 +9,7 @@ export const groupByColor = (items) => {
     "#0942B3",
     "#DE951F",
   ];
+  console.log(items);
   const grouped = items.reduce((acc, [key, value]) => {
     if (!acc[value.color]) {
       acc[value.color] = [];
