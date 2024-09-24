@@ -5,7 +5,7 @@ import Button from "../Components/Button";
 import ShortUniqueId from "short-unique-id";
 import { FigureBox } from "../Components/FigureBox";
 import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
-
+import { Chance } from "../Components/Chance";
 function Main() {
   const short = new ShortUniqueId({ length: 10 }); //genrates uuid for future
   const uuid = "v6Pstf"; // static uuid
