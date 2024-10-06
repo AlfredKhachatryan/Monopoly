@@ -182,9 +182,40 @@ function Client() {
   }
 
   const items = Object.entries(BoughtCards);
-
+  const fixed_items = [
+    { header: "Community", community: true, info: "Community", color: "#fff" },
+    {
+      header: "Фирмини",
+      info: "Ownd By ''",
+      color: "#6F6CF5",
+      price: 100,
+      basePrice: 100,
+    },
+    {
+      header: "Чинар",
+      info: "Ownd By ''",
+      color: "#6F6CF5",
+      price: 100,
+      basePrice: 10,
+    },
+    {
+      header: "Циран",
+      info: "Ownd By ''",
+      color: "#6F6CF5",
+      price: 120,
+      basePrice: 12,
+    },
+    {
+      header: "Дом Афо",
+      info: "Ownd By ''",
+      color: "#F5786C",
+      price: 140,
+      basePrice: 14,
+    },
+    { header: "Community", community: true, info: "Community", color: "#000" },
+  ];
   // Группируем элементы по цветам
-  const groupedItems = groupByColor(items);
+  const groupedItems = groupByColor(Object.entries(fixed_items));
 
   function setState(pos, curPlayer, Players, curPos, order) {
     if (pos) {

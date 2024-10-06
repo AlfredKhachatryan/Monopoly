@@ -17,7 +17,7 @@ import "./styles/main.css";
 
 //end of import
 
-import { Main } from "./Pages/about_us";
+import { Main } from "./Pages/Board";
 import { Client } from "./Pages/Client";
 import { Login } from "./Pages/Login";
 function App() {
