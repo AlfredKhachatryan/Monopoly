@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import styled from "styled-components";
+import styled, { keyframes } from "styled-components";
 import { Icon } from "./Icon";
 import Handcuffs from "../Icons/handcuffs.json";
 import Chest from "../Icons/chest.json";
@@ -10,6 +10,59 @@ import Garage from "../Icons/Garage.json";
 import Slot from "../Icons/Slot.json";
 import Bolt from "../Icons/Bolt.json";
 import Ocean from "../Icons/Ocean.json";
+
+const anim = keyframes`
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: -40px -40px;
+  }
+`;
+
+const Fig1Border = styled.div`
+  width: calc(100% + 0.625em * 2);
+  height: calc(100% + 0.313em);
+  --s: 40px; /* control the size */
+  --c1: ${({ c1 }) =>
+    c1 || "rgb(217, 38, 80)"}; /* allow passing color for c1 */
+  --c2: #f5f5f5;
+  --_g: var(--c2) 6% 14%, var(--c1) 16% 24%, var(--c2) 26% 34%,
+    var(--c1) 36% 44%, var(--c2) 46% 54%, var(--c1) 56% 64%, var(--c2) 66% 74%,
+    var(--c1) 76% 84%, var(--c2) 86% 94%;
+
+  background: radial-gradient(
+      100% 100% at 100% 0,
+      var(--c1) 4%,
+      var(--_g),
+      #0008 96%,
+      #0000
+    ),
+    radial-gradient(
+        100% 100% at 0 100%,
+        #0000,
+        #0008 4%,
+        var(--_g),
+        var(--c1) 96%
+      )
+      var(--c1);
+
+  background-size: var(--s) var(--s);
+  position: absolute;
+  z-index: 0;
+  left: calc(-0.625em);
+  top: calc(0.313em / 2 - 2px);
+  animation: ${anim} 10s linear infinite;
+
+  &::after {
+    content: "";
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: #110e1ba6;
+    ${'' /* backdrop-filter: blur(1px); */}
+  }
+`;
 
 const Card = styled.div`
   width: 100%;
@@ -53,7 +106,15 @@ const CardSubtitle = styled.div`
   color: #333;
   font-size: 12px;
 `;
-
+const findTrueKey = (obj) => {
+  return Object.keys(obj).find((key) => obj[key] === true);
+};
+const colors = {
+  fig0: "#D92650",
+  fig1: "#1F8F5D",
+  fig2: "#F56CC6",
+  fig3: "#6F6CF5",
+};
 function Card_Map({
   className,
   children,
@@ -62,6 +123,7 @@ function Card_Map({
   info,
   price,
   onClick,
+  bought,
 }) {
   return (
     <Card className={className} onClick={onClick}>
@@ -71,9 +133,19 @@ function Card_Map({
         </CardSubtitle>
       </CardAvatar>
       <CardInfo className="card-info">
-        <CardTitle>{info}</CardTitle>
+        {findTrueKey(bought) && <Fig1Border c1={colors[findTrueKey(bought)]} />}
+        <CardTitle style={{ color: "#fff" }}></CardTitle>
         {children}
-        <CardSubtitle>{price}$</CardSubtitle>
+        <CardSubtitle
+          style={
+            findTrueKey(bought) && {
+              color: "#fff",
+              zIndex: 1,
+            }
+          }
+        >
+          {price}$
+        </CardSubtitle>
       </CardInfo>
     </Card>
   );

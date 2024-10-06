@@ -66,6 +66,7 @@ const CardRenderer = ({ pos }) => {
             primary={primary} // colors for icon
             secondary={secondary} // colors for icon
             state={state} // animation for icon
+            bought={bought}
           >
             <FigureBox
               show={figures} // in each cell there is {fig0:false,fig1:false ...etc}
