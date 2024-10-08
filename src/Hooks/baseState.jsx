@@ -31,7 +31,7 @@ function initialState() {
     {
       header: "Фирмини",
       info: "Ownd By ''",
-      color: "#6F6CF5",
+      color: "#eb75e7",
       price: 100,
       basePrice: 100,
     },
@@ -39,14 +39,15 @@ function initialState() {
     {
       header: "Чинар",
       info: "Ownd By ''",
-      color: "#6F6CF5",
+      color: "#eb75e7",
       price: 100,
       basePrice: 10,
+      name: "borderLeft",
     },
     {
       header: "Циран",
       info: "Ownd By ''",
-      color: "#6F6CF5",
+      color: "#eb75e7",
       price: 120,
       basePrice: 12,
     },
@@ -81,6 +82,7 @@ function initialState() {
       color: "#F5786C",
       price: 160,
       basePrice: 16,
+      name: "borderBottom",
     },
     {
       header: "RailRoad",
@@ -111,6 +113,7 @@ function initialState() {
       color: "#1F8F5D",
       price: 200,
       basePrice: 20,
+      name: "borderBottom",
     },
     { header: "Park", parking: true, info: "Free Park", color: "#000" },
     {
@@ -134,6 +137,7 @@ function initialState() {
       color: "#1F8FFF",
       price: 240,
       basePrice: 24,
+      name: "borderLeft",
     },
     {
       header: "RailRoad",
@@ -172,12 +176,13 @@ function initialState() {
       color: "#F56CC6",
       price: 280,
       basePrice: 28,
+      name: "borderLeft",
     },
     { header: "Jail", GTJ: true, info: "Go To Jail", color: "#000" },
     {
       header: "Spotify",
       info: "Ownd By ''",
-      color: "#0942B3",
+      color: "#6F6CF5",
       price: 300,
       basePrice: 300,
     },
@@ -185,14 +190,15 @@ function initialState() {
     {
       header: "Discord",
       info: "Ownd By ''",
-      color: "#0942B3",
+      color: "#6F6CF5",
       price: 300,
       basePrice: 300,
+      name: "borderBottom",
     },
     {
       header: "Windows",
       info: "Ownd By ''",
-      color: "#0942B3",
+      color: "#6F6CF5",
       price: 320,
       basePrice: 320,
     },
@@ -203,6 +209,7 @@ function initialState() {
       road: true,
       info: "Carry",
       color: "#000",
+      name: "borderBottomLight",
     },
     { header: "Chance", chance: true, info: "Chance", color: "#000" },
     {
@@ -234,7 +241,7 @@ function initialState() {
       fig1: false,
       fig2: false,
       fig3: false,
-      name: `itemCard${i}`,
+      name: `itemCard${i} `,
       id: i,
       bought: {
         fig0: false,

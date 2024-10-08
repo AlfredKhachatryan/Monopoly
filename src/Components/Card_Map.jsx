@@ -59,21 +59,22 @@ const Fig1Border = styled.div`
     position: absolute;
     width: 100%;
     height: 100%;
-    background-color: #110e1ba6;
-    ${'' /* backdrop-filter: blur(1px); */}
+    ${"" /* background-color: #110e1ba6; */}
+    ${"" /* backdrop-filter: blur(1px); */}
+    box-shadow: inset 0px 0 20px 10px #110e1ba6
   }
 `;
 
 const Card = styled.div`
   width: 100%;
-  min-width: 100px;
-  height: 100%;
+  min-width: 7em;
+  height: 5em;
   background: #f5f5f5;
   padding: 1.25em 0.625em 0.313em 0.625em;
   transition: box-shadow 0.3s ease, transform 0.2s ease;
   position: relative;
-  &:hover {
-    box-shadow: 0 8px 50px #23232333;
+  @media (max-width: 1024px) {
+    font-size: 12px;
   }
 `;
 
@@ -126,23 +127,25 @@ function Card_Map({
   bought,
 }) {
   return (
-    <Card className={className} onClick={onClick}>
+    <Card
+      className={className}
+      onClick={onClick}
+      style={{ backgroundColor: color, boxShadow: `0 0 5px 0px ${color}` }}
+    >
       <CardAvatar className="card-avatar" style={{ backgroundColor: color }}>
         <CardSubtitle style={{ color: "#fff", padding: "2px" }}>
           {header}
         </CardSubtitle>
       </CardAvatar>
       <CardInfo className="card-info">
-        {findTrueKey(bought) && <Fig1Border c1={colors[findTrueKey(bought)]} />}
+        {/* {findTrueKey(bought) && <Fig1Border c1={colors[findTrueKey(bought)]} />} */}
         <CardTitle style={{ color: "#fff" }}></CardTitle>
         {children}
         <CardSubtitle
-          style={
-            findTrueKey(bought) && {
-              color: "#fff",
-              zIndex: 1,
-            }
-          }
+          style={{
+            color: "#fff",
+            zIndex: 1,
+          }}
         >
           {price}$
         </CardSubtitle>
@@ -164,16 +167,16 @@ function CustomCard({
   secondary,
 }) {
   return (
-    <Card className={className}>
-      <CardAvatar style={{ backgroundColor: bgColor }}>
-        <CardSubtitle color="#000">{subtitle}</CardSubtitle>
+    <Card className={className} style={{ backgroundColor: "#15131b" }}>
+      <CardAvatar style={{ backgroundColor: "#15131b" }}>
+        <CardSubtitle style={{ color: "#fff" }}>{subtitle}</CardSubtitle>
       </CardAvatar>
       <CardInfo>
         {children}
         <CardTitle>
           {icon && (
             <Icon
-              size={22}
+              size={40}
               icon={icon}
               primary={primary}
               secondary={secondary}
@@ -183,7 +186,7 @@ function CustomCard({
             ></Icon>
           )}
         </CardTitle>
-        <CardSubtitle>{footerText}</CardSubtitle>
+        <CardSubtitle style={{ color: "#fff" }}>{footerText}</CardSubtitle>
       </CardInfo>
     </Card>
   );
@@ -253,8 +256,8 @@ const Jail_Card = (props) => (
     subtitle="Jail"
     footerText="In Jail :((("
     icon={Handcuffs}
-    primary={"#000"}
-    secondary={"#767676"}
+    primary={"#f5f5f5"}
+    secondary={"#b7b7b7"}
   />
 );
 const Communal_Card = (props) => (
@@ -284,8 +287,8 @@ const GTJ_Card = (props) => (
     subtitle={props.info}
     footerText="Unlucky"
     icon={Handcuffs}
-    primary={"#000"}
-    secondary={"#767676"}
+    primary={"#f5f5f5"}
+    secondary={"#b7b7b7"}
   />
 );
 export {
