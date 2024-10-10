@@ -13,9 +13,9 @@ export function Login() {
 
   const [currentFig, setCurrenFig] = useState(null); //current figure ex.'fig0'
 
-  const [inp1, setInp] = useState({}); //input state
+  const [inp, setInp] = useState({}); //input state
 
-  const inp = { name: "losharik", uuid: "v6Pstf" };
+  // const inp = { name: "losharik", uuid: "v6Pstf" };
 
   const { data, error, loading } = useFetch(inp.uuid); //data from db
 
@@ -91,8 +91,21 @@ export function Login() {
   return (
     <>
       <BG />
-      <div className="cont">
-        <div className="">
+      <div
+        className="cont"
+        style={{ alignItems: "center", flexDirection: "column" }}
+      >
+        {/* <h5
+          style={{
+            fontSize: "1.5em",
+            textAlign: "center",
+            lineHeight: "1.5em",
+          }}
+        >
+          Fill The Inputs And <br /> Select Your Figure
+        </h5> */}
+        <div className="" style={{ width: "20em" }}>
+          <br />
           <FormInput
             placeholder={"Name"}
             onChange={(e) => setInp({ ...inp, name: e.target.value })}
@@ -103,14 +116,6 @@ export function Login() {
             placeholder={"UUID"}
             onChange={(e) => setInp({ ...inp, uuid: e.target.value })}
           />
-          <br />
-          <Button
-            onClick={() => {
-              insert();
-            }}
-          >
-            {logged ? "ReJoin To Game" : "Join Game"}
-          </Button>
           <br />
           {!logged ? (
             <SelectFigure
@@ -128,6 +133,19 @@ export function Login() {
               ]}
             />
           )}
+          <br />
+          <Button
+            onClick={() => {
+              insert();
+            }}
+            disabled={
+              !(inp.name && inp.uuid && currentFig) &&
+              !(inp.name !== "" && inp.uuid !== "" && currentFig)
+            }
+          >
+            {console.log(inp.name)}
+            {logged ? "ReJoin To Game" : "Join Game"}
+          </Button>
         </div>
       </div>
     </>

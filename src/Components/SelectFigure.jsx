@@ -42,6 +42,7 @@ export function SelectFigure({ setParentFig, disabledFig }) {
         style={{
           width: "100%",
           display: "flex",
+          justifyContent: "space-between",
         }}
       >
         {Object.entries(figureNames).map(([key, value]) => (
@@ -57,20 +58,35 @@ export function SelectFigure({ setParentFig, disabledFig }) {
             }}
             key={key}
           >
-            {key}
+            {console.log(currentFig, "fig" + key)}
             <div
               className={`fig ${key}`}
               key={key}
-              style={{ width: "2.5em", height: "3em", margin: "10px" }}
-            ></div>
+              style={{
+                width: "2.5em",
+                height: "3em",
+                margin: "10px",
+                filter: "unset",
+              }}
+            >
+              <div
+                className="selectedFig"
+                style={
+                  currentFig == key
+                    ? {
+                        backgroundColor: "#f5f5f560",
+                      }
+                    : {}
+                }
+              ></div>
+            </div>
           </div>
         ))}
       </div>
-      <br />
-      <div style={{ textAlign: "center" }}>
+      {/* <div style={{ textAlign: "center" }}>
         <h1>You Have Selected</h1>
         <h3>{currentFig ? currentFig : null}</h3>
-      </div>
+      </div> */}
     </div>
   );
 }

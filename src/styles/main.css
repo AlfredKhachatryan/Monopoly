@@ -188,7 +188,10 @@ body {
   width: 20px;
   height: 100%;
   filter: drop-shadow(0px 0px 5px #000);
+  transition: 0.3s;
+  position: relative;
 }
+
 .fig0 {
   background-image: url("../Images/mon_1.png");
 }
@@ -540,4 +543,17 @@ footer {
   to {
     background-position: 15px 15px;
   }
+}
+/* .selectedFig {
+  filter: drop-shadow(0px 0px 15px #f5f5f5f5);
+} */
+.selectedFig {
+  content: "";
+  position: absolute;
+  width: calc(100%);
+  background-color: #00000080;
+  filter: blur(15px);
+  height: 100%;
+  z-index: -1;
+  transition: 0.3s;
 }

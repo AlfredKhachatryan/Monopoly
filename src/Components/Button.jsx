@@ -50,6 +50,7 @@ const ButtonLarge = styled.span`
   overflow: hidden;
   box-shadow: inset 0px 0px 0px 1px transparent;
   border-radius: 5px;
+  transition: all 0.3s ease;
 `;
 
 const ButtonSlide = styled.span`
