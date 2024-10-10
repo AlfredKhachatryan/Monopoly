@@ -65,6 +65,50 @@ const Fig1Border = styled.div`
   }
 `;
 
+const CustomHead = styled.div`
+  width: calc(100%);
+  height: calc(100%);
+  --s: 2em; /* control the size */
+  --c1: ${({ c1 }) =>
+    c1 || "rgb(217, 38, 80)"}; /* allow passing color for c1 */
+  --c2: #15131b;
+  --_g: var(--c2) 6% 14%, var(--c1) 16% 24%, var(--c2) 26% 34%,
+    var(--c1) 36% 44%, var(--c2) 46% 54%, var(--c1) 56% 64%, var(--c2) 66% 74%,
+    var(--c1) 76% 84%, var(--c2) 86% 94%;
+
+  background: radial-gradient(
+      100% 100% at 100% 0,
+      var(--c1) 4%,
+      var(--_g),
+      #0008 96%,
+      #0000
+    ),
+    radial-gradient(
+        100% 100% at 0 100%,
+        #0000,
+        #0008 4%,
+        var(--_g),
+        var(--c1) 96%
+      )
+      var(--c1);
+
+  background-size: var(--s) var(--s);
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  top: 0;
+
+  &::after {
+    content: "";
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    ${"" /* background-color: #110e1ba6; */}
+    ${"" /* backdrop-filter: blur(1px); */}
+    box-shadow: inset 0px 0 20px 5px #110e1ba6
+  }
+`;
+
 const Card = styled.div`
   width: 100%;
   min-width: 7em;
@@ -110,6 +154,7 @@ const CardSubtitle = styled.div`
 const findTrueKey = (obj) => {
   return Object.keys(obj).find((key) => obj[key] === true);
 };
+
 const colors = {
   fig0: "#D92650",
   fig1: "#1F8F5D",
@@ -130,7 +175,10 @@ function Card_Map({
     <Card
       className={className}
       onClick={onClick}
-      style={{ backgroundColor: color, boxShadow: `0 0 5px 0px ${color}` }}
+      style={{
+        backgroundColor: `${color}b3`,
+        boxShadow: `0 0 1px 0px ${color}`,
+      }}
     >
       <CardAvatar className="card-avatar" style={{ backgroundColor: color }}>
         <CardSubtitle style={{ color: "#fff", padding: "2px" }}>
@@ -167,8 +215,19 @@ function CustomCard({
   secondary,
 }) {
   return (
-    <Card className={className} style={{ backgroundColor: "#15131b" }}>
-      <CardAvatar style={{ backgroundColor: "#15131b" }}>
+    <Card
+      className={className}
+      style={{
+        backgroundColor: `#15131bb3`,
+        boxShadow: `0 0 1px 0px ${primary}80`,
+      }}
+    >
+      <CardAvatar
+        style={{
+          backgroundColor: "transparent",
+        }}
+      >
+        <CustomHead c1={primary} />
         <CardSubtitle style={{ color: "#fff" }}>{subtitle}</CardSubtitle>
       </CardAvatar>
       <CardInfo>

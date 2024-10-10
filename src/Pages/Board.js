@@ -53,26 +53,37 @@ function Main() {
           <div className="innerBoard"></div>
           <CardRenderer pos={pos}></CardRenderer>
           <div className="ChanceOutline flexCent">
-            <Chance></Chance>
+            <Chance txt={"Chance"}></Chance>
           </div>
-          <div className="BonusOutline flexCent">Bonus</div>
-          <div className="PlayerInfo flexCent">
+          <div className="BonusOutline flexCent">
+            <Chance txt={"Bonus"}></Chance>
+          </div>
+          <Button onClick={() => handleClick()}>Click</Button>
+          <div
+            className="PlayerInfo flexCent"
+            style={{
+              boxShadow: "0px 0px 15px 0px #eb476d85",
+              border: "1px solid #eb476d",
+            }}
+          >
             {userData?.map(({ figure, name, money, order }) => (
               <div
                 style={{
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: "20px 1fr 2em",
+                  gridTemplateRows: "25px",
                   flexDirection: "row",
-                  width: "80%",
+                  width: "100%",
+                  justifyContent: "center",
+                  justifyItems: "center",
                   alignItems: "center",
                 }}
                 key={figure}
               >
-                {console.log(order, currentOrder)}
                 <div className={`fig ${figure}`} key={name}></div>
-                &nbsp;
-                <span> {name}:</span>
-                <span>{money + "$"}</span>
-                &nbsp;
+                <span>
+                  {name}: {money + "$"}
+                </span>
                 {order == currentOrder && (
                   <i
                     class="fa-solid fa-check fa-xl"
@@ -86,7 +97,6 @@ function Main() {
             {uuid}
             <br /> 192.168.0.221:3000/Login
           </div> */}
-          <Button onClick={() => handleClick()}>Click</Button>
         </div>
       </div>
     </>
