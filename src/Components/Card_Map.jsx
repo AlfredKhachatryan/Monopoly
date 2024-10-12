@@ -117,7 +117,7 @@ const Card = styled.div`
   padding: 1.25em 0.625em 0.313em 0.625em;
   transition: box-shadow 0.3s ease, transform 0.2s ease;
   position: relative;
-  @media (max-width: 1024px) {
+  @media (min-width: 1024px) and (max-width: 1440px) {
     font-size: 12px;
   }
 `;

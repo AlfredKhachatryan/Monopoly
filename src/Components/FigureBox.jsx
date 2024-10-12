@@ -25,7 +25,17 @@ export function FigureBox({ show, style }) {
       }}
     >
       {Object.entries(figureNames).map(
-        (e) => e[0] && <div className={`fig ${e[1]}`} key={e[0]}></div>
+        (e) =>
+          e[0] && (
+            <div className={`fig ${e[1]}`} key={e[0]}>
+              <div
+                className="selectedFig"
+                style={{
+                  backgroundColor: "#f5f5f580",
+                }}
+              ></div>
+            </div>
+          )
       )}
     </div>
   );

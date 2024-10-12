@@ -80,7 +80,18 @@ function Main() {
                 }}
                 key={figure}
               >
-                <div className={`fig ${figure}`} key={name}></div>
+                <div
+                  className={`fig ${figure}`}
+                  key={name}
+                  style={{ filter: "none" }}
+                >
+                  <div
+                    className="selectedFig"
+                    style={{
+                      backgroundColor: "#f5f5f560",
+                    }}
+                  ></div>
+                </div>
                 <span>
                   {name}: {money + "$"}
                 </span>

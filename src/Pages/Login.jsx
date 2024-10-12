@@ -143,7 +143,6 @@ export function Login() {
               !(inp.name !== "" && inp.uuid !== "" && currentFig)
             }
           >
-            {console.log(inp.name)}
             {logged ? "ReJoin To Game" : "Join Game"}
           </Button>
         </div>

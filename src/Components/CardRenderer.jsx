@@ -70,7 +70,7 @@ const CardRenderer = ({ pos }) => {
           >
             <FigureBox
               show={figures} // in each cell there is {fig0:false,fig1:false ...etc}
-              style={{ height: "30px", position: "absolute", zIndex: 2 }}
+              style={{ height: "30px", position: "absolute", zIndex: 1 }}
             />
           </Component>
         );
