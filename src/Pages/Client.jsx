@@ -112,6 +112,8 @@ function Client() {
       }
     });
 
+    localStorage.setItem("boughtCards", JSON.stringify(obj));
+
     // Update the state with new bought cards and player info
     setBoughtCards(obj);
     player.money -= data.price;
@@ -129,6 +131,13 @@ function Client() {
       Players: updatedPlayers,
     });
   }
+
+  useEffect(() => {
+    const savedCards = localStorage.getItem("boughtCards");
+    if (savedCards) {
+      setBoughtCards(JSON.parse(savedCards));
+    }
+  }, []);
 
   function Pay(card) {
     const player = { ...PlayerInfo };
@@ -182,41 +191,8 @@ function Client() {
   }
 
   const items = Object.entries(BoughtCards);
-  const fixed_items = [
-    { header: "Community", community: true, info: "Community", color: "#fff" },
-    {
-      header: "Фирмини",
-      info: "Ownd By ''",
-      color: "#6F6CF5",
-      price: 100,
-      basePrice: 100,
-    },
-    {
-      header: "Чинар",
-      info: "Ownd By ''",
-      color: "#6F6CF5",
-      price: 100,
-      basePrice: 10,
-    },
-    {
-      header: "Циран",
-      info: "Ownd By ''",
-      color: "#6F6CF5",
-      price: 120,
-      basePrice: 12,
-    },
-    {
-      header: "Дом Афо",
-      info: "Ownd By ''",
-      color: "#F5786C",
-      price: 140,
-      basePrice: 14,
-    },
-    { header: "Community", community: true, info: "Community", color: "#000" },
-  ];
   // Группируем элементы по цветам
-  const groupedItems = groupByColor(Object.entries(fixed_items));
-
+  const groupedItems = groupByColor(Object.entries(items));
   function setState(pos, curPlayer, Players, curPos, order) {
     if (pos) {
       setPos(pos);
@@ -438,7 +414,6 @@ function Client() {
             groupedItems={groupedItems}
           />
           <ClientMoney money={PlayerInfo?.money || 2500} />
-
           <SidebarCard>
             <div className="sideBarItem">
               <i className="fa-duotone fa-cards-blank"></i>&nbsp;
@@ -500,11 +475,11 @@ function Client() {
             onClick={() => {
               const updatedArray = Players.map((item) =>
                 item.playerId === PlayerInfo.playerId
-                  ? { ...PlayerInfo, position: 5 }
+                  ? { ...PlayerInfo, position: 40 }
                   : item
               );
               updateDB(uuid, {
-                position: updateItem(PlayerInfo.figure, 5),
+                position: updateItem(PlayerInfo.figure, 40),
                 Players: updatedArray,
               });
             }}
@@ -513,13 +488,17 @@ function Client() {
           </Button>
           <br />
           <br />
-          <div style={{ display: "flex",gap:'0.3em' }}>
+          <div style={{ display: "flex", gap: "0.3em" }}>
             {pos && pos[PlayerInfo?.position] && (
               <CardRenderer
                 pos={[
-                  pos[PlayerInfo?.position + 1],
-                  pos[PlayerInfo?.position],
-                  pos[PlayerInfo?.position - 1],
+                  pos[
+                    PlayerInfo?.position === 40 ? 1 : PlayerInfo?.position + 1
+                  ], // Next position, wraps to pos[1] if position is 40
+                  pos[PlayerInfo?.position], // Current position
+                  pos[
+                    PlayerInfo?.position !== 1 ? PlayerInfo?.position - 1 : 40
+                  ], // Previous position, wraps to 40 if position is 1
                 ]}
               ></CardRenderer>
             )}
