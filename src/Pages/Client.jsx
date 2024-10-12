@@ -437,7 +437,7 @@ function Client() {
             sidebar={sidebar}
             groupedItems={groupedItems}
           />
-          <ClientMoney money={PlayerInfo?.money || 2000} />
+          <ClientMoney money={PlayerInfo?.money || 2500} />
 
           <SidebarCard>
             <div className="sideBarItem">
@@ -513,9 +513,15 @@ function Client() {
           </Button>
           <br />
           <br />
-          <div style={{ width: "100px", height: "5em" }}>
+          <div style={{ display: "flex",gap:'0.3em' }}>
             {pos && pos[PlayerInfo?.position] && (
-              <CardRenderer pos={[pos[PlayerInfo?.position]]}></CardRenderer>
+              <CardRenderer
+                pos={[
+                  pos[PlayerInfo?.position + 1],
+                  pos[PlayerInfo?.position],
+                  pos[PlayerInfo?.position - 1],
+                ]}
+              ></CardRenderer>
             )}
           </div>
         </CenteredContent>

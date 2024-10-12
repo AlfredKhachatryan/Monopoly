@@ -467,8 +467,9 @@ footer {
   left: 0vw;
 }
 .clientCard {
-  width: 5em !important;
-  height: 7em !important;
+  width: 6em !important;
+  min-width: 6em !important;
+  height: 6em !important;
   box-shadow: 0 0 15px 5px #000000c4;
 }
 .sideBarRight {
