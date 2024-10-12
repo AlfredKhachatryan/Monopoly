@@ -5,6 +5,8 @@ import Button from "../Components/Button";
 import ShortUniqueId from "short-unique-id";
 import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
 import { Chance } from "../Components/Chance";
+import AnimatedNumbers from "react-animated-numbers";
+
 function Main() {
   const short = new ShortUniqueId({ length: 10 }); //genrates uuid for future
   const uuid = "v6Pstf"; // static uuid
@@ -92,8 +94,15 @@ function Main() {
                     }}
                   ></div>
                 </div>
-                <span>
-                  {name}: {money + "$"}
+                <span style={{ display: "flex" }}>
+                  {name}:
+                  <AnimatedNumbers
+                    transitions={(index) => ({
+                      type: "spring",
+                      duration: index + 0.3,
+                    })}
+                    animateToNumber={money}
+                  />
                 </span>
                 {order == currentOrder && (
                   <i
