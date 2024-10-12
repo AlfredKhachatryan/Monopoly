@@ -16,14 +16,14 @@ const anim = keyframes`
     background-position: 0 0;
   }
   100% {
-    background-position: -40px -40px;
+    background-position: -2em -2em;
   }
 `;
 
 const Fig1Border = styled.div`
   width: calc(100% + 0.625em * 2);
   height: calc(100% + 0.313em);
-  --s: 40px; /* control the size */
+  --s: 2em; /* control the size */
   --c1: ${({ c1 }) =>
     c1 || "rgb(217, 38, 80)"}; /* allow passing color for c1 */
   --c2: #f5f5f5;
@@ -49,10 +49,10 @@ const Fig1Border = styled.div`
 
   background-size: var(--s) var(--s);
   position: absolute;
-  z-index: 0;
+  z-index: -1;
   left: calc(-0.625em);
   top: calc(0.313em / 2 - 2px);
-  animation: ${anim} 10s linear infinite;
+  animation: ${anim} 15s linear infinite;
 
   &::after {
     content: "";
@@ -71,7 +71,7 @@ const CustomHead = styled.div`
   --s: 2em; /* control the size */
   --c1: ${({ c1 }) =>
     c1 || "rgb(217, 38, 80)"}; /* allow passing color for c1 */
-  --c2: #15131b;
+  --c2: ${({ c2 }) => c2 || "#15131b;"};
   --_g: var(--c2) 6% 14%, var(--c1) 16% 24%, var(--c2) 26% 34%,
     var(--c1) 36% 44%, var(--c2) 46% 54%, var(--c1) 56% 64%, var(--c2) 66% 74%,
     var(--c1) 76% 84%, var(--c2) 86% 94%;
@@ -152,7 +152,9 @@ const CardSubtitle = styled.div`
   font-size: 12px;
 `;
 const findTrueKey = (obj) => {
-  return Object.keys(obj).find((key) => obj[key] === true);
+  if (obj) {
+    return Object.keys(obj).find((key) => obj[key] === true);
+  }
 };
 
 const colors = {
