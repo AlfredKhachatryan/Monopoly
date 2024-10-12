@@ -10,14 +10,17 @@ export const groupByColor = (items) => {
     "#DE951F",
     "#000",
   ];
-  console.log(items);
-  const grouped = items.reduce((acc, [key, value]) => {
+
+  // Grouping by color
+  const grouped = items.reduce((acc, [key, [, value]]) => {
     if (!acc[value.color]) {
       acc[value.color] = [];
     }
     acc[value.color].push([key, value]);
     return acc;
   }, {});
+
+  // Reordering based on the predefined colorOrder
   return colorOrder.reduce((acc, color) => {
     if (grouped[color]) {
       acc[color] = grouped[color];
