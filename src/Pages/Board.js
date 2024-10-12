@@ -102,7 +102,7 @@ function Main() {
                       duration: index + 0.3,
                     })}
                     animateToNumber={money}
-                  />
+                  />$
                 </span>
                 {order == currentOrder && (
                   <i
