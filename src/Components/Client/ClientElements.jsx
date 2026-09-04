@@ -32,7 +32,7 @@ const SidebarElem = styled.div`
   width: 1.5em;
   height: 10em;
   border-radius: 0px 5px 5px 0px;
-  background-color: #D92650;
+  background-color: #d92650;
   /* background-color: #4F8C5F; */
   color: white;
   display: flex;
@@ -40,7 +40,7 @@ const SidebarElem = styled.div`
   align-items: center;
   flex-direction: column;
   z-index: 1;
-  transition: 0.35s ease-in-out;
+  transition: 0.15s linear;
   left: 0;
   &.sideBarRight {
     left: 85vw;
@@ -58,7 +58,7 @@ const ClientMoneyContainer = styled.div`
   align-self: end;
   min-width: 5em;
   height: 2rem;
-  background-color: #D92650;
+  background-color: #d92650;
   position: absolute;
   right: 0;
   z-index: 1;

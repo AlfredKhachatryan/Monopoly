@@ -20,7 +20,6 @@ import "./styles/main.css";
 import { Main } from "./Pages/Board";
 import { Client } from "./Pages/Client";
 import { Login } from "./Pages/Login";
-import { Test } from "./Pages/test";
 
 function App() {
   return (
@@ -29,8 +28,6 @@ function App() {
         <Route index element={<Main />} />
         <Route path="/Client" element={<Client />} />
         <Route path="/Login" element={<Login />} />
-        <Route path="/Test" element={<Test />} />
-
       </Routes>
     </BrowserRouter>
   );

@@ -230,7 +230,7 @@ function initialState() {
       header: "Dota 2",
       info: "Ownd By ''",
       color: "#DE951F",
-      price: 100,
+      price: 400,
       basePrice: 400,
     },
   ];

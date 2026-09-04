@@ -279,7 +279,7 @@ footer {
   align-items: center;
   flex-direction: column;
   z-index: 1;
-  transition: 0.35s ease-in-out;
+  transition: 0.15s linear;
   left: 0;
 }
 .sideBarItem {
@@ -455,8 +455,7 @@ footer {
   left: calc(-85vw - 15px);
   top: -1em;
   background-color: #1e1e1efa;
-
-  transition: 0.35s ease-in-out;
+  transition: 0.15s linear;
   z-index: 6;
   box-shadow: 0 0 15px 5px #000000c4;
   border-radius: 0px 5px 5px 0px;

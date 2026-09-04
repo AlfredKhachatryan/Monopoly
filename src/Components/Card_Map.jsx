@@ -52,7 +52,7 @@ const Fig1Border = styled.div`
   z-index: -1;
   left: calc(-0.625em);
   top: calc(0.313em / 2 - 2px);
-  animation: ${anim} 15s linear infinite;
+  animation: ${anim} 45s linear infinite;
 
   &::after {
     content: "";
@@ -61,7 +61,7 @@ const Fig1Border = styled.div`
     height: 100%;
     ${"" /* background-color: #110e1ba6; */}
     ${"" /* backdrop-filter: blur(1px); */}
-    box-shadow: inset 0px 0 20px 10px #110e1ba6
+    box-shadow: inset 0px 0px 25px 8px var(--c1); /* Enhanced glow with player color */
   }
 `;
 
@@ -188,7 +188,7 @@ function Card_Map({
         </CardSubtitle>
       </CardAvatar>
       <CardInfo className="card-info">
-        {/* {findTrueKey(bought) && <Fig1Border c1={colors[findTrueKey(bought)]} />} */}
+        {findTrueKey(bought) && <Fig1Border c1={colors[findTrueKey(bought)]} />}
         <CardTitle style={{ color: "#fff" }}></CardTitle>
         {children}
         <CardSubtitle
@@ -215,6 +215,7 @@ function CustomCard({
   state,
   primary,
   secondary,
+  bought,
 }) {
   return (
     <Card

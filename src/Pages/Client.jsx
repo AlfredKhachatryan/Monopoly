@@ -40,7 +40,6 @@ let current = 0;
 
 function Client() {
   const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
-
   // let PlayerId;
   const uuid = "v6Pstf";
 
@@ -82,6 +81,7 @@ function Client() {
       Object.keys(BoughtCards).length > 0
         ? [...Object.values(BoughtCards), data]
         : [data];
+    console.log(baseItems)
 
     // Create the object to store bought cards
     const obj = baseItems.reduce((acc, item, index) => {
@@ -104,7 +104,7 @@ function Client() {
       };
       return acc;
     }, {});
-
+    
     // Update the position for each bought card based on figure
     Object.values(obj).forEach(({ id }) => {
       if (position[id]) {
@@ -193,6 +193,7 @@ function Client() {
   const items = Object.entries(BoughtCards);
   // Группируем элементы по цветам
   const groupedItems = groupByColor(Object.entries(items));
+
   function setState(pos, curPlayer, Players, curPos, order) {
     if (pos) {
       setPos(pos);
@@ -230,6 +231,7 @@ function Client() {
   useEffect(() => {
     console.log(result);
   }, [result]);
+
   const handleInserts = (payload) => {
     const playerInfo = payload.new.Players.filter(
       (e) => e.playerId == PlayerId
@@ -319,7 +321,7 @@ function Client() {
   }
 
   function removePlayer() {
-    let order1 = order;
+    let tempOrder = order;
     const updatedPlayers = Players.filter(
       (e) => e.figure !== PlayerInfo.figure
     );
@@ -335,10 +337,11 @@ function Client() {
         ])
       ),
       Players: reorderedPlayers,
-      current_order: order1 > 0 ? order1 - 1 : 0,
+      current_order: tempOrder > 0 ? tempOrder - 1 : 0,
     });
     localStorage.clear();
   }
+
   return (
     <>
       <BG />

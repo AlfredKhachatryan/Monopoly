@@ -102,7 +102,8 @@ function Main() {
                       duration: index + 0.3,
                     })}
                     animateToNumber={money}
-                  />$
+                  />
+                  $
                 </span>
                 {order == currentOrder && (
                   <i
@@ -113,10 +114,6 @@ function Main() {
               </div>
             ))}
           </div>
-          {/* <div className="BaseInfo flexCent" style={{ textAlign: "center" }}>
-            {uuid}
-            <br /> 192.168.0.221:3000/Login
-          </div> */}
         </div>
       </div>
     </>
