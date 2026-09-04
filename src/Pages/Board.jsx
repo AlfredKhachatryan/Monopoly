@@ -5,7 +5,7 @@ import Button from "../Components/Button";
 import ShortUniqueId from "short-unique-id";
 import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
 import { Chance } from "../Components/Chance";
-import AnimatedNumbers from "react-animated-numbers";
+import AnimatedNumbers from "../Components/AnimatedNumbers";
 
 function Main() {
   const short = new ShortUniqueId({ length: 10 }); //genrates uuid for future
@@ -107,7 +107,7 @@ function Main() {
                 </span>
                 {order == currentOrder && (
                   <i
-                    class="fa-solid fa-check fa-xl"
+                    className="fa-solid fa-check fa-xl"
                     style={{ color: "#63E6BE" }}
                   ></i>
                 )}

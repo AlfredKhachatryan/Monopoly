@@ -1,7 +1,7 @@
 # Monopoly – Launch Status
 
 Snapshot of the repo as of 2026-09-04 (last commit `9af8235`, 2024-10-12).
-Stack: React 18 (CRA), react-router 6, styled-components, Supabase Realtime, Lordicon/Lottie icons.
+Stack: React 18 + Vite, react-router 6, styled-components, Supabase Realtime, Lordicon/Lottie icons.
 
 Three screens exist:
 
@@ -121,11 +121,11 @@ Every client subscribes to UPDATE events on that table and re-renders.
 - [ ] Font Awesome Pro is loaded from `site-assets.fontawesome.com` in `index.html` and `fa-duotone` icons are used. Either use a licensed Pro kit or switch to free icons.
 - [x] `index.html`: title is "NeonCatRider", description is the CRA default, `logo192.png` is referenced but missing.
 - [ ] Finalise board content: language (Russian vs English), property names, consistent price table.
-- [ ] Replace the CRA boilerplate `README.md` with setup + how to host a game.
+- [x] Replace the CRA boilerplate `README.md` with setup + how to host a game (basic version written; expand as features land).
 
 ### Deploy
-- [x] Verify `npm run build` passes (verified 2026-09-04, warnings only).
-- [ ] Hosting with SPA rewrite to `index.html` (BrowserRouter is used).
+- [x] Verify `npm run build` passes (Vite build verified 2026-09-04).
+- [ ] Hosting with SPA rewrite to `index.html` (BrowserRouter is used). Build output is `dist/`.
 - [ ] Hosted Supabase project with Realtime enabled on the game table.
 - [ ] Smoke-test: 1 TV + 2-4 phones on a real network.
 

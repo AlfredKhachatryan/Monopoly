@@ -1,6 +1,6 @@
 import styled from "styled-components";
 import Button from "../../Components/Button";
-import AnimatedNumbers from "react-animated-numbers";
+import AnimatedNumbers from "../AnimatedNumbers";
 import { Card_Map } from "../Card_Map";
 const MainContainer = styled.div`
   padding-top: 1em;
