@@ -58,7 +58,6 @@ export function SelectFigure({ setParentFig, disabledFig }) {
             }}
             key={key}
           >
-            {console.log(currentFig, "fig" + key)}
             <div
               className={`fig ${key}`}
               key={key}

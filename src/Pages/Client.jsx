@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import Button from "../Components/Button";
 import { useRealtimeUpdates, updateDB, useFetch } from "../Hooks/supabase";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import DiceRoller from "../Components/Dice";
 import { Footer } from "../Components/Footer";
 import BG from "../Components/BG";
@@ -38,10 +38,19 @@ import { groupByColor } from "../Hooks/groupByColor";
 
 let current = 0;
 
+function readPlayerInfo() {
+  try {
+    return JSON.parse(localStorage.getItem("playerInfo"));
+  } catch {
+    return null;
+  }
+}
+
 function Client() {
-  const PlayerId = JSON.parse(localStorage.playerInfo).playerId;
-  // let PlayerId;
-  const uuid = "v6Pstf";
+  // Both are written by the Login page. If either is missing the player
+  // never logged in (or left), so we redirect below instead of crashing.
+  const PlayerId = readPlayerInfo()?.playerId;
+  const uuid = localStorage.getItem("roomId");
 
   const { data, error, loading } = useFetch(uuid);
 
@@ -81,7 +90,6 @@ function Client() {
       Object.keys(BoughtCards).length > 0
         ? [...Object.values(BoughtCards), data]
         : [data];
-    console.log(baseItems)
 
     // Create the object to store bought cards
     const obj = baseItems.reduce((acc, item, index) => {
@@ -228,10 +236,6 @@ function Client() {
     }
   }, [data]);
 
-  useEffect(() => {
-    console.log(result);
-  }, [result]);
-
   const handleInserts = (payload) => {
     const playerInfo = payload.new.Players.filter(
       (e) => e.playerId == PlayerId
@@ -253,7 +257,7 @@ function Client() {
     );
   };
 
-  useRealtimeUpdates(handleInserts);
+  useRealtimeUpdates(uuid, handleInserts);
 
   const updateItem = (figKey, newPosition) => {
     const newState = { ...pos };
@@ -340,6 +344,10 @@ function Client() {
       current_order: tempOrder > 0 ? tempOrder - 1 : 0,
     });
     localStorage.clear();
+  }
+
+  if (!uuid || !PlayerId) {
+    return <Navigate to="/Login" replace />;
   }
 
   return (
@@ -454,8 +462,6 @@ function Client() {
               if (PlayerInfo?.order == order) {
                 setClick(1 + click);
                 setDiceRolled(false);
-              } else {
-                alert(0);
               }
             }}
             btnCont={{ "--accent": "#D92650" }}

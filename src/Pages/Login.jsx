@@ -13,9 +13,14 @@ export function Login() {
 
   const [currentFig, setCurrenFig] = useState(null); //current figure ex.'fig0'
 
-  const [inp, setInp] = useState({}); //input state
-
-  // const inp = { name: "losharik", uuid: "v6Pstf" };
+  // Room code comes from ?room=XXXX in the URL, or the last room this
+  // browser joined, so the player only has to type it once.
+  const [inp, setInp] = useState(() => ({
+    uuid:
+      new URLSearchParams(window.location.search).get("room") ||
+      localStorage.getItem("roomId") ||
+      "",
+  })); //input state
 
   const { data, error, loading } = useFetch(inp.uuid); //data from db
 
@@ -42,7 +47,7 @@ export function Login() {
     getLogged(payload.new?.Players);
   };
 
-  useRealtimeUpdates(handleInserts);
+  useRealtimeUpdates(inp.uuid, handleInserts);
 
   useEffect(() => {
     SetPlayers(data?.Players);
@@ -72,8 +77,10 @@ export function Login() {
     };
 
     if (logged) {
+      localStorage.setItem("roomId", inp.uuid);
       navigate("/Client");
     } else if (inp.name && currentFig) {
+      localStorage.setItem("roomId", inp.uuid);
       localStorage.playerInfo = JSON.stringify(newPlayer); //saving all in localStorage
 
       const updatedPlayers = players ? [newPlayer, ...players] : [newPlayer]; // Reduce repetition
@@ -113,8 +120,9 @@ export function Login() {
           />
           <br />
           <FormInput
-            placeholder={"UUID"}
-            onChange={(e) => setInp({ ...inp, uuid: e.target.value })}
+            placeholder={"Room code"}
+            value={inp.uuid}
+            onChange={(e) => setInp({ ...inp, uuid: e.target.value.trim() })}
           />
           <br />
           {!logged ? (

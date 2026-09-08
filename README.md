@@ -13,6 +13,7 @@ Realtime) as the shared game state.
 
 ```bash
 npm install
+cp .env.example .env   # then fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
@@ -35,10 +36,23 @@ npm run preview   # serves dist/ locally
 The app uses client-side routing, so the host must rewrite unknown paths to
 `index.html`.
 
+## Rooms
+
+Every game is one row in the `test` table, identified by a short room code.
+
+- TV / board: open `http://<host>:3000/?room=<code>`. The code is shown in the
+  top-left corner. Without `?room=` the board falls back to the last room used
+  in that browser, or asks for one.
+- Phones: open `/Login` (or `/Login?room=<code>` to prefill), type the code,
+  pick a figure. The code is remembered in `localStorage` for rejoining.
+
+The migration creates one room, `v6Pstf`. There is no "create game" screen
+yet, so add extra rows by hand for now.
+
 ## Supabase
 
-The client connects with the URL and publishable key in
-`src/Hooks/supabase.jsx`. The schema (table `test`, RLS, Realtime publication,
+The client reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from `.env`
+(see `.env.example`; `.env` is gitignored). The schema (table `test`, RLS, Realtime publication,
 and the default room `v6Pstf`) lives in
 `supabase/migrations/20260904123000_create_test_game_table.sql`. Apply it with
 the Supabase CLI (`supabase db push`) or paste it into the SQL editor.

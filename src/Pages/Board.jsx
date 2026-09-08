@@ -2,14 +2,28 @@ import { useEffect, useState } from "react";
 import { initialState } from "../Hooks/baseState";
 import CardRenderer from "../Components/CardRenderer";
 import Button from "../Components/Button";
-import ShortUniqueId from "short-unique-id";
+import FormInput from "../Components/Input";
 import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
 import { Chance } from "../Components/Chance";
 import AnimatedNumbers from "../Components/AnimatedNumbers";
 
+function readRoomId() {
+  return (
+    new URLSearchParams(window.location.search).get("room") ||
+    localStorage.getItem("roomId") ||
+    ""
+  );
+}
+
 function Main() {
-  const short = new ShortUniqueId({ length: 10 }); //genrates uuid for future
-  const uuid = "v6Pstf"; // static uuid
+  // Room code: /?room=XXXX wins, then the last room used in this browser.
+  // The TV usually opens the URL with the code; players type it on /Login.
+  const [uuid, setUuid] = useState(readRoomId);
+  const [roomInput, setRoomInput] = useState("");
+
+  useEffect(() => {
+    if (uuid) localStorage.setItem("roomId", uuid);
+  }, [uuid]);
 
   const [pos, setPos] = useState(initialState());
   const [userData, setUserData] = useState(null);
@@ -45,12 +59,57 @@ function Main() {
     setPos(initialState());
   };
 
-  useRealtimeUpdates(handleInserts); //when DB is updated he does some function
+  useRealtimeUpdates(uuid, handleInserts); //when DB is updated he does some function
+
+  if (!uuid) {
+    return (
+      <>
+        <div className="boardBG"></div>
+        <div
+          className="cont"
+          style={{ alignItems: "center", flexDirection: "column" }}
+        >
+          <div style={{ width: "20em" }}>
+            <br />
+            <FormInput
+              placeholder={"Room code"}
+              value={roomInput}
+              onChange={(e) => setRoomInput(e.target.value.trim())}
+            />
+            <br />
+            <Button
+              onClick={() => setUuid(roomInput)}
+              disabled={!roomInput}
+            >
+              Open Board
+            </Button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
       <div className="boardBG"></div>
       <div className="cont">
+        <div
+          className="roomCode"
+          style={{
+            position: "absolute",
+            top: "0.5em",
+            left: "0.5em",
+            padding: "0.3em 0.8em",
+            borderRadius: "0.4em",
+            background: "#14141463",
+            fontSize: "1.1em",
+          }}
+        >
+          Room: <b>{uuid}</b>
+          {!loading && !data && (
+            <span style={{ color: "#eb476d" }}> (not found)</span>
+          )}
+        </div>
         <div className="parent">
           <div className="innerBoard"></div>
           <CardRenderer pos={pos}></CardRenderer>

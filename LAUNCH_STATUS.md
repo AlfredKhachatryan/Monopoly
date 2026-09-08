@@ -72,7 +72,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 | **Houses / hotels** | Owner popup shows 1-4 houses + hotel rent table and prices | "Buy" logs `IMPLEMENT ME`. House count is not stored anywhere, rent ignores houses. |
 | **Colour-set bonus** | "Colour Set Price" shown on cards | Monopoly (full colour set) is never detected; rent is always flat price/10. |
 | **Rent amounts** | Flat price/10 | Real rent table per property, house/hotel multipliers, railroad count, utility dice multiplier. |
-| **Room / game code** | Login asks for a UUID; `ShortUniqueId` is imported | Board and Client hard-code `uuid = "v6Pstf"`. Whatever you type on Login is ignored. No "create game" flow. |
+| **Room / game code** | Login code is saved and used by Client; Board takes `?room=` / localStorage and shows the code | No "create game" flow, no validation that the room exists on Login (Board shows "not found"). |
 | **Footer nav (Home / Auction / Players)** | Rendered on Client | No click handlers. Auction screen and Players screen do not exist. |
 | **"Cards" sidebar tab** | Rendered on the right edge | No handler, opens nothing. |
 | **Board reset** | "Click" button on Board | Resets cell positions only. Players' money, ownership and turn order are not reset. |
@@ -88,13 +88,13 @@ Every client subscribes to UPDATE events on that table and re-renders.
 
 ### Must fix (blocking bugs)
 - [ ] **Position wrap is wrong**: `updatePos` wraps at 36 but the board has 40 cells. Cells 37-40 are unreachable and the lap is short. Wrap at 40 and award $200 on passing GO.
-- [ ] **Hard-coded room id** `"v6Pstf"` in `Board.js` and `Client.jsx`. Read it from the Login input / URL / localStorage.
-- [ ] **Supabase URL is a LAN IP** (`http://192.168.10.85:54321`) with the local demo anon key, hard-coded in `src/Hooks/supabase.jsx`. Move to `.env` (`REACT_APP_SUPABASE_URL`, `REACT_APP_SUPABASE_ANON_KEY`) and point at a hosted project.
-- [ ] **Client crashes without login**: `JSON.parse(localStorage.playerInfo)` throws on `/Client` if the player never logged in. Redirect to `/Login` instead.
-- [ ] **Realtime leak**: `useRealtimeUpdates` never unsubscribes and re-subscribes on every render (callback is not memoized). Duplicate handlers fire after a while. Return a cleanup and memoize the callback.
+- [x] **Hard-coded room id** removed. Login saves the typed code to `localStorage.roomId` (prefilled from `?room=`); Client reads it; Board reads `?room=` / localStorage or asks for it, and shows the code on screen. Realtime is filtered per room.
+- [x] **Supabase config** moved to `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, see `.env.example`); points at the hosted project.
+- [x] **Client crashes without login**: now redirects to `/Login` when `playerInfo` or `roomId` is missing.
+- [x] **Realtime leak**: `useRealtimeUpdates(uuid, cb)` keeps the callback in a ref, subscribes once per room with a `uuid=eq.` filter, and removes the channel on unmount.
 - [ ] **Lost updates**: every client overwrites the whole `position` and `Players` JSON. Two clients acting at once clobber each other (e.g. rent paid while another player buys). Use per-field updates, an RPC, or optimistic concurrency.
-- [ ] **Silent DB errors**: `updateDB` swallows every error. Surface failures to the user.
-- [ ] `alert(0)` debug popup on wrong-turn click, `console.log` noise, `class=` instead of `className` in `Board.js`.
+- [~] **Silent DB errors**: `updateDB` now logs with `console.error` and returns `{ data, error }`. Callers still ignore the result; no UI toast yet.
+- [x] `alert(0)` popup and debug `console.log`s removed (the `IMPLEMENT ME` logs in `Card_info.jsx` stay until those features land).
 
 ### Core gameplay to finish (from section 2)
 - [ ] Chance and Community Chest decks with real effects.
