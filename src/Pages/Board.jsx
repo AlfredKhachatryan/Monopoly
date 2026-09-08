@@ -11,7 +11,17 @@ import {
   createGame,
 } from "../Hooks/supabase";
 import { Chance } from "../Components/Chance";
+import { useWalkingTokens } from "../Hooks/useWalkingTokens";
+import { TokenLayer } from "../Components/TokenLayer";
 import AnimatedNumbers from "../Components/AnimatedNumbers";
+import {
+  m,
+  AnimatePresence,
+  fade,
+  fadeUp,
+  stagger,
+  pop,
+} from "../Components/Motion";
 
 const short = new ShortUniqueId({ length: 6 }); // room codes, e.g. "v6Pstf"
 
@@ -47,7 +57,7 @@ function Main() {
     setHosting(true);
     setHostError(null);
     const { uuid: newUuid, error } = await createGame(initialState(), () =>
-      short.rnd()
+      short.rnd(),
     );
     setHosting(false);
     if (error) {
@@ -64,7 +74,12 @@ function Main() {
   const [userData, setUserData] = useState(null);
   const [currentOrder, setCurrentOrder] = useState(null);
   const { data, loading } = useFetch(uuid);
-  
+
+  // Tokens walk cell by cell towards their DB position. They are drawn by
+  // TokenLayer on top of the grid, so the cells themselves never re-render
+  // while a token moves.
+  const shownTokens = useWalkingTokens(pos);
+
   function updatePos(pos, user, order) {
     if (pos) {
       setPos(pos);
@@ -83,7 +98,7 @@ function Main() {
     updatePos(
       payload.new.position,
       payload.new.Players,
-      payload.new.current_order
+      payload.new.current_order,
     );
   };
 
@@ -104,32 +119,54 @@ function Main() {
           className="cont"
           style={{ alignItems: "center", flexDirection: "column" }}
         >
-          <div style={{ width: "20em" }}>
+          <m.div
+            style={{ width: "20em" }}
+            variants={stagger}
+            initial="hidden"
+            animate="show"
+          >
             <br />
-            <FormInput
-              placeholder={"Room code"}
-              value={roomInput}
-              onChange={(e) => setRoomInput(e.target.value.trim())}
-            />
+            <m.div variants={fadeUp}>
+              <FormInput
+                placeholder={"Room code"}
+                value={roomInput}
+                onChange={(e) => setRoomInput(e.target.value.trim())}
+              />
+            </m.div>
             <br />
-            <Button
-              onClick={() => setUuid(roomInput)}
-              disabled={!roomInput}
+            <m.div variants={fadeUp}>
+              <Button onClick={() => setUuid(roomInput)} disabled={!roomInput}>
+                Open Board
+              </Button>
+            </m.div>
+            <br />
+            <m.div
+              variants={fadeUp}
+              style={{ textAlign: "center", opacity: 0.7 }}
             >
-              Open Board
-            </Button>
+              or
+            </m.div>
             <br />
-            <div style={{ textAlign: "center", opacity: 0.7 }}>or</div>
-            <br />
-            <Button onClick={hostGame} disabled={hosting}>
-              {hosting ? "Creating..." : "Host New Game"}
-            </Button>
-            {hostError && (
-              <p style={{ color: "#eb476d", textAlign: "center" }}>
-                Could not create game: {hostError}
-              </p>
-            )}
-          </div>
+            <m.div variants={fadeUp}>
+              <Button onClick={hostGame} disabled={hosting}>
+                {hosting ? "Creating..." : "Host New Game"}
+              </Button>
+            </m.div>
+            <AnimatePresence>
+              {hostError && (
+                <m.p
+                  key="hostError"
+                  style={{ color: "#eb476d", textAlign: "center" }}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                >
+                  Could not create game: {hostError}
+                </m.p>
+              )}
+            </AnimatePresence>
+          </m.div>
         </div>
       </>
     );
@@ -139,7 +176,7 @@ function Main() {
     <>
       <div className="boardBG"></div>
       <div className="cont">
-        <div
+        <m.div
           className="roomCode"
           style={{
             position: "absolute",
@@ -150,6 +187,9 @@ function Main() {
             background: "#14141463",
             fontSize: "1.1em",
           }}
+          variants={fade}
+          initial="hidden"
+          animate="show"
         >
           Room: <b>{uuid}</b>
           {!loading && !data && (
@@ -165,10 +205,11 @@ function Main() {
               {hostError}
             </div>
           )}
-        </div>
+        </m.div>
         <div className="parent">
           <div className="innerBoard"></div>
-          <CardRenderer pos={pos}></CardRenderer>
+          <CardRenderer pos={pos} showTokens={false}></CardRenderer>
+          <TokenLayer shown={shownTokens} />
           <div className="ChanceOutline flexCent">
             <Chance txt={"Chance"}></Chance>
           </div>
@@ -183,51 +224,64 @@ function Main() {
               border: "1px solid #eb476d",
             }}
           >
-            {userData?.map(({ figure, name, money, order }) => (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "20px 1fr 2em",
-                  gridTemplateRows: "25px",
-                  flexDirection: "row",
-                  width: "100%",
-                  justifyContent: "center",
-                  justifyItems: "center",
-                  alignItems: "center",
-                }}
-                key={figure}
-              >
-                <div
-                  className={`fig ${figure}`}
-                  key={name}
-                  style={{ filter: "none" }}
+            <AnimatePresence>
+              {userData?.map(({ figure, name, money, order }) => (
+                <m.div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "20px 1fr 2em",
+                    gridTemplateRows: "25px",
+                    flexDirection: "row",
+                    width: "100%",
+                    justifyContent: "center",
+                    justifyItems: "center",
+                    alignItems: "center",
+                  }}
+                  key={figure}
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
                 >
                   <div
-                    className="selectedFig"
-                    style={{
-                      backgroundColor: "#f5f5f560",
-                    }}
-                  ></div>
-                </div>
-                <span style={{ display: "flex" }}>
-                  {name}:
-                  <AnimatedNumbers
-                    transitions={(index) => ({
-                      type: "spring",
-                      duration: index + 0.3,
-                    })}
-                    animateToNumber={money}
-                  />
-                  $
-                </span>
-                {order == currentOrder && (
-                  <i
-                    className="fa-solid fa-check fa-xl"
-                    style={{ color: "#63E6BE" }}
-                  ></i>
-                )}
-              </div>
-            ))}
+                    className={`fig ${figure}`}
+                    key={name}
+                    style={{ filter: "none" }}
+                  >
+                    <div
+                      className="selectedFig"
+                      style={{
+                        backgroundColor: "#f5f5f560",
+                      }}
+                    ></div>
+                  </div>
+                  <span style={{ display: "flex" }}>
+                    {name}:
+                    <AnimatedNumbers
+                      transitions={(index) => ({
+                        type: "spring",
+                        duration: index + 0.3,
+                      })}
+                      animateToNumber={money}
+                    />
+                    $
+                  </span>
+                  <AnimatePresence>
+                    {order == currentOrder && (
+                      <m.i
+                        key="turn"
+                        className="fa-solid fa-check fa-xl"
+                        style={{ color: "#63E6BE" }}
+                        variants={pop}
+                        initial="hidden"
+                        animate="show"
+                        exit="exit"
+                      ></m.i>
+                    )}
+                  </AnimatePresence>
+                </m.div>
+              ))}
+            </AnimatePresence>
           </div>
         </div>
       </div>

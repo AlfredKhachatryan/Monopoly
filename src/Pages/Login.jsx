@@ -7,6 +7,7 @@ import { updateDB, useFetch, useRealtimeUpdates } from "../Hooks/supabase";
 import ShortUniqueId from "short-unique-id";
 import { useNavigate } from "react-router-dom";
 import BG from "../Components/BG";
+import { m, fadeUp, stagger } from "../Components/Motion";
 
 export function Login() {
   const short = new ShortUniqueId({ length: 6 }); //generate uuid for user
@@ -111,49 +112,62 @@ export function Login() {
         >
           Fill The Inputs And <br /> Select Your Figure
         </h5> */}
-        <div className="" style={{ width: "20em" }}>
+        <m.div
+          style={{ width: "20em" }}
+          variants={stagger}
+          initial="hidden"
+          animate="show"
+        >
           <br />
-          <FormInput
-            placeholder={"Name"}
-            onChange={(e) => setInp({ ...inp, name: e.target.value })}
-            disabled={logged}
-          />
-          <br />
-          <FormInput
-            placeholder={"Room code"}
-            value={inp.uuid}
-            onChange={(e) => setInp({ ...inp, uuid: e.target.value.trim() })}
-          />
-          <br />
-          {!logged ? (
-            <SelectFigure
-              setParentFig={setCurrenFig}
-              disabledFig={players ? players : []}
+          <m.div variants={fadeUp}>
+            <FormInput
+              placeholder={"Name"}
+              onChange={(e) => setInp({ ...inp, name: e.target.value })}
+              disabled={logged}
             />
-          ) : (
-            <SelectFigure
-              setParentFig={setCurrenFig}
-              disabledFig={[
-                { figure: "fig0" },
-                { figure: "fig1" },
-                { figure: "fig2" },
-                { figure: "fig3" },
-              ]}
-            />
-          )}
+          </m.div>
           <br />
-          <Button
-            onClick={() => {
-              insert();
-            }}
-            disabled={
-              !(inp.name && inp.uuid && currentFig) &&
-              !(inp.name !== "" && inp.uuid !== "" && currentFig)
-            }
-          >
-            {logged ? "ReJoin To Game" : "Join Game"}
-          </Button>
-        </div>
+          <m.div variants={fadeUp}>
+            <FormInput
+              placeholder={"Room code"}
+              value={inp.uuid}
+              onChange={(e) => setInp({ ...inp, uuid: e.target.value.trim() })}
+            />
+          </m.div>
+          <br />
+          <m.div variants={fadeUp}>
+            {!logged ? (
+              <SelectFigure
+                setParentFig={setCurrenFig}
+                disabledFig={players ? players : []}
+              />
+            ) : (
+              <SelectFigure
+                setParentFig={setCurrenFig}
+                disabledFig={[
+                  { figure: "fig0" },
+                  { figure: "fig1" },
+                  { figure: "fig2" },
+                  { figure: "fig3" },
+                ]}
+              />
+            )}
+          </m.div>
+          <br />
+          <m.div variants={fadeUp}>
+            <Button
+              onClick={() => {
+                insert();
+              }}
+              disabled={
+                !(inp.name && inp.uuid && currentFig) &&
+                !(inp.name !== "" && inp.uuid !== "" && currentFig)
+              }
+            >
+              {logged ? "ReJoin To Game" : "Join Game"}
+            </Button>
+          </m.div>
+        </m.div>
       </div>
     </>
   );

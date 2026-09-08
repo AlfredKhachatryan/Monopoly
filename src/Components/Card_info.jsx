@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import styled from "styled-components";
 import Button from "./Button";
 import { Icon } from "./Icon";
+import { m, ease, fade } from "./Motion";
 
 import House from "../Icons/House.json";
 import Building from "../Icons/Building.json";
@@ -23,7 +24,24 @@ const hexToRgb = (hex) => {
   return `${r}, ${g}, ${b}`;
 };
 
-const Card = styled.div`
+// Enter: fade + tiny lift/scale. Exit: quicker fade back down.
+const cardMotion = {
+  hidden: { opacity: 0, y: 12, scale: 0.97 },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.25, ease },
+  },
+  exit: {
+    opacity: 0,
+    y: 6,
+    scale: 0.98,
+    transition: { duration: 0.15, ease },
+  },
+};
+
+const Card = styled(m.div)`
   width: 20em;
   height: 30em;
   background-image: linear-gradient(
@@ -32,7 +50,7 @@ const Card = styled.div`
     var(--secondary) 100%
   );
   border-radius: 20px 20px 10px 10px;
-  transition: all 0.3s;
+  transition: box-shadow 0.3s;
   box-shadow: 0px 0px 30px 1px rgba(${(props) => hexToRgb(props.primary)}, 0.3);
   position: absolute;
   top: calc(50% - 30em / 2 - 3em);
@@ -52,7 +70,7 @@ const Card2 = styled.div`
   text-align: center;
   padding: 10px;
 `;
-const CardOverlay = styled.div`
+const CardOverlay = styled(m.div)`
   width: 100dvw;
   height: 100dvh;
   background-color: #1a1a1ad4;
@@ -144,13 +162,17 @@ const CardLayout = ({
   secondary = "#D92650",
 }) => (
   <>
-    <CardOverlay />
+    <CardOverlay variants={fade} initial="hidden" animate="show" exit="exit" />
     <Card
       style={{
         "--primary": primary,
         "--secondary": secondary,
       }}
       primary={secondary}
+      variants={cardMotion}
+      initial="hidden"
+      animate="show"
+      exit="exit"
     >
       <Card2>
         <CardBody>
@@ -492,5 +514,5 @@ export {
   GTJ_Info,
   Start_Info,
   Bought_Card_Info,
-  Owner_Card_Info
+  Owner_Card_Info,
 };

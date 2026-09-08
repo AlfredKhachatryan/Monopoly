@@ -1,10 +1,11 @@
 // src/Button.js
 import React, { useRef, useState } from "react";
 import styled, { keyframes } from "styled-components";
+import { m, tap } from "./Motion";
 // 'ff4655'
 // '0f1923'
 
-const ButtonContainer = styled.button`
+const ButtonContainer = styled(m.button)`
   --main-color: #ff4655;
   --sec-color: #0f1923;
   width: 100%;
@@ -19,7 +20,7 @@ const ButtonContainer = styled.button`
   text-transform: uppercase;
   font-weight: bold;
   font-size: 14px;
-  transition: all 0.3s ease;
+  transition: color 0.3s ease;
 
   &:active,
   &:focus {
@@ -97,6 +98,7 @@ const Button = ({
       ref={myRef}
       style={disabled ? { ...btnCont, "--accent": "gray" } : { ...btnCont }}
       disabled={disabled}
+      whileTap={disabled ? undefined : tap}
     >
       <ButtonLarge className="button_lg" style={btnLg}>
         <ButtonSlide

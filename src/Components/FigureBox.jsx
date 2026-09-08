@@ -1,20 +1,10 @@
-import { useState, useEffect } from "react";
+import { m, AnimatePresence, pop } from "./Motion";
 
+const FIGS = ["fig0", "fig1", "fig2", "fig3"];
+
+// Renders the tokens whose flag is true in `show` ({ fig0: true, ... }).
 export function FigureBox({ show, style }) {
-  const figureDef = {
-    fig0: false,
-    fig1: false,
-    fig2: false,
-    fig3: false,
-  };
-
-  const [figureNames, setNames] = useState(
-    Object.keys(figureDef)?.filter((key) => figureDef[key])
-  );
-
-  useEffect(() => {
-    setNames(Object.keys(show).filter((key) => show[key]));
-  }, [show]);
+  const figures = FIGS.filter((f) => show && show[f]);
 
   return (
     <div
@@ -24,19 +14,27 @@ export function FigureBox({ show, style }) {
         ...style,
       }}
     >
-      {Object.entries(figureNames).map(
-        (e) =>
-          e[0] && (
-            <div className={`fig ${e[1]}`} key={e[0]}>
-              <div
-                className="selectedFig"
-                style={{
-                  backgroundColor: "#f5f5f580",
-                }}
-              ></div>
-            </div>
-          )
-      )}
+      {/* tokens pop in / out when a player lands on or leaves this cell */}
+      <AnimatePresence initial={false}>
+        {figures.map((fig) => (
+          <m.div
+            className={`fig ${fig}`}
+            key={fig}
+            style={{ transformOrigin: "50% 100%" }}
+            variants={pop}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+          >
+            <div
+              className="selectedFig"
+              style={{
+                backgroundColor: "#f5f5f580",
+              }}
+            ></div>
+          </m.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

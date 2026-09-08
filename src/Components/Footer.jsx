@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { Link } from "react-router-dom";
+import { m } from "./Motion";
 function Footer() {
   return (
     <>
@@ -7,22 +8,22 @@ function Footer() {
         <div className="footerBlur"></div>
         <div className="footerCont ">
           <div>
-            <div className="footerNav">
+            <m.div className="footerNav" whileTap={{ scale: 0.92 }}>
               <i className="fa-duotone fa-house duotoneColor"></i>
               <span>Home</span>
-            </div>
+            </m.div>
           </div>
           <div>
-            <div className="footerNav">
+            <m.div className="footerNav" whileTap={{ scale: 0.92 }}>
               <i className="fa-duotone fa-gavel duotoneColor"></i>
               <span>Auction</span>
-            </div>
+            </m.div>
           </div>
           <div>
-            <div className="footerNav">
+            <m.div className="footerNav" whileTap={{ scale: 0.92 }}>
               <i className="fa-duotone fa-users duotoneColor "></i>
               <span>Players</span>
-            </div>
+            </m.div>
           </div>
         </div>
       </footer>

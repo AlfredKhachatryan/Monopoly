@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRealtimeUpdates } from "../Hooks/supabase";
+import { m } from "./Motion";
 
 export function SelectFigure({ setParentFig, disabledFig }) {
   const [currentFig, setCurrentFig] = useState(null);
@@ -13,7 +14,7 @@ export function SelectFigure({ setParentFig, disabledFig }) {
             acc[figure] = false;
             return acc;
           },
-          { ...figureDef }
+          { ...figureDef },
         );
       return updatedFigureDef;
     });
@@ -46,7 +47,7 @@ export function SelectFigure({ setParentFig, disabledFig }) {
         }}
       >
         {Object.entries(figureNames).map(([key, value]) => (
-          <div
+          <m.div
             style={{
               display: "flex",
               justifyContent: "center",
@@ -57,8 +58,9 @@ export function SelectFigure({ setParentFig, disabledFig }) {
               click({ value, key });
             }}
             key={key}
+            whileTap={value ? { scale: 0.92 } : undefined}
           >
-            <div
+            <m.div
               className={`fig ${key}`}
               key={key}
               style={{
@@ -67,6 +69,11 @@ export function SelectFigure({ setParentFig, disabledFig }) {
                 margin: "10px",
                 filter: "unset",
               }}
+              animate={{
+                scale: currentFig == key ? 1.1 : 1,
+                y: currentFig == key ? -2 : 0,
+              }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
             >
               <div
                 className="selectedFig"
@@ -78,8 +85,8 @@ export function SelectFigure({ setParentFig, disabledFig }) {
                     : {}
                 }
               ></div>
-            </div>
-          </div>
+            </m.div>
+          </m.div>
         ))}
       </div>
       {/* <div style={{ textAlign: "center" }}>

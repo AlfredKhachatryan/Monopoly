@@ -27,7 +27,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 
 ### Board (TV) view
 - 40-cell board rendered on an 11x11 CSS grid, all cell types (street, railroad, utility, tax, chance, community, jail, go-to-jail, parking, start).
-- Live player tokens on cells (`FigureBox`) updated through Supabase Realtime.
+- Live player tokens on cells (`FigureBox`) updated through Supabase Realtime. Tokens fly from their old cell to the new one in a single cartoon arc (squash-and-stretch, lean, transform only); longer moves get a longer, higher arc. `Components/TokenLayer.jsx` animates one persistent element per player; `Hooks/useWalkingTokens.jsx` has a `WALK` flag to hop cell by cell instead. Joins and leaves grow / shrink in place.
 - Owned properties get an animated border in the owner's figure colour.
 - Player panel: figure, name, animated money counter, and a check mark on whoever's turn it is.
 - Chance / Bonus centre placeholders.
@@ -54,6 +54,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 - Board data definition (`baseState.jsx`) with 40 cells, colours, prices, cell-type flags.
 - Reusable `Button`, `FormInput`, `Icon` (Lordicon with colour override), animated `BG`.
 - Card colour grouping helper (`groupByColor`).
+- Subtle framer-motion animations via a shared `Components/Motion.jsx` (LazyMotion `domAnimation` only, honours OS reduce-motion): staggered login form, card popup enter/exit, player tokens pop in/out on cells, Board player rows and turn check mark, "Not Your Turn" label, Houses drawer rows, button/figure press feedback.
 
 ---
 

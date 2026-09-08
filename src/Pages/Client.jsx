@@ -35,6 +35,7 @@ import {
 import CardRenderer from "../Components/CardRenderer";
 
 import { groupByColor } from "../Hooks/groupByColor";
+import { m, AnimatePresence, fadeUp, ease } from "../Components/Motion";
 
 let current = 0;
 
@@ -385,68 +386,71 @@ function Client() {
     <>
       <BG />
       <MainContainer onClick={() => sidebar && setSidebar(false)}>
-        {hideElem &&
-          pos &&
-          pos[PlayerInfo?.position] &&
-          (() => {
-            const currentPos = pos[PlayerInfo?.position]; // Access the current position data
-            const {
-              start,
-              community,
-              tax,
-              road,
-              chance,
-              jail,
-              communal,
-              parking,
-              GTJ,
-              bought,
-            } = currentPos; // Destructure the keys from the current position object
+        <AnimatePresence>
+          {hideElem &&
+            show &&
+            pos &&
+            pos[PlayerInfo?.position] &&
+            (() => {
+              const currentPos = pos[PlayerInfo?.position]; // Access the current position data
+              const {
+                start,
+                community,
+                tax,
+                road,
+                chance,
+                jail,
+                communal,
+                parking,
+                GTJ,
+                bought,
+              } = currentPos; // Destructure the keys from the current position object
 
-            // Function to get the appropriate component based on the keys
-            const getComponent = () => {
-              if (start) return Start_Info;
-              if (community) return Cummunity_info;
-              if (tax) return Tax_Info;
-              if (road) return RailRoad_Info;
-              if (chance) return Chance_info;
-              if (jail) return Jail_Info;
-              if (communal) return Communal_Info;
-              if (parking) return Park_Info;
-              if (GTJ) return GTJ_Info;
-              if (
-                Object.values(bought).some((value) => value === true) &&
-                !bought[PlayerInfo.figure]
-              ) {
-                return Bought_Card_Info;
-              }
-              if (
-                Object.values(bought).some((value) => value === true) &&
-                bought[PlayerInfo.figure]
-              ) {
-                return Owner_Card_Info;
-              }
-              return Card_Info; // Fallback in case none of the above matches
-            };
+              // Function to get the appropriate component based on the keys
+              const getComponent = () => {
+                if (start) return Start_Info;
+                if (community) return Cummunity_info;
+                if (tax) return Tax_Info;
+                if (road) return RailRoad_Info;
+                if (chance) return Chance_info;
+                if (jail) return Jail_Info;
+                if (communal) return Communal_Info;
+                if (parking) return Park_Info;
+                if (GTJ) return GTJ_Info;
+                if (
+                  Object.values(bought).some((value) => value === true) &&
+                  !bought[PlayerInfo.figure]
+                ) {
+                  return Bought_Card_Info;
+                }
+                if (
+                  Object.values(bought).some((value) => value === true) &&
+                  bought[PlayerInfo.figure]
+                ) {
+                  return Owner_Card_Info;
+                }
+                return Card_Info; // Fallback in case none of the above matches
+              };
 
-            const Component = getComponent(); // Get the component to render
-            const currentCard = pos[PlayerInfo?.position]; // Retrieve current card info from the state
+              const Component = getComponent(); // Get the component to render
+              const currentCard = pos[PlayerInfo?.position]; // Retrieve current card info from the state
 
-            return (
-              <Component
-                className={`fadeElem ${!show ? "fadeElem-exit" : ""}`}
-                name={currentCard?.header}
-                price={currentCard?.basePrice || currentCard?.price}
-                housePrice={50}
-                show={hide}
-                buy={BuyCard}
-                card={currentCard}
-                bought={bought}
-                pay={Pay}
-                payTaxes={PayTaxes}
-              />
-            );
-          })()}
+              return (
+                <Component
+                  key={PlayerInfo?.position}
+                  name={currentCard?.header}
+                  price={currentCard?.basePrice || currentCard?.price}
+                  housePrice={50}
+                  show={hide}
+                  buy={BuyCard}
+                  card={currentCard}
+                  bought={bought}
+                  pay={Pay}
+                  payTaxes={PayTaxes}
+                />
+              );
+            })()}
+        </AnimatePresence>
         <RelativeDiv>
           <SideBar setSidebar={setSidebar} sidebar={sidebar} />
 
@@ -462,17 +466,24 @@ function Client() {
               <span>Cards</span>
             </div>
           </SidebarCard>
-          {PlayerInfo?.order !== order && (
-            <h3
-              style={{
-                position: "absolute",
-                left: " calc(50% - 3em)",
-                bottom: "2em",
-              }}
-            >
-              Not Your Turn
-            </h3>
-          )}
+          <AnimatePresence>
+            {PlayerInfo?.order !== order && (
+              <m.h3
+                key="notYourTurn"
+                style={{
+                  position: "absolute",
+                  left: " calc(50% - 3em)",
+                  bottom: "2em",
+                }}
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                exit="exit"
+              >
+                Not Your Turn
+              </m.h3>
+            )}
+          </AnimatePresence>
         </RelativeDiv>
 
         <CenteredContent>
@@ -554,7 +565,13 @@ function Client() {
           )}
           <br />
           <br />
-          <div style={{ display: "flex", gap: "0.3em" }}>
+          <m.div
+            style={{ display: "flex", gap: "0.3em" }}
+            key={PlayerInfo?.position}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.25, ease }}
+          >
             {pos && pos[PlayerInfo?.position] && (
               <CardRenderer
                 pos={[
@@ -568,7 +585,7 @@ function Client() {
                 ]}
               ></CardRenderer>
             )}
-          </div>
+          </m.div>
         </CenteredContent>
         <Footer />
         <div id="diceResult" className={isReveal ? "reveal" : "hide"}>

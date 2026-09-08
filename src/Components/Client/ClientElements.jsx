@@ -2,6 +2,7 @@ import styled from "styled-components";
 import Button from "../../Components/Button";
 import AnimatedNumbers from "../AnimatedNumbers";
 import { Card_Map } from "../Card_Map";
+import { m, fadeUp, stagger } from "../Motion";
 const MainContainer = styled.div`
   padding-top: 1em;
   display: flex;
@@ -16,13 +17,13 @@ const RelativeDiv = styled.div`
   width: 100%;
 `;
 
-const FlexColumn = styled.div`
+const FlexColumn = styled(m.div)`
   display: flex;
   flex-direction: column;
   gap: 2em;
 `;
 
-const FlexRow = styled.div`
+const FlexRow = styled(m.div)`
   display: flex;
   gap: 1em;
 `;
@@ -150,9 +151,15 @@ function HouseContainer({ sidebar, setSidebar, groupedItems }) {
       className={`HouseContainer ${sidebar && "HouseContainerShow"}`}
       onClick={() => setSidebar(false)}
     >
-      <FlexColumn>
+      {/* rows fade up once the drawer has slid open (0.15s CSS slide) */}
+      <FlexColumn
+        variants={stagger}
+        initial="hidden"
+        animate={sidebar ? "show" : "hidden"}
+        transition={{ delayChildren: sidebar ? 0.1 : 0 }}
+      >
         {Object.entries(groupedItems).map(([color, items], index) => (
-          <FlexRow key={index}>
+          <FlexRow key={index} variants={fadeUp}>
             {items.map(([key, value]) => {
               const { name, ...props } = value;
               return (

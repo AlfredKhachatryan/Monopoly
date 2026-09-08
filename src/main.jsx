@@ -20,16 +20,19 @@ import "./styles/main.css";
 import { Main } from "./Pages/Board";
 import { Client } from "./Pages/Client";
 import { Login } from "./Pages/Login";
+import { MotionProvider } from "./Components/Motion";
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route index element={<Main />} />
-        <Route path="/Client" element={<Client />} />
-        <Route path="/Login" element={<Login />} />
-      </Routes>
-    </BrowserRouter>
+    <MotionProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route index element={<Main />} />
+          <Route path="/Client" element={<Client />} />
+          <Route path="/Login" element={<Login />} />
+        </Routes>
+      </BrowserRouter>
+    </MotionProvider>
   );
 }
 const root = createRoot(document.getElementById("root"));
