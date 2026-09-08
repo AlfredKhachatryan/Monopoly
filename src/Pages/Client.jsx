@@ -40,7 +40,8 @@ let current = 0;
 
 // Debug controls show in `npm run dev`, or on any build with ?debug in the URL.
 const DEBUG =
-  import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug");
+  import.meta.env.DEV ||
+  new URLSearchParams(window.location.search).has("debug");
 
 function readPlayerInfo() {
   try {
@@ -117,7 +118,7 @@ function Client() {
       };
       return acc;
     }, {});
-    
+
     // Update the position for each bought card based on figure
     Object.values(obj).forEach(({ id }) => {
       if (position[id]) {
@@ -157,7 +158,7 @@ function Client() {
     const otherPlayers = [...Players];
 
     const cardOwnerId = Object.entries(card.bought).filter(
-      (e) => e[1] == true
+      (e) => e[1] == true,
     )[0][0];
 
     const cardOwnerInfo = Object.entries(otherPlayers)
@@ -235,7 +236,7 @@ function Client() {
         playerInfo,
         data.Players,
         current,
-        data.current_order
+        data.current_order,
       );
       current = playerInfo?.position;
     }
@@ -243,7 +244,7 @@ function Client() {
 
   const handleInserts = (payload) => {
     const playerInfo = payload.new.Players.filter(
-      (e) => e.playerId == PlayerId
+      (e) => e.playerId == PlayerId,
     )[0];
     current = playerInfo?.position;
     if (current !== prevPos.current) {
@@ -258,7 +259,7 @@ function Client() {
       playerInfo,
       payload.new.Players,
       current,
-      payload.new.current_order
+      payload.new.current_order,
     );
   };
 
@@ -310,8 +311,8 @@ function Client() {
       setResultShow(0);
     }, 4500);
     current += result;
-    if (current > 36) {
-      current = current - 36;
+    if (current > 40) {
+      current = current - 40;
       setCurrentPos(current);
     } else {
       setCurrentPos(current);
@@ -321,7 +322,7 @@ function Client() {
     const updatedArray = Players.map((item) =>
       item.playerId === PlayerInfo.playerId
         ? { ...PlayerInfo, position: current }
-        : item
+        : item,
     );
     updateDB(uuid, {
       position: updateItem(PlayerInfo.figure, current),
@@ -338,7 +339,7 @@ function Client() {
     const updatedArray = Players.map((item) =>
       item.playerId === PlayerInfo.playerId
         ? { ...PlayerInfo, position: target }
-        : item
+        : item,
     );
     updateDB(uuid, {
       position: updateItem(PlayerInfo.figure, target),
@@ -349,7 +350,7 @@ function Client() {
   function removePlayer() {
     let tempOrder = order;
     const updatedPlayers = Players.filter(
-      (e) => e.figure !== PlayerInfo.figure
+      (e) => e.figure !== PlayerInfo.figure,
     );
     const reorderedPlayers = updatedPlayers.map((player, index) => ({
       ...player,
@@ -360,7 +361,7 @@ function Client() {
         Object.entries(pos).map(([key, value]) => [
           key,
           { ...value, [PlayerInfo.figure]: false },
-        ])
+        ]),
       ),
       Players: reorderedPlayers,
       current_order: tempOrder > 0 ? tempOrder - 1 : 0,
