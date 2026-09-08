@@ -68,6 +68,23 @@ const updateDB = async (uuid, prop) => {
   return { data, error };
 };
 
+// Creates a fresh room. Retries on a code collision (unique violation).
+const createGame = async (position, makeCode, attempts = 3) => {
+  let lastError = null;
+  for (let i = 0; i < attempts; i++) {
+    const uuid = makeCode();
+    const { error } = await supabase
+      .from("test")
+      .insert({ uuid, position, Players: [], current_order: 0 });
+
+    if (!error) return { uuid, error: null };
+    lastError = error;
+    if (error.code !== "23505") break; // not a duplicate code, stop retrying
+  }
+  console.error("createGame failed:", lastError?.message);
+  return { uuid: null, error: lastError };
+};
+
 // Subscribes to UPDATE events for one room only. The callback is kept in a
 // ref so callers can pass a fresh closure every render without
 // re-subscribing; the channel is removed on unmount / room change.
@@ -98,4 +115,4 @@ const useRealtimeUpdates = (uuid, callback) => {
   }, [uuid]);
 };
 
-export { useFetch, updateDB, useRealtimeUpdates };
+export { useFetch, updateDB, createGame, useRealtimeUpdates };

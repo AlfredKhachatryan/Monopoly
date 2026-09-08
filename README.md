@@ -46,16 +46,19 @@ Every game is one row in the `test` table, identified by a short room code.
 - Phones: open `/Login` (or `/Login?room=<code>` to prefill), type the code,
   pick a figure. The code is remembered in `localStorage` for rejoining.
 
-The migration creates one room, `v6Pstf`. There is no "create game" screen
-yet, so add extra rows by hand for now.
+**Hosting a game:** open `/` on the TV and press **Host New Game**. It creates
+a fresh room with an empty board, shows the code in the corner, and puts
+`?room=<code>` in the address bar. Players then join with that code.
+The migration also seeds one fixed room, `v6Pstf`.
 
 ## Supabase
 
 The client reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from `.env`
 (see `.env.example`; `.env` is gitignored). The schema (table `test`, RLS, Realtime publication,
-and the default room `v6Pstf`) lives in
-`supabase/migrations/20260904123000_create_test_game_table.sql`. Apply it with
-the Supabase CLI (`supabase db push`) or paste it into the SQL editor.
+and the default room `v6Pstf`) lives in `supabase/migrations/`. Apply all
+migrations with the Supabase CLI (`supabase db push`) or paste them into the
+SQL editor in order. The second migration adds the insert grant and policy
+that **Host New Game** needs.
 
 ## Status
 

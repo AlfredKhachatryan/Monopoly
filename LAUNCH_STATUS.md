@@ -72,7 +72,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 | **Houses / hotels** | Owner popup shows 1-4 houses + hotel rent table and prices | "Buy" logs `IMPLEMENT ME`. House count is not stored anywhere, rent ignores houses. |
 | **Colour-set bonus** | "Colour Set Price" shown on cards | Monopoly (full colour set) is never detected; rent is always flat price/10. |
 | **Rent amounts** | Flat price/10 | Real rent table per property, house/hotel multipliers, railroad count, utility dice multiplier. |
-| **Room / game code** | Login code is saved and used by Client; Board takes `?room=` / localStorage and shows the code | No "create game" flow, no validation that the room exists on Login (Board shows "not found"). |
+| **Room / game code** | Login code is saved and used by Client; Board takes `?room=` / localStorage, shows the code, and can host a new room | No validation that the room exists on Login (Board shows "not found"), no 4-player cap in the UI. |
 | **Footer nav (Home / Auction / Players)** | Rendered on Client | No click handlers. Auction screen and Players screen do not exist. |
 | **"Cards" sidebar tab** | Rendered on the right edge | No handler, opens nothing. |
 | **Board reset** | "Click" button on Board | Resets cell positions only. Players' money, ownership and turn order are not reset. |
@@ -109,7 +109,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 - [ ] Full board reset (money, ownership, order) from the Board view.
 
 ### Rooms / multiplayer
-- [ ] Create-game flow: generate a code, insert a fresh row with `initialState()`, show the code on the Board view.
+- [x] Create-game flow: "Host New Game" on the Board view generates a 6-char code, inserts a fresh row with `initialState()`, shows the code and sets `?room=`. Needs migration `20260908120000_allow_create_game.sql` applied (insert grant + policy).
 - [ ] Join by code: validate that the row exists, cap at 4 players.
 - [x] Add Row Level Security and grants for `test` (in the migration; table name kept to match the code). Renaming the table is now optional.
 - [x] Commit the schema as a migration (`supabase/migrations/20260904123000_create_test_game_table.sql`, includes the hard-coded `v6Pstf` room). Not yet applied to a database.

@@ -10,8 +10,8 @@
 --   "Players"      jsonb array   - [{name, figure, money, position, order, playerId}], max 4 figures
 --   current_order  integer       - whose turn: 0..3 (changeOrder wraps at Players.length - 1)
 --
--- The client never inserts or deletes rows. Board.js and Client.jsx hard-code
--- uuid = 'v6Pstf', so that row is created at the end of this migration.
+-- The client never deletes rows. Inserts were added later, see
+-- 20260908120000_allow_create_game.sql. The default room v6Pstf is seeded below.
 
 -- ---------------------------------------------------------------------------
 -- Table

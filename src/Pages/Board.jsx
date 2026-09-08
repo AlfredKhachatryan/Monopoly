@@ -3,9 +3,17 @@ import { initialState } from "../Hooks/baseState";
 import CardRenderer from "../Components/CardRenderer";
 import Button from "../Components/Button";
 import FormInput from "../Components/Input";
-import { useRealtimeUpdates, useFetch, updateDB } from "../Hooks/supabase";
+import ShortUniqueId from "short-unique-id";
+import {
+  useRealtimeUpdates,
+  useFetch,
+  updateDB,
+  createGame,
+} from "../Hooks/supabase";
 import { Chance } from "../Components/Chance";
 import AnimatedNumbers from "../Components/AnimatedNumbers";
+
+const short = new ShortUniqueId({ length: 6 }); // room codes, e.g. "v6Pstf"
 
 function readRoomId() {
   return (
@@ -20,16 +28,43 @@ function Main() {
   // The TV usually opens the URL with the code; players type it on /Login.
   const [uuid, setUuid] = useState(readRoomId);
   const [roomInput, setRoomInput] = useState("");
+  const [hosting, setHosting] = useState(false);
+  const [hostError, setHostError] = useState(null);
 
   useEffect(() => {
-    if (uuid) localStorage.setItem("roomId", uuid);
+    if (!uuid) return;
+    localStorage.setItem("roomId", uuid);
+    // keep ?room= in the address bar so a refresh / bookmark keeps the room
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("room") !== uuid) {
+      url.searchParams.set("room", uuid);
+      window.history.replaceState(null, "", url);
+    }
   }, [uuid]);
+
+  // Host: insert a fresh row with an empty board and open it here.
+  async function hostGame() {
+    setHosting(true);
+    setHostError(null);
+    const { uuid: newUuid, error } = await createGame(initialState(), () =>
+      short.rnd()
+    );
+    setHosting(false);
+    if (error) {
+      setHostError(error.message);
+      return;
+    }
+    setPos(initialState());
+    setUserData([]);
+    setCurrentOrder(0);
+    setUuid(newUuid);
+  }
 
   const [pos, setPos] = useState(initialState());
   const [userData, setUserData] = useState(null);
   const [currentOrder, setCurrentOrder] = useState(null);
-  const { data, error, loading } = useFetch(uuid);
-
+  const { data, loading } = useFetch(uuid);
+  
   function updatePos(pos, user, order) {
     if (pos) {
       setPos(pos);
@@ -83,6 +118,17 @@ function Main() {
             >
               Open Board
             </Button>
+            <br />
+            <div style={{ textAlign: "center", opacity: 0.7 }}>or</div>
+            <br />
+            <Button onClick={hostGame} disabled={hosting}>
+              {hosting ? "Creating..." : "Host New Game"}
+            </Button>
+            {hostError && (
+              <p style={{ color: "#eb476d", textAlign: "center" }}>
+                Could not create game: {hostError}
+              </p>
+            )}
           </div>
         </div>
       </>
@@ -108,6 +154,16 @@ function Main() {
           Room: <b>{uuid}</b>
           {!loading && !data && (
             <span style={{ color: "#eb476d" }}> (not found)</span>
+          )}
+          <div style={{ marginTop: "0.4em" }}>
+            <Button onClick={hostGame} disabled={hosting}>
+              {hosting ? "Creating..." : "Host New Game"}
+            </Button>
+          </div>
+          {hostError && (
+            <div style={{ color: "#eb476d", fontSize: "0.8em" }}>
+              {hostError}
+            </div>
           )}
         </div>
         <div className="parent">
