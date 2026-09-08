@@ -312,11 +312,10 @@ function Client() {
     }, 4500);
     current += result;
     if (current > 40) {
+      // passed Start: cells are 1..40, max roll is 12 so one wrap is enough
       current = current - 40;
-      setCurrentPos(current);
-    } else {
-      setCurrentPos(current);
     }
+    setCurrentPos(current);
     setPos(updateItem(PlayerInfo.figure, current));
 
     const updatedArray = Players.map((item) =>

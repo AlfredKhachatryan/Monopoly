@@ -87,7 +87,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 ## 3. Remaining for launch
 
 ### Must fix (blocking bugs)
-- [ ] **Position wrap is wrong**: `updatePos` wraps at 36 but the board has 40 cells. Cells 37-40 are unreachable and the lap is short. Wrap at 40 and award $200 on passing GO.
+- [x] **Position wrap** fixed: `updatePos` wraps at 40, so cells 37-40 are reachable. $200 for passing GO is still open (see Core gameplay).
 - [x] **Hard-coded room id** removed. Login saves the typed code to `localStorage.roomId` (prefilled from `?room=`); Client reads it; Board reads `?room=` / localStorage or asks for it, and shows the code on screen. Realtime is filtered per room.
 - [x] **Supabase config** moved to `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, see `.env.example`); points at the hosted project.
 - [x] **Client crashes without login**: now redirects to `/Login` when `playerInfo` or `roomId` is missing.
