@@ -38,6 +38,10 @@ import { groupByColor } from "../Hooks/groupByColor";
 
 let current = 0;
 
+// Debug controls show in `npm run dev`, or on any build with ?debug in the URL.
+const DEBUG =
+  import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug");
+
 function readPlayerInfo() {
   try {
     return JSON.parse(localStorage.getItem("playerInfo"));
@@ -71,6 +75,7 @@ function Client() {
   const [isReveal, setIsReveal] = useState(false);
 
   const [BoughtCards, setBoughtCards] = useState({});
+  const [debugCell, setDebugCell] = useState(1);
 
   const prevPos = useRef(currentPos);
 
@@ -324,6 +329,23 @@ function Client() {
     });
   }
 
+  // Debug: move this player straight to a cell, as if the dice landed there.
+  function jumpTo(cell) {
+    const target = Number(cell);
+    if (!pos || !pos[target] || !PlayerInfo) return;
+    current = target;
+    setCurrentPos(target);
+    const updatedArray = Players.map((item) =>
+      item.playerId === PlayerInfo.playerId
+        ? { ...PlayerInfo, position: target }
+        : item
+    );
+    updateDB(uuid, {
+      position: updateItem(PlayerInfo.figure, target),
+      Players: updatedArray,
+    });
+  }
+
   function removePlayer() {
     let tempOrder = order;
     const updatedPlayers = Players.filter(
@@ -479,22 +501,48 @@ function Client() {
               Leave
             </Button>
           </Link>
-          <br />
-          <Button
-            onClick={() => {
-              const updatedArray = Players.map((item) =>
-                item.playerId === PlayerInfo.playerId
-                  ? { ...PlayerInfo, position: 40 }
-                  : item
-              );
-              updateDB(uuid, {
-                position: updateItem(PlayerInfo.figure, 40),
-                Players: updatedArray,
-              });
-            }}
-          >
-            Reset
-          </Button>
+          {DEBUG && pos && (
+            <>
+              <br />
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5em",
+                  alignItems: "center",
+                  padding: "0.4em 0.6em",
+                  border: "1px dashed #eb476d",
+                  borderRadius: "0.4em",
+                  fontSize: "0.85em",
+                }}
+              >
+                <span style={{ opacity: 0.7 }}>Debug</span>
+                <select
+                  value={debugCell}
+                  onChange={(e) => setDebugCell(Number(e.target.value))}
+                  style={{
+                    flex: 1,
+                    background: "#14141463",
+                    color: "#fff",
+                    border: "1px solid #444",
+                    borderRadius: "0.3em",
+                    padding: "0.3em",
+                  }}
+                >
+                  {Object.values(pos).map((cell) => (
+                    <option key={cell.id} value={cell.id}>
+                      {cell.id}. {cell.header}
+                      {cell.info && cell.info !== cell.header
+                        ? ` (${cell.info})`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ width: "5em", flexShrink: 0 }}>
+                  <Button onClick={() => jumpTo(debugCell)}>Go</Button>
+                </div>
+              </div>
+            </>
+          )}
           <br />
           <br />
           <div style={{ display: "flex", gap: "0.3em" }}>

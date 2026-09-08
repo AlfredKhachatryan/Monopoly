@@ -47,7 +47,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 - Animated money counter in the top-right.
 - Bought cards persisted in `localStorage` so they survive a refresh.
 - **Leave**: removes the player, frees the figure, re-numbers turn order, clears local storage.
-- Reset button moves the player to cell 40.
+- Debug panel (dev build or `?debug` in the URL): pick any cell 1-40 and jump there. Replaces the old "Reset to cell 40" button.
 
 ### Shared / infra
 - Supabase client, `useFetch`, `updateDB`, `useRealtimeUpdates` hooks.
