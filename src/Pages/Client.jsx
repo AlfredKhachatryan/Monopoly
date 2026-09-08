@@ -38,6 +38,8 @@ import { groupByColor } from "../Hooks/groupByColor";
 
 let current = 0;
 
+const START_BONUS = 200; // paid when a player passes or lands on Start (cell 1)
+
 // Debug controls show in `npm run dev`, or on any build with ?debug in the URL.
 const DEBUG =
   import.meta.env.DEV ||
@@ -311,17 +313,24 @@ function Client() {
       setResultShow(0);
     }, 4500);
     current += result;
+    let passedStart = false;
     if (current > 40) {
       // passed Start: cells are 1..40, max roll is 12 so one wrap is enough
       current = current - 40;
+      passedStart = true;
     }
     setCurrentPos(current);
     setPos(updateItem(PlayerInfo.figure, current));
 
+    const me = {
+      ...PlayerInfo,
+      position: current,
+      money: PlayerInfo.money + (passedStart ? START_BONUS : 0),
+    };
+    if (passedStart) setPlayerInfo(me); // money counter updates right away
+
     const updatedArray = Players.map((item) =>
-      item.playerId === PlayerInfo.playerId
-        ? { ...PlayerInfo, position: current }
-        : item,
+      item.playerId === PlayerInfo.playerId ? me : item,
     );
     updateDB(uuid, {
       position: updateItem(PlayerInfo.figure, current),

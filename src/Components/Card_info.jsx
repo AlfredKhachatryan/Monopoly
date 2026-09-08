@@ -372,9 +372,9 @@ const Start_Info = (props) => (
     icon={Finish}
     primaryColor={"#D92650"}
     secondaryColor={"#f5786c"}
-    actionText={"Get Money"}
-    subtitle={"You receive 200$"}
-    buy={() => console.log("IMPLEMENT ME!!")}
+    actionText={"OK"}
+    subtitle={"You received 200$ for passing Start"}
+    buy={() => {}} // the bonus is paid in Client.updatePos when the lap wraps
   />
 );
 const Chance_info = (props) => (

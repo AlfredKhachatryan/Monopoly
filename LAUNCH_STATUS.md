@@ -63,7 +63,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 |---|---|---|
 | **Chance cards** | Board cell, centre placeholder, popup card that says "Take A Card" | Button only logs `IMPLEMENT ME!!`. No deck, no card texts, no effects (move, pay, collect). |
 | **Community Chest** | Same as Chance | Same as Chance. |
-| **Start / GO** | Cell, popup "You receive 200$", "Get Money" button | Button is a no-op. Passing GO never awards $200. |
+| **Start / GO** | Passing or landing on Start pays $200 (in `updatePos`); popup just confirms it | Done. |
 | **Railroads** | 4 cells, popup with Buy / Pass | Buy is a no-op; railroads cannot be owned, no rent. |
 | **Utilities (Light / Water)** | 2 cells, popup with Pay / Pass | Pay is a no-op; utilities cannot be owned, no dice-based rent. |
 | **Jail** | Cell, popup "Oh No Sister! You Stuck!" with Pay $200 | No jail mechanic: nothing sends you to jail, no skipped turns, no pay/roll to leave. |
@@ -87,7 +87,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 ## 3. Remaining for launch
 
 ### Must fix (blocking bugs)
-- [x] **Position wrap** fixed: `updatePos` wraps at 40, so cells 37-40 are reachable. $200 for passing GO is still open (see Core gameplay).
+- [x] **Position wrap** fixed: `updatePos` wraps at 40, so cells 37-40 are reachable, and pays $200 when the lap wraps.
 - [x] **Hard-coded room id** removed. Login saves the typed code to `localStorage.roomId` (prefilled from `?room=`); Client reads it; Board reads `?room=` / localStorage or asks for it, and shows the code on screen. Realtime is filtered per room.
 - [x] **Supabase config** moved to `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, see `.env.example`); points at the hosted project.
 - [x] **Client crashes without login**: now redirects to `/Login` when `playerInfo` or `roomId` is missing.
@@ -102,7 +102,7 @@ Every client subscribes to UPDATE events on that table and re-renders.
 - [ ] Jail: go-to-jail, in-jail turns, pay / roll doubles to leave.
 - [ ] Houses / hotels: buy, store count in `position[id]`, use in rent.
 - [ ] Colour-set detection and doubled rent.
-- [ ] $200 for passing GO.
+- [x] $200 for passing GO.
 - [ ] Doubles rule.
 - [ ] Bankruptcy, elimination, winner, "new game".
 - [ ] Rebuild "Houses" sidebar from DB ownership instead of localStorage.
