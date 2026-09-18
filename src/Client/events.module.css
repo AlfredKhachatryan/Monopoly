@@ -1,0 +1,93 @@
+/* One event row. Used at two sizes of list — the latest three floating on the
+ * aura, and the whole history inside the game sheet — which is why the
+ * background is a variable: the sheet sets --ev-row-bg: var(--sunk) on its list
+ * and the row stops pretending to be translucent glass over the tint. */
+
+.ev {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 14px;
+  background: var(--ev-row-bg, var(--ev-bg));
+  color: var(--ink);
+}
+
+.evIc {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--ev-size, 26px);
+  height: var(--ev-size, 26px);
+  border-radius: 50%;
+  background: var(--neu-bg);
+  color: var(--ink);
+}
+
+.evIc svg {
+  width: var(--ev-ic, 15px);
+  height: var(--ev-ic, 15px);
+}
+
+.evName {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The newest row carries the most weight. */
+.ev:first-child .evName {
+  font-weight: 800;
+}
+
+.badge {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--neu-bg);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pos {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.neg {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+.isNew {
+  animation: evIn 240ms ease-out both;
+}
+
+.isNew:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.isNew:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+@keyframes evIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .isNew {
+    animation: none;
+  }
+}
