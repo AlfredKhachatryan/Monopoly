@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" fill="currentColor" role="img" aria-labelledby="t"><title id="t">Yeti silhouette</title>
+  <path d="M46 106 C28 120 26 148 32 160 L44 156 C40 142 44 126 54 116 Z M114 106 C132 120 134 148 128 160 L116 156 C120 142 116 126 106 116 Z"/>
+  <path d="M46 100 L40 112 L46 118 L40 130 L46 136 L42 150 L50 156 L48 170 L112 170 L110 156 L118 150 L114 136 L120 130 L114 118 L120 112 L114 100 Z"/>
+  <ellipse cx="62" cy="178" rx="17" ry="8"/><ellipse cx="98" cy="178" rx="17" ry="8"/>
+  <path d="M71 44 L75 30 L80 42 L86 26 L89 44 Z"/>
+  <path d="M80 38 C62 38 48 52 48 70 L44 76 L50 80 L48 88 L56 92 C62 102 98 102 104 92 L112 88 L110 80 L116 76 L112 70 C112 52 98 38 80 38 Z"/>
+</svg>

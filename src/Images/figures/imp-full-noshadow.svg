@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-labelledby="t"><title id="t">Imp — Afo's figure</title>
+  <path d="M110 150 C138 152 146 128 134 114" fill="none" stroke="#E0284C" stroke-width="8" stroke-linecap="round"/>
+  <path d="M126 104 L144 108 L132 122 Z" fill="#E0284C"/>
+  <rect x="60" y="148" width="16" height="32" rx="8" fill="#E0284C"/>
+  <rect x="84" y="148" width="16" height="32" rx="8" fill="#E0284C"/>
+  <ellipse cx="66" cy="182" rx="12" ry="6" fill="#0E1116"/>
+  <ellipse cx="94" cy="182" rx="12" ry="6" fill="#0E1116"/>
+  <path d="M52 120 C52 96 108 96 108 120 L108 150 C108 164 52 164 52 150 Z" fill="#E0284C"/>
+  <ellipse cx="80" cy="136" rx="17" ry="16" fill="#FF8FA3"/>
+  <path d="M55 120 C40 126 41 142 55 145" fill="none" stroke="#E0284C" stroke-width="10" stroke-linecap="round"/>
+  <path d="M105 120 C120 126 119 142 105 145" fill="none" stroke="#E0284C" stroke-width="10" stroke-linecap="round"/>
+  <path d="M47 66 L30 58 L48 82 Z" fill="#E0284C"/>
+  <path d="M113 66 L130 58 L112 82 Z" fill="#E0284C"/>
+  <path d="M54 50 C44 36 46 22 52 14 C56 30 62 38 68 42 Z" fill="#0E1116"/>
+  <path d="M106 50 C116 36 114 22 108 14 C104 30 98 38 92 42 Z" fill="#0E1116"/>
+  <circle cx="80" cy="70" r="34" fill="#E0284C"/>
+  <path d="M60 58 C62 48 70 44 78 44" fill="none" stroke="#FF8FA3" stroke-width="4" stroke-linecap="round" opacity=".7"/>
+  <ellipse cx="68" cy="68" rx="8" ry="9" fill="#FFFFFF"/>
+  <ellipse cx="92" cy="68" rx="8" ry="9" fill="#FFFFFF"/>
+  <circle cx="70" cy="70" r="4" fill="#0E1116"/>
+  <circle cx="94" cy="70" r="4" fill="#0E1116"/>
+  <path d="M58 55 L74 60 M102 55 L86 60" stroke="#0E1116" stroke-width="4" stroke-linecap="round"/>
+  <path d="M64 82 Q80 100 96 82 Z" fill="#0E1116"/>
+  <path d="M69 83 L75 83 L72 90 Z M85 83 L91 83 L88 90 Z" fill="#FFFFFF"/>
+</svg>

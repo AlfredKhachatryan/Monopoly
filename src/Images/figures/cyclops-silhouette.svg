@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" fill="currentColor" role="img" aria-labelledby="t"><title id="t">Cyclops silhouette</title>
+  <rect x="58" y="164" width="16" height="20" rx="8"/><rect x="86" y="164" width="16" height="20" rx="8"/>
+  <ellipse cx="65" cy="184" rx="13" ry="5.5"/><ellipse cx="95" cy="184" rx="13" ry="5.5"/>
+  <ellipse cx="36" cy="128" rx="9" ry="18" transform="rotate(22 36 128)"/>
+  <ellipse cx="124" cy="128" rx="9" ry="18" transform="rotate(-22 124 128)"/>
+  <path d="M75 62 L80 44 L85 62 Z"/>
+  <path fill-rule="evenodd" d="M40 108 C40 62 120 62 120 108 L120 156 C120 174 40 174 40 156 Z M57 102 a23 23 0 1 0 46 0 a23 23 0 1 0 -46 0 Z M68 104 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0 Z"/>
+</svg>

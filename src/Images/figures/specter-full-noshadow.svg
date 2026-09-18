@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-labelledby="t"><title id="t">Specter — Koli's figure</title>
+  <path d="M84 32 C88 20 98 12 108 14 C100 18 94 24 92 34 Z" fill="#7A4FE0"/>
+  <path d="M80 30 C44 30 36 70 38 110 L36 168 Q46 158 54 170 Q62 182 70 168 Q80 156 90 168 Q98 182 106 170 Q114 158 124 168 L122 110 C124 70 116 30 80 30 Z" fill="#7A4FE0"/>
+  <path d="M50 70 C52 52 62 42 74 38" fill="none" stroke="#B9A2FF" stroke-width="4" stroke-linecap="round" opacity=".6"/>
+  <ellipse cx="80" cy="80" rx="28" ry="32" fill="#B9A2FF"/>
+  <ellipse cx="80" cy="82" rx="24" ry="28" fill="#0E1116"/>
+  <ellipse cx="70" cy="80" rx="5" ry="7.5" fill="#B9A2FF"/>
+  <ellipse cx="90" cy="80" rx="5" ry="7.5" fill="#B9A2FF"/>
+  <circle cx="71.5" cy="77.5" r="1.8" fill="#FFFFFF"/>
+  <circle cx="91.5" cy="77.5" r="1.8" fill="#FFFFFF"/>
+  <path d="M74 96 Q80 100 86 96" fill="none" stroke="#B9A2FF" stroke-width="3" stroke-linecap="round"/>
+  <path d="M46 118 Q80 146 114 118 L114 132 Q80 158 46 132 Z" fill="#B9A2FF"/>
+  <path d="M64 136 L64 144 M96 136 L96 144" stroke="#7A4FE0" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" fill="currentColor" role="img" aria-labelledby="t"><title id="t">Imp silhouette</title>
+  <path d="M110 150 C138 152 146 128 134 114" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+  <path d="M126 104 L144 108 L132 122 Z"/>
+  <rect x="60" y="148" width="16" height="32" rx="8"/><rect x="84" y="148" width="16" height="32" rx="8"/>
+  <ellipse cx="66" cy="182" rx="12" ry="6"/><ellipse cx="94" cy="182" rx="12" ry="6"/>
+  <path d="M52 120 C52 96 108 96 108 120 L108 150 C108 164 52 164 52 150 Z"/>
+  <path d="M55 120 C40 126 41 142 55 145 M105 120 C120 126 119 142 105 145" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round"/>
+  <path d="M47 66 L30 58 L48 82 Z M113 66 L130 58 L112 82 Z"/>
+  <path d="M54 50 C44 36 46 22 52 14 C56 30 62 38 68 42 Z M106 50 C116 36 114 22 108 14 C104 30 98 38 92 42 Z"/>
+  <circle cx="80" cy="70" r="34"/>
+</svg>

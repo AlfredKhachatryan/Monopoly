@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t"><title id="t">Yeti token — Gaya</title>
+  <circle cx="32" cy="32" r="32" fill="#A86400"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M26 22 L28 12 L32 19 L36 11 L38 22 Z" fill="#F2B84B"/>
+  <path d="M32 19 C21 19 14 27 14 37 L11 40 L15 43 L14 47 L19 49 C22 55 42 55 45 49 L50 47 L49 43 L53 40 L50 37 C50 27 43 19 32 19 Z" fill="#F2B84B"/>
+  <path d="M22 30 L29 32 M42 30 L35 32" stroke="#0E1116" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="27" cy="36" r="2.6" fill="#0E1116"/>
+  <circle cx="37" cy="36" r="2.6" fill="#0E1116"/>
+  <path d="M26 44 Q32 48 38 44" fill="none" stroke="#0E1116" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M26 44 L27.5 39.5 L29.5 45 Z M34.5 45 L36.5 39.5 L38 44 Z" fill="#FFFFFF" stroke="#0E1116" stroke-width=".9" stroke-linejoin="round"/>
+</svg>

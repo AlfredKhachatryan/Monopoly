@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t"><title id="t">Imp token — Afo</title>
+  <circle cx="32" cy="32" r="32" fill="#E0284C"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M20 27 C14 19 16 11 19 7 C21 15 25 19 28 21 Z" fill="#0E1116"/>
+  <path d="M44 27 C50 19 48 11 45 7 C43 15 39 19 36 21 Z" fill="#0E1116"/>
+  <path d="M15 36 L8 32 L16 43 Z M49 36 L56 32 L48 43 Z" fill="#FF8FA3"/>
+  <circle cx="32" cy="37" r="17" fill="#FF8FA3"/>
+  <ellipse cx="26" cy="35" rx="4.2" ry="4.8" fill="#FFFFFF"/>
+  <ellipse cx="38" cy="35" rx="4.2" ry="4.8" fill="#FFFFFF"/>
+  <circle cx="27" cy="36" r="2.2" fill="#0E1116"/>
+  <circle cx="39" cy="36" r="2.2" fill="#0E1116"/>
+  <path d="M21 28.5 L29 31 M43 28.5 L35 31" stroke="#0E1116" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M24 43 Q32 52 40 43 Z" fill="#0E1116"/>
+  <path d="M27 43.3 L30 43.3 L28.5 47 Z M34 43.3 L37 43.3 L35.5 47 Z" fill="#FFFFFF"/>
+</svg>

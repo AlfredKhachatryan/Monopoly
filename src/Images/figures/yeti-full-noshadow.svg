@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-labelledby="t"><title id="t">Yeti — Gaya's figure</title>
+  <path d="M46 106 C28 120 26 148 32 160 L44 156 C40 142 44 126 54 116 Z" fill="#A86400"/>
+  <path d="M114 106 C132 120 134 148 128 160 L116 156 C120 142 116 126 106 116 Z" fill="#A86400"/>
+  <path d="M46 100 L40 112 L46 118 L40 130 L46 136 L42 150 L50 156 L48 170 L112 170 L110 156 L118 150 L114 136 L120 130 L114 118 L120 112 L114 100 Z" fill="#A86400"/>
+  <ellipse cx="80" cy="136" rx="20" ry="22" fill="#F2B84B"/>
+  <ellipse cx="62" cy="178" rx="17" ry="8" fill="#F2B84B"/>
+  <ellipse cx="98" cy="178" rx="17" ry="8" fill="#F2B84B"/>
+  <path d="M54 176 L54 182 M60 175 L60 183 M100 175 L100 183 M106 176 L106 182" stroke="#0E1116" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M71 44 L75 30 L80 42 L86 26 L89 44 Z" fill="#A86400"/>
+  <path d="M80 38 C62 38 48 52 48 70 L44 76 L50 80 L48 88 L56 92 C62 102 98 102 104 92 L112 88 L110 80 L116 76 L112 70 C112 52 98 38 80 38 Z" fill="#A86400"/>
+  <ellipse cx="80" cy="78" rx="21" ry="17" fill="#F2B84B"/>
+  <path d="M64 64 L76 67 M96 64 L84 67" stroke="#0E1116" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="72" cy="74" r="4.2" fill="#0E1116"/>
+  <circle cx="88" cy="74" r="4.2" fill="#0E1116"/>
+  <circle cx="73.4" cy="72.6" r="1.4" fill="#FFFFFF"/>
+  <circle cx="89.4" cy="72.6" r="1.4" fill="#FFFFFF"/>
+  <path d="M71 88 Q80 94 89 88" fill="none" stroke="#0E1116" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M71 88 L73 80 L76 89 Z M84 89 L87 80 L89 88 Z" fill="#FFFFFF" stroke="#0E1116" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

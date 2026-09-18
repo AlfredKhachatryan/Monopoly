@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t"><title id="t">Specter token — Koli</title>
+  <circle cx="32" cy="32" r="32" fill="#7A4FE0"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M34 13 C36 8 40 5 45 6 C41 8 38 11 37 15 Z" fill="#B9A2FF"/>
+  <path d="M32 12 C18 12 13 26 14 40 L14 54 L50 54 L50 40 C51 26 46 12 32 12 Z" fill="#B9A2FF"/>
+  <ellipse cx="32" cy="36" rx="11" ry="13" fill="#0E1116"/>
+  <ellipse cx="27.5" cy="35" rx="2.6" ry="3.8" fill="#FFFFFF"/>
+  <ellipse cx="36.5" cy="35" rx="2.6" ry="3.8" fill="#FFFFFF"/>
+  <path d="M29 43 Q32 45 35 43" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
