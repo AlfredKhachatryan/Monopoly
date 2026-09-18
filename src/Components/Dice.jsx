@@ -1,81 +1,55 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import "../styles/dice.css";
-function DiceRoller({ click, setResult, setIsReveal }) {
-  const prevSide = useRef();
+
+// One 3D die. Kept outside DiceRoller so React reuses the same DOM node and
+// the CSS transform transition can play between faces.
+function Die({ side }) {
+  return (
+    <div>
+      <div id="dice" data-side={side}>
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className={`sides side-${i + 1}`}>
+            {[...Array(i + 1)].map((_, j) => (
+              <span key={j} className={`dot dot-${j + 1}`} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Two dice. The values come from the server (game.dice); a new `rollId`
+// plays the roll animation towards `values`.
+function DiceRoller({ values = [1, 1], rollId = 0 }) {
   const [side1, setSide1] = useState(0);
   const [side2, setSide2] = useState(0);
-  const [isFirstRoll, setIsFirstRoll] = useState(true);
+  const lastRoll = useRef(0);
+  const timer = useRef(null);
 
   useEffect(() => {
-    prevSide.current = side1;
-  }, [side1]);
+    if (!rollId || rollId === lastRoll.current) return;
+    lastRoll.current = rollId;
+    const [r1, r2] = values;
 
-  const uniformDis = () => {
-    return Math.floor(Math.random() * 6) + 1;
-  };
+    // The CSS transition only plays when data-side changes, so a die that
+    // shows the same face twice is nudged to a neighbour face first.
+    const nudge = (v) => (v % 6) + 1;
+    setSide1((s) => (s === r1 ? nudge(r1) : r1));
+    setSide2((s) => (s === r2 ? nudge(r2) : r2));
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      setSide1(r1);
+      setSide2(r2);
+    }, 500);
+  }, [rollId, values]);
 
-  const rollDice = () => {
-    const result1 = uniformDis();
-    const result2 = uniformDis();
-
-    // For the first die
-    if (prevSide.current === result1) {
-      setSide1(result1 - 1);
-      setTimeout(() => {
-        setSide1(result1);
-      }, 500);
-    } else {
-      setSide1(result1);
-    }
-
-    // For the second die
-    setSide2(result2);
-
-    // Pass the sum of both dice rolls to the parent component
-    setResult(result1 + result2);
-  };
-
-  useEffect(() => {
-    if (click > 0) {
-      rollDice();
-    }
-  }, [click]);
+  useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
     <>
-      {/* First Dice */}
-      <div>
-        <div
-          id="dice"
-          data-side={side1}
-          className={isFirstRoll ? "" : "reRoll"}
-        >
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className={`sides side-${i + 1}`}>
-              {[...Array(i + 1)].map((_, j) => (
-                <span key={j} className={`dot dot-${j + 1}`} />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Second Dice */}
-      <div>
-        <div
-          id="dice"
-          data-side={side2}
-          className={isFirstRoll ? "" : "reRoll"}
-        >
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className={`sides side-${i + 1}`}>
-              {[...Array(i + 1)].map((_, j) => (
-                <span key={j} className={`dot dot-${j + 1}`} />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      <Die side={side1} />
+      <Die side={side2} />
     </>
   );
 }

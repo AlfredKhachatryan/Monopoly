@@ -1,7 +1,7 @@
 // Shared framer-motion setup.
 //
-// - LazyMotion + `m` loads only the small "domAnimation" feature set
-//   (no layout/drag engine), so the bundle cost stays low.
+// - LazyMotion + `m` loads the "domMax" feature set: the Client's hand of
+//   cards is dragged, which needs the gesture engine. (~15 KB over domAnimation.)
 // - MotionConfig reducedMotion="user" disables the motion for people who
 //   have "reduce motion" switched on in their OS.
 // - Every variant below only animates opacity / transform, which the
@@ -9,7 +9,7 @@
 import {
   LazyMotion,
   MotionConfig,
-  domAnimation,
+  domMax,
   m,
   AnimatePresence,
 } from "framer-motion";
@@ -53,7 +53,7 @@ const tap = { scale: 0.97 };
 
 function MotionProvider({ children }) {
   return (
-    <LazyMotion features={domAnimation}>
+    <LazyMotion features={domMax}>
       <MotionConfig reducedMotion="user">{children}</MotionConfig>
     </LazyMotion>
   );

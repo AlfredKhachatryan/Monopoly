@@ -163,6 +163,37 @@ const colors = {
   fig2: "#F56CC6",
   fig3: "#6F6CF5",
 };
+
+// Small green squares for houses, one red block for the hotel (houses = 5).
+const HouseMarks = styled.div`
+  display: flex;
+  gap: 2px;
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  z-index: 1;
+  span {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: #2ecc71;
+    box-shadow: 0 0 2px #000;
+  }
+  span.hotel {
+    width: 14px;
+    background: #e74c3c;
+  }
+`;
+function Houses({ count }) {
+  if (!count) return null;
+  return (
+    <HouseMarks title={count >= 5 ? "Hotel" : `${count} house(s)`}>
+      {count >= 5 ? <span className="hotel" /> : [...Array(count)].map((_, i) => <span key={i} />)}
+    </HouseMarks>
+  );
+}
+
 function Card_Map({
   className,
   children,
@@ -172,6 +203,7 @@ function Card_Map({
   price,
   onClick,
   bought,
+  houses,
 }) {
   return (
     <Card
@@ -189,6 +221,7 @@ function Card_Map({
       </CardAvatar>
       <CardInfo className="card-info">
         {findTrueKey(bought) && <Fig1Border c1={colors[findTrueKey(bought)]} />}
+        <Houses count={houses} />
         <CardTitle style={{ color: "#fff" }}></CardTitle>
         {children}
         <CardSubtitle
@@ -234,6 +267,7 @@ function CustomCard({
         <CardSubtitle style={{ color: "#fff" }}>{subtitle}</CardSubtitle>
       </CardAvatar>
       <CardInfo>
+        {findTrueKey(bought) && <Fig1Border c1={colors[findTrueKey(bought)]} />}
         {children}
         <CardTitle>
           {icon && (

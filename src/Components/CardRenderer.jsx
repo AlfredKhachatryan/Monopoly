@@ -38,6 +38,7 @@ const Cell = memo(function Cell({ cell, showTokens }) {
     state,
     id,
     bought,
+    houses,
     ...figures
   } = cell;
 
@@ -55,7 +56,6 @@ const Cell = memo(function Cell({ cell, showTokens }) {
   };
 
   const Component = getComponent();
-  console.log(showTokens);
   return (
     <Component
       className={name}
@@ -68,6 +68,7 @@ const Cell = memo(function Cell({ cell, showTokens }) {
       secondary={secondary} // colors for icon
       state={state} // animation for icon
       bought={bought}
+      houses={houses}
     >
       {showTokens && (
         <FigureBox
@@ -78,6 +79,8 @@ const Cell = memo(function Cell({ cell, showTokens }) {
     </Component>
   );
 });
+
+export { Cell };
 
 const CardRenderer = ({ pos, showTokens = true }) => {
   return (
