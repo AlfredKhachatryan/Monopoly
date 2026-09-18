@@ -1,0 +1,168 @@
+/* Dev-only chrome for client-harness.html. Deliberately not part of
+ * src/styles -- this never ships, it only frames the phone screen and hosts
+ * the scenario switcher while running `npm run dev:mock`. */
+
+/* A pass-through, deliberately: the harness must show exactly what production
+ * shows, which is the client at the full width of the viewport. No width cap,
+ * no centring, no frame of its own — this only gives the client a full-height
+ * box to sit in. (The toolbar handle can end up over the client's top-right
+ * corner at narrow widths; that is a dev tool overlapping a dev preview, and
+ * not a reason to constrain the app.) */
+.devPhoneFrame {
+  height: 100dvh;
+  position: relative;
+}
+
+.devToolbar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 99999;
+  width: 270px;
+  max-width: 42vw;
+  max-height: 100dvh;
+  overflow-y: auto;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  color: #eee;
+  background: rgba(20, 18, 27, 0.94);
+  border-left: 2px solid #ff3d6c;
+}
+
+.devToolbar--collapsed {
+  width: auto;
+  max-width: none;
+  background: transparent;
+  border: none;
+}
+
+.devToolbar__handle {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  background: #ff3d6c;
+  color: #fff;
+  border: none;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.devToolbar__body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.devToolbar__title {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #ff3d6c;
+}
+
+.devToolbar__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.devToolbar__label {
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.devToolbar__select {
+  width: 100%;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #1f1c2b;
+  color: #eee;
+}
+
+.devToolbar__hint {
+  opacity: 0.65;
+  line-height: 1.35;
+}
+
+.devToolbar__btn {
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #262233;
+  color: #eee;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.devToolbar__btn:hover {
+  background: #322c46;
+}
+
+@media (max-width: 720px) {
+  .devToolbar {
+    width: 220px;
+    max-width: 60vw;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Linked-mode layout (tv-harness.html?phone=1): two same-origin iframes, the
+ * TV on the left filling whatever space is left, the phone on the right in a
+ * fixed 390x844 frame. Each iframe has its own `window`, which is exactly
+ * the point -- see tvHarness.jsx's header comment for why a same-page split
+ * (instead of two iframes) would break the TV's own window-based scaling.
+ * -------------------------------------------------------------------------- */
+.tvLinkedLayout {
+  display: flex;
+  align-items: stretch;
+  height: 100dvh;
+  width: 100vw;
+  background: #0b0a12;
+}
+
+.tvLinkedTv {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.tvLinkedTvFrame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0b0a12;
+}
+
+.tvLinkedPhone {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #14121c;
+  border-left: 2px solid #ff3d6c;
+}
+
+.tvLinkedPhoneFrame {
+  width: 390px;
+  height: 844px;
+  max-height: calc(100dvh - 32px);
+  border-radius: 36px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.8);
+  background: #000;
+}
+
+.tvLinkedPhoneIframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
