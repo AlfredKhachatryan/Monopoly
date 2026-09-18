@@ -55,17 +55,35 @@ const useFetch = (uuid) => {
   return { data, error, loading };
 };
 
-const updateDB = async (uuid, prop) => {
+// One-shot read of a room. useFetch above is the hook version for a first
+// paint; this is for refetching on demand (waking from sleep, reconnecting).
+const fetchRoom = async (uuid) => {
+  if (!uuid) return { data: null, error: null };
   const { data, error } = await supabase
     .from("test")
-    .update(prop)
+    .select("*")
     .eq("uuid", uuid)
-    .select();
+    .maybeSingle();
+  if (error) console.error(`fetchRoom failed for ${uuid}:`, error.message);
+  return { data: data ?? null, error };
+};
+
+// Every write goes through the game_action Postgres function (see
+// supabase/migrations/20260918140000_game_rules.sql). It locks the room
+// row and applies the action to the current DB state, so two phones acting at
+// once cannot overwrite each other. Resolves to { data: row, error }; the
+// error message is user-readable ("Not enough money", "Room is full", ...).
+const gameAction = async (uuid, action, payload = {}) => {
+  const { data, error } = await supabase.rpc("game_action", {
+    room: uuid,
+    action,
+    payload,
+  });
 
   if (error) {
-    console.error(`updateDB failed for room ${uuid}:`, error.message);
+    console.error(`game_action ${action} failed for room ${uuid}:`, error.message);
   }
-  return { data, error };
+  return { data: Array.isArray(data) ? data[0] : data, error };
 };
 
 // Creates a fresh room. Retries on a code collision (unique violation).
@@ -88,9 +106,14 @@ const createGame = async (position, makeCode, attempts = 3) => {
 // Subscribes to UPDATE events for one room only. The callback is kept in a
 // ref so callers can pass a fresh closure every render without
 // re-subscribing; the channel is removed on unmount / room change.
-const useRealtimeUpdates = (uuid, callback) => {
+// `onSubscribed` fires every time the channel reaches SUBSCRIBED, which is the
+// first connect and every reconnect after a drop. Callers use it to refetch,
+// since anything that happened while the socket was down was never delivered.
+const useRealtimeUpdates = (uuid, callback, onSubscribed) => {
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
+  const subscribedRef = useRef(onSubscribed);
+  subscribedRef.current = onSubscribed;
 
   useEffect(() => {
     if (!uuid) return;
@@ -107,7 +130,9 @@ const useRealtimeUpdates = (uuid, callback) => {
         },
         (payload) => callbackRef.current(payload)
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") subscribedRef.current?.();
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -115,4 +140,4 @@ const useRealtimeUpdates = (uuid, callback) => {
   }, [uuid]);
 };
 
-export { useFetch, updateDB, createGame, useRealtimeUpdates };
+export { useFetch, fetchRoom, gameAction, createGame, useRealtimeUpdates };

@@ -1,30 +1,27 @@
-export const groupByColor = (items) => {
+// Groups board cells by colour, in the order the colour sets appear on the
+// board (railroads / utilities, colour "#000", come last).
+// Returns [[color, cells], ...].
+export const groupByColor = (cells) => {
   const colorOrder = [
     "#D92650",
-    "#6F6CF5",
+    "#eb75e7",
     "#F5786C",
     "#1F8F5D",
     "#1F8FFF",
     "#F56CC6",
-    "#0942B3",
+    "#6F6CF5",
     "#DE951F",
     "#000",
   ];
 
-  // Grouping by color
-  const grouped = items.reduce((acc, [key, [, value]]) => {
-    if (!acc[value.color]) {
-      acc[value.color] = [];
-    }
-    acc[value.color].push([key, value]);
-    return acc;
-  }, {});
+  const grouped = {};
+  for (const cell of cells || []) {
+    (grouped[cell.color] ||= []).push(cell);
+  }
 
-  // Reordering based on the predefined colorOrder
-  return colorOrder.reduce((acc, color) => {
-    if (grouped[color]) {
-      acc[color] = grouped[color];
-    }
-    return acc;
-  }, {});
+  const known = colorOrder.filter((c) => grouped[c]).map((c) => [c, grouped[c]]);
+  const rest = Object.keys(grouped)
+    .filter((c) => !colorOrder.includes(c))
+    .map((c) => [c, grouped[c]]);
+  return [...known, ...rest];
 };

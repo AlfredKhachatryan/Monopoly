@@ -1,5 +1,3 @@
-import Bolt from "../Icons/Bolt.json";
-import Ocean from "../Icons/Ocean.json";
 function initialState() {
   const obj = {};
   const baseItems = [
@@ -9,7 +7,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#D92650",
       price: 60,
-      basePrice: 60,
     },
     { header: "Community", community: true, info: "Community", color: "#000" },
     {
@@ -17,13 +14,11 @@ function initialState() {
       info: "Ownd By ''",
       color: "#D92650",
       price: 60,
-      basePrice: 60,
     },
     { header: "Tax", tax: true, info: "Tax", color: "#000", price: 200 },
     {
       header: "RailRoad",
       price: 200,
-      basePrice: 200,
       road: true,
       info: "Support",
       color: "#000",
@@ -33,7 +28,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#eb75e7",
       price: 100,
-      basePrice: 100,
     },
     { header: "Chance", chance: true, info: "Chance", color: "#000" },
     {
@@ -41,7 +35,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#eb75e7",
       price: 100,
-      basePrice: 10,
       name: "borderLeft",
     },
     {
@@ -49,7 +42,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#eb75e7",
       price: 120,
-      basePrice: 12,
     },
     { header: "Jail", jail: true, info: "Jail", color: "#000" },
     {
@@ -57,14 +49,13 @@ function initialState() {
       info: "Ownd By ''",
       color: "#F5786C",
       price: 140,
-      basePrice: 14,
     },
     {
       header: "Communal",
       communal: true,
       info: "Light",
       color: "#000",
-      state: "loop-charging",
+      price: 150,
       primary: "#de951f",
       secondary: "#e9b563",
       state: "loop-charging",
@@ -74,20 +65,17 @@ function initialState() {
       info: "Ownd By ''",
       color: "#F5786C",
       price: 140,
-      basePrice: 14,
     },
     {
       header: "Дом Коли",
       info: "Ownd By ''",
       color: "#F5786C",
       price: 160,
-      basePrice: 16,
       name: "borderBottom",
     },
     {
       header: "RailRoad",
       price: 200,
-      basePrice: 200,
       road: true,
       info: "Offlane",
       color: "#000",
@@ -97,7 +85,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#1F8F5D",
       price: 160,
-      basePrice: 160,
     },
     { header: "Community", community: true, info: "Community", color: "#000" },
     {
@@ -105,14 +92,12 @@ function initialState() {
       info: "Ownd By ''",
       color: "#1F8F5D",
       price: 180,
-      basePrice: 18,
     },
     {
       header: "Мега Молл",
       info: "Ownd By ''",
       color: "#1F8F5D",
       price: 200,
-      basePrice: 20,
       name: "borderBottom",
     },
     { header: "Park", parking: true, info: "Free Park", color: "#000" },
@@ -121,7 +106,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#1F8FFF",
       price: 220,
-      basePrice: 22,
     },
     { header: "Chance", chance: true, info: "Chance", color: "#000" },
     {
@@ -129,20 +113,17 @@ function initialState() {
       info: "Ownd By ''",
       color: "#1F8FFF",
       price: 220,
-      basePrice: 22,
     },
     {
       header: "For Honor",
       info: "Ownd By ''",
       color: "#1F8FFF",
       price: 240,
-      basePrice: 24,
       name: "borderLeft",
     },
     {
       header: "RailRoad",
       price: 200,
-      basePrice: 200,
       road: true,
       info: "Midlane",
       color: "#000",
@@ -152,13 +133,13 @@ function initialState() {
       info: "Ownd By ''",
       color: "#F56CC6",
       price: 260,
-      basePrice: 260,
     },
     {
       header: "Communal",
       communal: true,
       info: "Water",
       color: "#000",
+      price: 150,
       primary: "#0942b3",
       secondary: "#1f8fff",
       state: "hover-pinch",
@@ -168,14 +149,12 @@ function initialState() {
       info: "Ownd By ''",
       color: "#F56CC6",
       price: 260,
-      basePrice: 260,
     },
     {
       header: "Steam",
       info: "Ownd By ''",
       color: "#F56CC6",
       price: 280,
-      basePrice: 28,
       name: "borderLeft",
     },
     { header: "Jail", GTJ: true, info: "Go To Jail", color: "#000" },
@@ -184,7 +163,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#6F6CF5",
       price: 300,
-      basePrice: 300,
     },
     { header: "Community", community: true, info: "Community", color: "#000" },
     {
@@ -192,7 +170,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#6F6CF5",
       price: 300,
-      basePrice: 300,
       name: "borderBottom",
     },
     {
@@ -200,12 +177,10 @@ function initialState() {
       info: "Ownd By ''",
       color: "#6F6CF5",
       price: 320,
-      basePrice: 320,
     },
     {
       header: "RailRoad",
       price: 200,
-      basePrice: 200,
       road: true,
       info: "Carry",
       color: "#000",
@@ -217,7 +192,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#DE951F",
       price: 350,
-      basePrice: 350,
     },
     {
       header: "Luxury Tax",
@@ -231,7 +205,6 @@ function initialState() {
       info: "Ownd By ''",
       color: "#DE951F",
       price: 400,
-      basePrice: 400,
     },
   ];
 
