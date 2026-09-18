@@ -14,11 +14,12 @@ import "./CDN/bootstrap.min.css";
 //imported global style
 
 import "./styles/main.css";
+import "./styles/tokens.css";
 
 //end of import
 
 import { Main } from "./Pages/Board";
-import { Client } from "./Pages/Client";
+import { Client } from "./Client/ClientScreen";
 import { Login } from "./Pages/Login";
 import { MotionProvider } from "./Components/Motion";
 

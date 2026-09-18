@@ -1,0 +1,1971 @@
+/* The "4D Split" phone controller.
+ *
+ * Two halves. The top one is an aura: a radial wash of --tint, the colour of
+ * the space you are standing on, carrying your name, your cash, whose turn it
+ * is and the last three things that happened. The bottom one is a white panel
+ * pinned to the floor of the screen with everything you can actually press.
+ *
+ * --tint / --on-tint are written inline on the root by ClientScreen; every rule
+ * here reads them, so landing on a new colour re-themes the whole controller
+ * without a single component re-rendering for the colour's sake.
+ *
+ * All the other variables come from the [data-client] block in styles/tokens.css.
+ */
+
+/* The page the controller sits on. Full viewport, --ground. `body.client-active`
+ * in tokens.css is painted the same colour in both themes, so an overscroll
+ * bounce past this element shows no seam. */
+.screen {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+}
+
+/* The controller itself. It fills the viewport at every width — there is no
+ * phone-width column and no fake handset.
+ *
+ * It is also the containing block for the sheets, their scrim and the card
+ * overlay: ClientScreen renders all three as siblings of .stage inside this
+ * element and they are `position: absolute`, so they always cover exactly the
+ * app, whatever its size, with no width logic of their own. */
+.app {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  /* `hidden` first as the fallback, then `clip`, which clips exactly the same
+   * way but does NOT make a scroll container out of this box. That difference
+   * is the whole point: a bottom sheet mounts translated a full sheet-height
+   * below this element, and with `hidden` that overflow was scrollable — a
+   * focus() or a scrollIntoView() inside the sheet could and did scroll the
+   * entire controller up by 18-42px mid-animation, taking the scrim's bottom
+   * edge off the floor of the screen with it. With `clip` there is nothing to
+   * scroll and the overflow is not handed to any ancestor either, so the
+   * document stays exactly 100dvh tall. */
+  overflow: hidden;
+  overflow: clip;
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+  background: radial-gradient(
+    130% 70% at 50% 0%,
+    color-mix(in srgb, var(--tint) var(--glow-mix), var(--glow-base)) 0%,
+    color-mix(in srgb, var(--tint) 12%, var(--glow-base)) 72%,
+    var(--ground) 100%
+  );
+  transition: background-color 300ms ease-out;
+}
+
+.app *,
+.app *::before,
+.app *::after {
+  box-sizing: border-box;
+}
+
+/* Everything you can read or press. Split out of .app so it can be made
+ * `inert` as one block while a sheet or the card overlay is open — those two
+ * live outside it, as siblings, so they stay reachable. */
+.stage {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  /* both children opt out of the automatic minimum size: a grid item defaults
+   * to min-width:auto, and one long uppercase verb ("ROLL FOR DOUBLES" at 26px)
+   * would otherwise make the whole panel wider than the phone instead of
+   * letting the button shrink and ellipsise. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The element resets live inside :where() so they carry ZERO specificity of
+ * their own. A plain `.app button { … }` is (0,1,1) and silently beat every
+ * single-class component rule below it — .primary, .pass, .alt, .tBuild,
+ * .gcBtn, .evsMore all lost their fill, border, padding and display font to
+ * it. With :where() the selector weighs (0,1,0) and source order decides, so
+ * "reset first, component rules after" actually holds. Keep this block FIRST. */
+.app :where(button) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 120ms ease-out,
+    background-color var(--t-fast) ease-out,
+    color var(--t-fast) ease-out,
+    box-shadow var(--t-fast) ease-out;
+}
+
+.app :where(button):active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.app :where(button):disabled {
+  cursor: default;
+}
+
+.app :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* ...and nothing else draws one. Bootstrap 4's reboot (src/CDN/bootstrap.min.css)
+ * ships `button:focus { outline: 5px auto -webkit-focus-ring-color }` — a plain
+ * :focus rule, NOT :focus-visible — so every button in the controller wore
+ * Chrome's native ring the moment it was clicked, tapped, or focused from code.
+ * Measured at 5px auto on the ticket's Build pill, the bottom nav, "Full log"
+ * and, most visibly, the sheet's close button, which is focused on every open.
+ * `:focus-visible` was false in all of those, so the rule above was never the
+ * one painting it. The ring this design wants is the keyboard-only one above;
+ * this takes the other one back off.
+ *
+ * Specificity: .app (0,1,0) + :focus (0,1,0) + :not(:focus-visible) (0,1,0)
+ * = (0,3,0), which clears Bootstrap's (0,1,1). :where() keeps the element list
+ * itself weightless. */
+.app :where(button, select, a, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+.app :where(p, h2, h3, ul, ol) {
+  margin: 0;
+  padding: 0;
+}
+
+.app :where(li) {
+  list-style: none;
+}
+
+/* Visible to a screen reader, invisible to everyone else. */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- aura */
+
+/* Two blocks, not three: everything that identifies you (banners, name, cash,
+ * turn) is one thing at the top, and the events hang off the bottom edge.
+ * With the banners as their own grid child, `space-between` used to strand the
+ * name and cash halfway down the screen with a void above and below. */
+.aura {
+  /* The containing block for the money layer's overflow (PayFx.jsx hangs off
+   * .auraTop below): a transfer must not reflow a single pixel of the panel
+   * underneath, and must not escape the aura either. */
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 20px 16px;
+}
+
+.auraTop {
+  /* `relative` for the money layer (PayFx.jsx), which hangs from this block's
+   * bottom edge into the empty middle of the aura. */
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.banners {
+  display: grid;
+  gap: 6px;
+}
+
+/* No banner, no row: the top block's gap must not be reserved for nothing. */
+.banners:empty {
+  display: none;
+}
+
+/* Banners speak the event-row language so the top of the aura stays one thing. */
+.bn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  /* --ev-bg is translucent white, which all but vanishes on a light tint; an
+   * opaque neutral plus a hairline keeps an info banner readable on every
+   * group colour. */
+  background: var(--neu-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* A banner that carries a way out — the pending trade offer's Cancel. The
+ * banner is still a statement; this is the one thing that can be done about it,
+ * so it sits at the end of the line as a pill rather than as a second row.
+ * The pill keeps a full 44px target and pulls 4px back out of the banner's own
+ * padding, so the banner grows to 48px rather than 56px. */
+.bnBtn {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  margin: -4px -6px -4px 0;
+  border-radius: 999px;
+  background: var(--neu-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bnBtn:disabled {
+  color: var(--muted);
+}
+
+.bnErr {
+  background: var(--neg-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neg) 35%, transparent);
+  color: var(--neg);
+}
+
+.bnGood {
+  background: var(--pos-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos) 35%, transparent);
+  color: var(--pos);
+}
+
+.dSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.dLeft {
+  min-width: 0;
+}
+
+.dName {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.dNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The event badge at the top of the feed already shouts the number; this is
+ * the same fact, kept because players relied on it — so it whispers. */
+.dDelta {
+  flex: none;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dPos {
+  color: var(--pos);
+}
+
+.dNeg {
+  color: var(--neg);
+}
+
+/* Always-on "In jail", the way the old StatusBar carried it — not only while
+ * it happens to be your roll. */
+.dFlag {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--neu-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dLeft strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.dRight {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  text-align: right;
+  min-width: 0;
+}
+
+.dTurn {
+  font-family: var(--f-display);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* A crimson dot in front of the turn label when the turn is mine. */
+.app[data-mine] .dTurn::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--crim);
+  vertical-align: 3px;
+}
+
+.bump {
+  animation: bump 320ms ease-out;
+}
+
+@keyframes bump {
+  40% {
+    transform: scale(1.06);
+  }
+}
+
+/* The cash number's own moment. When money moves because of a transfer the
+ * count-up is held back until the coins arriving on the TV would land, and a
+ * red or green wash comes up behind the digits so the change is felt and not
+ * just read. Painted on a pseudo-element behind the text: no layout, and the
+ * number itself never changes colour (it has to stay AA on the aura). */
+.cashBox {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+}
+
+.cashBox::before {
+  content: "";
+  position: absolute;
+  inset: -4px -14px -2px;
+  z-index: -1;
+  border-radius: 16px;
+  opacity: 0;
+  background: var(--neu-bg);
+}
+
+.cashBox[data-flash="pos"]::before {
+  background: var(--pos-bg);
+}
+
+.cashBox[data-flash="neg"]::before {
+  background: var(--neg-bg);
+}
+
+.cashBox[data-flash]::before {
+  animation: cashFlash 1400ms ease-out both;
+}
+
+@keyframes cashFlash {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.order {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.order li {
+  display: flex;
+}
+
+.oTok {
+  box-shadow: 0 0 0 2px var(--surface);
+  transition: box-shadow var(--t-fast) ease-out;
+}
+
+.isNow .oTok {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--ink);
+}
+
+.isOut .oTok {
+  opacity: 0.35;
+}
+
+/* Bottom-aligned, and it owns the flexible row, so a short phone shortens the
+ * void above the rows instead of pushing a half-row under the panel.
+ *
+ * `max-height: 100%` + clip is the guard that makes "shortens" true at EVERY
+ * height, not only the ones with a breakpoint below. This is a grid item in a
+ * `minmax(0, 1fr)` row with `align-self: end`: when the row collapsed, the
+ * item kept its natural height and hung UPWARD out of its cell, straight over
+ * .auraTop — measured 116px of event rows drawn across the player's name and
+ * cash at 390px of viewport height (and identical at 430x390, so it was never
+ * about width). Capped to the cell, the events give way instead. The
+ * breakpoints below then make sure what gives way is whole rows, never half
+ * of one. */
+.evsWrap {
+  align-self: end;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 2px;
+  min-height: 0;
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  overflow: clip;
+}
+
+/* "Latest" and the log button share one line above the rows: the affordance
+ * gets a real 44px hit area without costing a 44px band of its own. */
+.evsHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.evsLab {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.evs {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+}
+
+.evsMore {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0 10px;
+  margin-right: -10px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ panel */
+
+.panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 20px calc(env(safe-area-inset-bottom, 0px) + 4px);
+  border-radius: 28px 28px 0 0;
+  background: var(--surface);
+  box-shadow: 0 -16px 40px -24px var(--shadow);
+}
+
+/* -------------------------------------------------------------------- path */
+
+.path {
+  display: grid;
+  gap: 6px;
+}
+
+.pathDots {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 4px;
+  background: linear-gradient(var(--line), var(--line)) center / calc(100% - 16px) 2px no-repeat;
+}
+
+.pd {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dot, var(--tint));
+  box-shadow: 0 0 0 3px var(--surface);
+  transition: background-color 300ms ease-out;
+}
+
+.pdOwned {
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--muted);
+}
+
+.pdCur {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--ink);
+}
+
+.pTok {
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.hop {
+  display: block;
+  animation: hop 300ms ease-out;
+}
+
+@keyframes hop {
+  0% {
+    transform: translateY(-10px) scale(0.8);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(2px);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.pathLab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.pathSide {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 46%;
+  min-width: 0;
+}
+
+.pathName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pathRight {
+  margin-left: auto;
+}
+
+.pathSpacer {
+  flex: 1 1 auto;
+}
+
+.lvlMini {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ ticket */
+
+.ticket {
+  display: grid;
+  border-radius: 20px;
+  background: var(--tint);
+  color: var(--on-tint);
+  transition:
+    background-color 300ms ease-out,
+    color 300ms ease-out;
+  /* every Mark inside the ticket is a frosted hole in the tint, not its own colour */
+  --mark-bg: rgba(255, 255, 255, 0.22);
+  --mark-fg: currentColor;
+  /* the hotel pip's separator ring is meant to read against --surface; on the
+   * tinted ticket there is no surface behind it, so the ring goes away */
+  --pips-ring: transparent;
+}
+
+.ticket :focus-visible {
+  outline-color: var(--on-tint);
+}
+
+.tTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+
+.tMark {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.tHead {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.grpRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grp {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pname {
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tBuild {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* The tear-off line, with a notch punched out of each side. */
+.tPerf {
+  position: relative;
+  height: 2px;
+  margin: 0 16px;
+  background: linear-gradient(90deg, currentColor 50%, transparent 0) 0 0 / 10px 2px repeat-x;
+  opacity: 0.55;
+}
+
+.tPerf::before,
+.tPerf::after {
+  content: "";
+  position: absolute;
+  top: -9px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.tPerf::before {
+  left: -26px;
+}
+
+.tPerf::after {
+  right: -26px;
+}
+
+.tStub {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 16px 14px;
+}
+
+.tStub strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hierarchy from size, weight and tracking only. `opacity` here dimmed white
+ * label text against half the group tints until it failed AA. */
+.tStub span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tNote {
+  padding: 12px 16px 14px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------- dice */
+
+/* The dice themselves now live in RollDice.jsx / rollDice.module.css, shared
+ * with the TV: a real cube whose six faces are painted once, tumbled by WAAPI
+ * on one decelerating curve. The flat `.die` + `tumble` keyframes that used to
+ * be here are gone with FlatDice.jsx — their faces teleported every 80ms and
+ * the rotation restarted from zero on every roll.
+ *
+ * Size is a PROP (44px, 34px in the decide state, 88px on the TV), because
+ * RollDice writes `--die` on the element itself and nothing an ancestor says
+ * could reach it. ActRow picks the number; `.dicebox` below is still the
+ * sunken tray they sit in. */
+
+/* --------------------------------------------------------------- act row */
+
+/* Outlined alternatives: jail's Pay / Use card, or the turn's own action while
+ * a buy or build decision has taken over the act row. */
+.alts {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.alt {
+  min-height: 56px;
+  padding: 0 12px;
+  border-radius: 18px;
+  border: 1.5px solid var(--ink);
+  font-family: var(--f-display);
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Muted but legible, matching .primary:disabled and the sheet's .rowBtn:disabled:
+ * an explicit --muted text colour and a --line border, not a stacked opacity
+ * that faded the label and its outline toward the same value. */
+.alt:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.act {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dicebox {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 72px;
+  padding: 0 12px;
+  border-radius: 24px;
+  background: var(--sunk);
+}
+
+/* The dice shrink when Buy + Pass both need room. The size itself is handed to
+ * RollDice as a prop (ActRow), because it writes `--die` inline; only the tray
+ * is adjusted from here. */
+.app[data-state="decide"] .dicebox {
+  padding: 0 10px;
+}
+
+.primary {
+  position: relative; /* the rolling sweep sits on the bottom edge */
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  padding: 0 10px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: var(--tint);
+  color: var(--on-tint);
+  font-family: var(--f-display);
+  font-size: 26px;
+  font-weight: 700;
+  text-transform: uppercase;
+  box-shadow: 0 16px 28px -18px color-mix(in srgb, var(--tint) 80%, #000);
+}
+
+/* Verb and amount share a baseline while they fit, and the amount drops to a
+ * line of its own when they do not ("HOUSE 100$" at 360px) instead of the two
+ * overprinting each other. */
+.pvpa {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  max-width: 100%;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+/* The verb wraps rather than truncating: "Roll for doubles" at 26px does not
+ * fit one line on a 390px phone, and "ROLL FOR DO…" is not a button label. */
+.pv {
+  min-width: 0;
+  text-align: center;
+  line-height: 1.05;
+}
+
+.pa {
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Lighter and tighter than the verb, never dimmed: `opacity` on this line fell
+ * below AA on half the group tints. */
+.ph {
+  font-family: var(--f-body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- the rolling state -------------------------------------------------
+ *
+ * The 1.5s beat has to be visible on the button too, or a disabled "Roll" just
+ * looks broken. Two quiet signals, both transform/opacity only: three dots that
+ * breathe, and a thin sweep along the bottom edge. The button keeps the tint
+ * (it is not refusing anything — it is working), and `:disabled` above is what
+ * actually stops a second tap. */
+.app[data-state="rolling"] .primary:disabled {
+  background: var(--tint);
+  color: var(--on-tint);
+  box-shadow: 0 16px 28px -18px color-mix(in srgb, var(--tint) 80%, #000);
+}
+
+.ell {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: 2px;
+}
+
+.ell i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: ellBeat 1050ms ease-in-out infinite;
+}
+
+.ell i:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.ell i:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+@keyframes ellBeat {
+  0%,
+  70%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.sweep {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  overflow: hidden;
+  opacity: 0.85;
+}
+
+.sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  transform: translateX(-100%);
+  animation: sweepRun 1500ms cubic-bezier(0.33, 0, 0.2, 1) infinite;
+}
+
+@keyframes sweepRun {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A button you cannot press must not look pressable: an unaffordable
+ * "BUY 320$" was still wearing the full tint. */
+.primary:disabled {
+  background: var(--sunk);
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.app[data-state="decide"] .primary {
+  font-size: 22px;
+}
+
+.app[data-state="rolling"] .primary,
+.app[data-state="waiting"] .primary {
+  font-size: 20px;
+}
+
+/* Not your turn, loading, bankrupt, not in this room: the same button, muted —
+ * but this one is a statement, not a refusal, so it keeps ink text. */
+.app[data-state="waiting"] .primary {
+  background: var(--sunk);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+/* min-width, not width: "Not now" does not fit in 84 flat pixels. It may shrink
+ * under pressure at 360px, but never past the label. */
+.pass {
+  flex: 0 1 auto;
+  min-width: 84px;
+  min-height: 72px;
+  padding: 0 12px;
+  border-radius: 24px;
+  border: 1.5px solid var(--ink);
+  font-family: var(--f-display);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Same treatment as .alt:disabled above. */
+.pass:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+/* Narrow phones: the dice give up their padding before the primary gives up
+ * its label. */
+@media (max-width: 380px) {
+  .app[data-state="decide"] .dicebox {
+    padding: 0 8px;
+  }
+
+  .pass {
+    min-width: 76px;
+    padding: 0 8px;
+    font-size: 15px;
+  }
+}
+
+/* ------------------------------------------------------------------ auction */
+
+/* The auction takes the act row's place, so it lives in THIS file, after the
+ * `.app :where(button)` reset above: a second module's single-class rules would
+ * tie with that reset at (0,1,0) and the winner would be decided by whichever
+ * CSS module the bundler happened to emit first. Source order in one file is
+ * not a coin toss.
+ *
+ * Layout from the prototype (design-reference §A), with the countdown taken
+ * out: the ring is a plain state ring, and the stat where the seconds were
+ * says whose move it is. */
+.auc {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.aucTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 14px 8px 8px;
+  border-radius: 20px;
+  background: var(--sunk);
+}
+
+/* --a is 100% behind a leader and 0% when there is none, so the same conic
+ * gradient paints a full crimson ring or a full hairline one. */
+.ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: conic-gradient(var(--crim) var(--a, 100%), var(--line) 0);
+}
+
+.ring > * {
+  box-shadow: 0 0 0 3px var(--sunk);
+}
+
+/* (0,2,0), so it beats `.tok`'s own `font-size: var(--tf)` in bits.module.css
+ * whichever module lands first. */
+.ring .ringTok {
+  font-size: 16px;
+}
+
+.ringEmpty {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.aucBid {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.aucBid span {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aucBid strong {
+  display: inline-block;
+  max-width: 100%;
+  font-family: var(--f-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aucTime {
+  flex: none;
+  max-width: 40%;
+  min-width: 0;
+  text-align: right;
+}
+
+.aucTime strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 22px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aucTime span {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pulse {
+  animation: pulse 200ms ease-out;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.bidders {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bidder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px 0 4px;
+  border-radius: 999px;
+  background: var(--sunk);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bidderVal {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.isLead {
+  box-shadow: inset 0 0 0 2px var(--crim);
+}
+
+/* A dropped player's chip is struck through, but the strike is on the value
+ * only — a line through the token would just look like a rendering fault. */
+.isOut {
+  opacity: 0.55;
+}
+
+.isOut .bidderVal {
+  text-decoration: line-through;
+}
+
+/* The leader is never the player to move, so these two rings never meet. */
+.isTurn {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.aucAct {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drop {
+  flex: none;
+  width: 76px;
+  min-height: 72px;
+  border-radius: 24px;
+  border: 1.5px solid var(--ink);
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.plus {
+  flex: none;
+  width: 76px;
+  min-height: 72px;
+  border-radius: 24px;
+  background: var(--sunk);
+  font-family: var(--f-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* Same muted-but-legible treatment as .alt:disabled and .pass:disabled. */
+.drop:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.plus:disabled {
+  color: var(--muted);
+}
+
+/* The auction's primary is the act row's .primary — (0,2,0) here, so these two
+ * beat the component rules above without an id or an !important. */
+.auc .primary {
+  font-size: 24px;
+}
+
+/* "Leading" / "Dropped" / "Waiting" are statements, so they keep ink text; only
+ * an unaffordable "Bid" is a refusal, and it reads the same because the hint
+ * line underneath says why. */
+.auc .primary:disabled {
+  background: var(--sunk);
+  color: var(--ink);
+  box-shadow: none;
+  font-size: 20px;
+}
+
+@media (max-width: 380px) {
+  .drop,
+  .plus {
+    width: 66px;
+  }
+
+  .aucTop {
+    gap: 8px;
+  }
+
+  .aucBid strong {
+    font-size: 26px;
+  }
+
+  .bidder {
+    padding-right: 6px;
+    font-size: 12px;
+  }
+}
+
+/* ---------------------------------------------------------------- bottom nav */
+
+.pnav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.pnav button {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  min-height: 52px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pnav span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Four panels instead of three: at 360px each button is 77px wide, so the
+ * labels lose a point of type and the gap a couple of pixels rather than
+ * "Players (4)" losing its last two characters to an ellipsis. The 52px target
+ * is untouched — this trades type, never hit area. (Declared after the rules it
+ * narrows: a media query carries no specificity of its own.) */
+@media (max-width: 400px) {
+  .pnav {
+    gap: 2px;
+  }
+
+  .pnav button {
+    font-size: 12px;
+  }
+}
+
+/* ---------------------------------------------------- chance / chest card */
+
+.gwrap {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 20px 48px;
+}
+
+.gscrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 6, 8, 0.55);
+}
+
+.gcard {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 30px 60px -30px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px var(--line);
+}
+
+.gcard[data-deck="chance"] {
+  --deck: var(--deck-chance);
+}
+
+.gcard[data-deck="chest"] {
+  --deck: var(--deck-chest);
+}
+
+.gcHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: var(--deck);
+  color: #fff;
+  font-family: var(--f-body);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.gcHead svg {
+  flex: none;
+}
+
+.gcBody {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: 24px 20px;
+  text-align: center;
+  min-height: 220px;
+}
+
+.gcText {
+  font-family: var(--f-display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.gcAmt {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-family: var(--f-display);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.gcPos {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.gcNeg {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+.gcBtn {
+  margin: 0 20px 20px;
+  min-height: 60px;
+  border-radius: 18px;
+  background: var(--deck);
+  color: #fff;
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------- end of game */
+
+/* The result sits in the middle of the aura, not pinned to the floor of a
+ * 550px void. The block stretches; its own align-content does the centring. */
+.over {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 16px 8px;
+  text-align: center;
+}
+
+.overTitle {
+  font-family: var(--f-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+/* Final standings, in the panel, so the panel is not a 6px sliver above the nav. */
+.finals {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+
+.finalsBody {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.finalsHead {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.finalsList {
+  display: grid;
+  gap: 2px;
+}
+
+.finalsList li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.finalsRank {
+  flex: none;
+  min-width: 18px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.finalsName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finalsOut {
+  color: var(--muted);
+}
+
+.finalsMoney {
+  flex: none;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ loading */
+
+.loading {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px 8px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Quiet placeholders in the shape of what is about to arrive, rather than a
+ * blank panel that reads as broken. */
+.skel {
+  display: block;
+  border-radius: 12px;
+  background: var(--sunk);
+  animation: breathe 1600ms ease-in-out infinite;
+}
+
+.skelPath {
+  height: 40px;
+  border-radius: 20px;
+}
+
+.skelTicket {
+  height: 118px;
+  border-radius: 20px;
+  animation-delay: 160ms;
+}
+
+.skelName {
+  width: 72px;
+  height: 14px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.skelCash {
+  width: 148px;
+  height: 36px;
+  margin-top: 6px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.skelTurn {
+  width: 116px;
+  height: 24px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ------------------------------------------------------------------ hover */
+
+@media (hover: hover) {
+  .primary:not(:disabled):hover {
+    box-shadow:
+      inset 0 0 0 3px color-mix(in srgb, var(--on-tint) 45%, transparent),
+      0 16px 28px -18px color-mix(in srgb, var(--tint) 80%, #000);
+  }
+
+  .pass:not(:disabled):hover,
+  .alt:not(:disabled):hover,
+  .drop:not(:disabled):hover,
+  .pnav button:hover,
+  .evsMore:hover,
+  .bnBtn:not(:disabled):hover {
+    background: var(--sunk);
+  }
+
+  /* .plus already sits on --sunk, so it takes a ring instead of a fill. */
+  .plus:not(:disabled):hover {
+    box-shadow: inset 0 0 0 1.5px var(--ink);
+  }
+
+  .tBuild:hover {
+    box-shadow: inset 0 0 0 2.5px currentColor;
+  }
+}
+
+/* --------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .bump,
+  .hop,
+  .pulse,
+  .skel {
+    animation: none;
+  }
+
+  /* The dice have their own reduced-motion path (rollDice.module.css): no
+   * cube, no tumble, a dimmed hold and then the result. The button's rolling
+   * signals go quiet here — the beat still runs, so the ORDER of information
+   * is unchanged, it just does not move. */
+  .ell i,
+  .sweep::before {
+    animation: none;
+  }
+
+  .ell i {
+    opacity: 0.6;
+  }
+
+  .sweep {
+    display: none;
+  }
+
+  .app :where(button):active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------- short viewports */
+
+/* Short phones (360×640 and friends): two event rows, never a clipped third —
+ * and enough taken out of everything else that those two rows actually fit
+ * above the panel instead of sliding under it. Nothing drops below the 44px
+ * minimum hit size. */
+@media (max-height: 700px) {
+  .aura {
+    gap: 8px;
+    padding: calc(env(safe-area-inset-top, 0px) + 6px) 20px 10px;
+  }
+
+  .auraTop {
+    gap: 8px;
+  }
+
+  .dLeft strong {
+    font-size: 30px;
+  }
+
+  .dTurn {
+    font-size: 20px;
+  }
+
+  .evs > *:nth-child(3) {
+    display: none;
+  }
+
+  .panel {
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .pathDots {
+    height: 34px;
+  }
+
+  .pdCur {
+    width: 34px;
+    height: 34px;
+  }
+
+  .tTop {
+    padding: 10px 14px 8px;
+  }
+
+  .tStub {
+    padding: 8px 14px 10px;
+  }
+
+  .tNote {
+    padding: 8px 14px 10px;
+  }
+
+  .dicebox {
+    height: 64px;
+  }
+
+  .primary,
+  .pass {
+    min-height: 64px;
+  }
+
+  .alt {
+    min-height: 48px;
+  }
+
+  /* The auction gives up the same pixels the act row does: the ring and the
+   * headline amount shrink, the three buttons follow .primary down to 64px, and
+   * the chips stay exactly as tall as they were — they are the one row here
+   * that is already at its minimum. */
+  .auc {
+    gap: 6px;
+  }
+
+  .aucTop {
+    padding: 6px 12px 6px 6px;
+  }
+
+  /* The token's own --tk is an inline style (Tok takes a size prop), and no
+   * stylesheet outbids that — so the smaller ring sets width/height on the
+   * token directly at (0,2,0) instead of trying to redefine --tk. */
+  .ring {
+    width: 46px;
+    height: 46px;
+  }
+
+  .ring .ringTok,
+  .ringEmpty {
+    width: 38px;
+    height: 38px;
+  }
+
+  .ring .ringTok {
+    font-size: 14px;
+  }
+
+  .aucBid strong {
+    font-size: 26px;
+  }
+
+  .aucTime strong {
+    font-size: 19px;
+  }
+
+  .drop,
+  .plus {
+    min-height: 64px;
+  }
+
+  .pnav {
+    padding-top: 4px;
+  }
+
+  .pnav button {
+    min-height: 46px;
+  }
+}
+
+/* Very short viewports: a landscape phone (844x390, 667x375) or a small
+ * portrait phone once the browser chrome is counted (390x500). Below the
+ * height where two whole event rows still fit — measured: the rows block is
+ * 124px, and at 500px of viewport it only gets 85px — the rows and the
+ * "Latest" label go away entirely rather than being served as a sliver. Two
+ * rows or none, never half of one; .evsWrap's `max-height: 100%` above
+ * guarantees the "none" case can never turn back into an overlap.
+ *
+ * "Full log" stays: it is the way to the history the rows were showing, so it
+ * is the last thing that should disappear. It keeps its full 44px target and
+ * moves to the right-hand end of the line it now has to itself.
+ *
+ * The rest is the same trade the max-height: 700px block above makes, one
+ * step further: the identity block folds onto single lines and the panel gives
+ * up padding, so what is left actually fits instead of being clipped. */
+@media (max-height: 520px) {
+  .aura {
+    gap: 4px;
+    padding: calc(env(safe-area-inset-top, 0px) + 4px) 20px 6px;
+  }
+
+  .auraTop {
+    gap: 6px;
+  }
+
+  /* name and cash on one baseline, turn and tokens on one line */
+  .dLeft {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .dLeft strong {
+    font-size: 22px;
+  }
+
+  .dName {
+    font-size: 12px;
+  }
+
+  .dRight {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .dTurn {
+    font-size: 15px;
+  }
+
+  .evs,
+  .evsLab {
+    display: none;
+  }
+
+  .evsHead {
+    justify-content: flex-end;
+  }
+
+  .bn {
+    min-height: 30px;
+    padding: 4px 10px;
+  }
+
+  /* the panel gives back the pixels the aura needs */
+  .panel {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .pathDots {
+    height: 26px;
+  }
+
+  .pdCur {
+    width: 26px;
+    height: 26px;
+  }
+
+  .tTop {
+    padding: 6px 14px 4px;
+  }
+
+  .tStub,
+  .tNote {
+    padding: 6px 14px 8px;
+  }
+
+  .dicebox {
+    height: 52px;
+  }
+
+  .primary,
+  .pass {
+    min-height: 52px;
+  }
+
+  .alt {
+    min-height: 44px;
+  }
+
+  /* The smallest portrait phones (390×500 and friends). The auction keeps all
+   * three of its rows and pays for them with the ring, the headline and the
+   * button height, none of which drops below the 44px target. */
+  .auc {
+    gap: 4px;
+  }
+
+  .aucTop {
+    gap: 8px;
+    padding: 4px 12px 4px 4px;
+  }
+
+  .ring {
+    width: 40px;
+    height: 40px;
+  }
+
+  .ring .ringTok,
+  .ringEmpty {
+    width: 33px;
+    height: 33px;
+  }
+
+  .ring .ringTok {
+    font-size: 13px;
+  }
+
+  .ringEmpty svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .aucBid strong {
+    font-size: 22px;
+  }
+
+  .aucTime strong {
+    font-size: 16px;
+  }
+
+  .bidder {
+    height: 28px;
+    font-size: 12px;
+  }
+
+  .drop,
+  .plus {
+    min-height: 52px;
+  }
+
+  .auc .primary {
+    font-size: 20px;
+  }
+
+  .auc .primary:disabled {
+    font-size: 17px;
+  }
+
+  .pnav {
+    padding-top: 2px;
+  }
+
+  .pnav button {
+    min-height: 44px;
+  }
+}
+
+/* ------------------------------------------------- landscape phones + auction */
+
+/* A landscape phone (844×390, 667×375) during an auction is the tightest the
+ * controller ever gets: the panel carries the path, the ticket for the space
+ * being sold, three auction rows and the nav, and the aura is left with a
+ * single line for the player's own name and cash. Measured at 844×390 that
+ * line was clipped to nothing.
+ *
+ * So the chips stop being DRAWN — and only that. The clip below is the same
+ * one `.sr` uses, so every chip's sentence ("Koli: bid 110$, leading", "Ero:
+ * dropped out") stays in the accessibility tree; nothing is removed from the
+ * page. They are the row the block above them can speak for: the high bid, who
+ * holds it and who is to bid are all up there already. Everything else in the
+ * auction — including what is being sold — stays visible.
+ *
+ * `.bidders` is a single class here and this block is declared after the one
+ * that styles it, so it wins on source order alone. */
+@media (max-height: 470px) {
+  .bidders {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .auc {
+    gap: 6px;
+  }
+
+  .drop,
+  .plus,
+  .auc .primary {
+    min-height: 48px;
+  }
+}
