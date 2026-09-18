@@ -1,0 +1,169 @@
+/* The TV's money layer (TvPayFx.jsx).
+ *
+ * One absolutely positioned child of the 1920x1080 canvas, above the board and
+ * the right column, never interactive. Everything inside is positioned in the
+ * canvas's own unscaled coordinates, so the numbers here are TV-sized on
+ * purpose: this is read from a sofa.
+ */
+
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* ---- the coins ---------------------------------------------------------- */
+
+/* Each disc is placed at 0,0 and driven entirely by `transform`, so a flight
+ * across the whole screen costs one composited layer and no layout at all. */
+.coins {
+  position: absolute;
+  inset: 0;
+}
+
+.coin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--ground) 55%, transparent);
+  will-change: transform, opacity;
+}
+
+.coinPos {
+  background: var(--pos);
+}
+
+.coinNeg {
+  background: var(--neg);
+}
+
+/* ---- the banner --------------------------------------------------------- */
+
+.banner {
+  position: absolute;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  min-height: 118px;
+  padding: 16px 28px;
+  border-radius: 26px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 30px 60px -30px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px var(--line);
+  will-change: transform, opacity;
+}
+
+/* Neg-tinted on the side that pays, pos-tinted on the side that is paid — the
+ * direction is legible before a single word is read. */
+.from,
+.to {
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 8px;
+  border-radius: 22px;
+}
+
+.p2p .from,
+.neg .from {
+  background: var(--neg-bg);
+}
+
+.p2p .to,
+.pos .to {
+  background: var(--pos-bg);
+}
+
+.pos .from,
+.neg .to {
+  background: var(--neu-bg);
+}
+
+.mid {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  text-align: center;
+}
+
+.amount {
+  padding: 2px 22px;
+  border-radius: 999px;
+  background: var(--neu-bg);
+  font-family: var(--f-display);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.p2p .amount,
+.neg .amount {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+.pos .amount {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.text {
+  max-width: 100%;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The bank, where a player token would otherwise be. */
+.bank {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--neu-bg);
+  color: var(--ink);
+}
+
+/* "…pays everyone": the whole table, overlapped so four tokens still fit the
+ * 64px slot the single token would have had. */
+.everyone {
+  display: flex;
+  align-items: center;
+}
+
+.everyone > * {
+  margin-right: -14px;
+  box-shadow: 0 0 0 3px var(--surface);
+  border-radius: 50%;
+}
+
+.everyone > *:last-child {
+  margin-right: 0;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

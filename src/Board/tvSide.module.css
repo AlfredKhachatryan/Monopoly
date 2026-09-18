@@ -1,0 +1,408 @@
+/* Right column — room, players, latest events.
+ *
+ * Sizes follow the reference's §0 OWNER OVERRIDE: the column is ~550px wide,
+ * not the prototype's ~808. Nothing here hard-codes that number — every width
+ * is a percentage of whatever cell the shell hands over — so a later change to
+ * the 70/30 split needs no edit in this file.
+ *
+ * The three density steps (.d0 / .d1 / .d2) are the squeeze described in
+ * TvSide.jsx. Swatch and figure sizes are props, so what changes here is the
+ * room a row of them needs; the type never shrinks — a board is read from
+ * across a room.
+ *
+ * The event rows come from src/Client/EventRow.jsx and src/Client/
+ * events.module.css, which belong to the phone and are not edited. They are
+ * re-fitted from here instead: `--ev-row-bg` is the hook that file already
+ * offers, and the geometry rules carry enough weight (two classes plus an
+ * element) to win whatever order the two modules load in. Nothing here touches
+ * the Tok or the Mark inside a row — both take their size from an inline
+ * custom property that no stylesheet can reach, and both are about to start
+ * drawing a character portrait rather than a letter, so the 26px EventRow asks
+ * for is the 26px they get.
+ */
+
+.side {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 16px;
+  font-family: var(--f-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+
+  --pl-pad: 14px 18px;
+  --pl-gap: 10px;
+  --pls-gap: 10px;
+  --sw-h: 38px;
+}
+
+.d1 {
+  --sw-h: 34px;
+}
+
+.d2 {
+  --pl-pad: 10px 14px;
+  --pl-gap: 8px;
+  --pls-gap: 8px;
+  --sw-h: 34px;
+}
+
+/* ---- header ------------------------------------------------------------- */
+
+.top {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 700 23px/1.15 "Unbounded", system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.label {
+  flex: none;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The shell's buttons get a row of their own: at 550px they have no business
+ * competing with the room code for the same line. */
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.err {
+  justify-self: start;
+  max-width: 100%;
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--neg-bg);
+  color: var(--neg);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hint {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* ---- players ------------------------------------------------------------ */
+
+.players {
+  display: grid;
+  gap: var(--pls-gap);
+  min-height: 0;
+  min-width: 0;
+}
+
+.pl {
+  display: grid;
+  gap: var(--pl-gap);
+  padding: var(--pl-pad);
+  border-radius: 20px;
+  background: var(--surface);
+  transition: box-shadow var(--t-fast) ease-out;
+  min-width: 0;
+}
+
+.pl.isNow {
+  box-shadow: inset 0 0 0 4px var(--ink);
+}
+
+.pl.isDim {
+  opacity: 0.5;
+}
+
+.plTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* The player's token, at the figure manual's 56px. A wrapper rather than a
+ * class on the Tok itself, so the bankrupt treatment below cannot collide with
+ * anything the token draws on its own root (it has a white inner ring of its
+ * own now). */
+.plFig {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.isDim .plFig {
+  filter: grayscale(1);
+}
+
+.plField {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.plLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--f-display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.plLine > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plSub {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.now,
+.tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: 800 12px/1.4 var(--f-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.now {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.tag {
+  background: var(--neu-bg);
+  color: var(--muted);
+}
+
+.tagWin {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+/* Never wraps, never shrinks: five-digit money (12 500$) keeps its line and the
+ * name beside it gives up its characters first. */
+.cash {
+  flex: none;
+  font-family: var(--f-display);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* ---- money moving ------------------------------------------------------- */
+
+/* The number, plus the delta chip that lingers under it for two seconds, plus
+ * the wash that says which way it went. The chip is absolutely positioned so a
+ * card never changes height when money moves — the column is measured to the
+ * pixel (see the squeeze at the top of TvSide.jsx) and a row of four cards
+ * growing by 26px would push the Latest list off the bottom of the screen. */
+.cashBox {
+  position: relative;
+  flex: none;
+  display: block;
+  isolation: isolate;
+}
+
+.cashBox::before {
+  content: "";
+  position: absolute;
+  inset: -8px -16px;
+  z-index: -1;
+  border-radius: 18px;
+  opacity: 0;
+}
+
+.cashBox[data-move="pos"]::before {
+  background: var(--pos-bg);
+  animation: cashWash 2000ms ease-out both;
+}
+
+.cashBox[data-move="neg"]::before {
+  background: var(--neg-bg);
+  animation: cashWash 2000ms ease-out both;
+}
+
+@keyframes cashWash {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.cashDelta {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  animation: cashDeltaIn 240ms ease-out both;
+}
+
+.cashPos {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.cashNeg {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+@keyframes cashDeltaIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* ---- property swatches -------------------------------------------------- */
+
+.props {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 5px 12px;
+  min-height: var(--sw-h);
+  min-width: 0;
+}
+
+.propsEmpty {
+  align-self: center;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.grp {
+  display: flex;
+  gap: 4px;
+}
+
+.sw {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  color: var(--ink);
+}
+
+/* Two classes so these beat bits.module.css's own .pips rules regardless of
+ * which module the bundler emits first. */
+.sw .swPips i {
+  width: 4px;
+  height: 4px;
+}
+
+.sw .swPips b {
+  width: 16px;
+  height: 4px;
+}
+
+/* ---- latest ------------------------------------------------------------- */
+
+.latest {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.evs {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  --ev-row-bg: var(--surface);
+}
+
+.latest .evs > li {
+  min-height: 40px;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 13px;
+}
+
+/* The label and the badge — the only two spans in a row that are aria-hidden
+ * and carry no inline style, which is what tells them apart from the Tok and
+ * the Mark (those two write their size inline) and from the visually-hidden
+ * sentence (not aria-hidden). */
+.latest .evs > li > span[aria-hidden="true"]:not([style]) {
+  font-size: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl {
+    transition: none !important;
+  }
+
+  /* No wash and no slide — the delta chip is still there, it simply appears. */
+  .cashBox[data-move]::before {
+    animation: none !important;
+    opacity: 0.9;
+  }
+
+  .cashDelta {
+    animation: none !important;
+  }
+}

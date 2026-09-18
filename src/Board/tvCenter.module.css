@@ -1,0 +1,808 @@
+/* Board centre — decks, turn, dice, and the four overlays.
+ *
+ * Sizes are the reference's, verbatim, in the unscaled 1920x1080 space; the
+ * shell scales the whole canvas, so nothing here is responsive.
+ *
+ * Two rules of this codebase are load-bearing below:
+ *   - Bootstrap and src/styles/main.css are global. main.css opens with
+ *     `* { margin: 0; padding: 0 }`, but a global reset is not something to
+ *     lean on, so anything that needs zero says so. The element resets that
+ *     ARE here sit in :where(), at specificity 0, so a single component class
+ *     still beats them.
+ *   - Rules in different CSS modules have no guaranteed order. Anything that
+ *     has to win against src/Client/bits.module.css (.tok, .mark, .pips) is
+ *     written with two classes, or hands the shared file a variable it already
+ *     reads (--mark-bg / --mark-fg).
+ */
+
+.center {
+  /* The shell positions this at grid-area 2 / 2 / 11 / 11; the root fills it. */
+  width: 100%;
+  height: 100%;
+  display: grid;
+  border-radius: 18px;
+  overflow: hidden;
+  background: radial-gradient(
+    90% 80% at 50% 45%,
+    color-mix(in srgb, var(--tint) var(--glow-mix), var(--glow-base)) 0%,
+    color-mix(in srgb, var(--tint) 10%, var(--glow-base)) 75%,
+    var(--ground) 100%
+  );
+  font-family: var(--f-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.base,
+.ov {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.base {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 32px;
+}
+
+/* ---- decks ------------------------------------------------------------- */
+
+.deck {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  width: 150px;
+  height: 200px;
+  border-radius: 16px;
+  background: var(--dk);
+  color: #fff;
+  font: 800 16px/1 var(--f-body);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  box-shadow:
+    4px 4px 0 -1px color-mix(in srgb, var(--dk) 70%, #000),
+    8px 8px 0 -2px color-mix(in srgb, var(--dk) 50%, #000),
+    0 20px 40px -20px rgba(0, 0, 0, 0.6);
+}
+
+.deck svg {
+  width: 52px;
+  height: 52px;
+}
+
+.chance {
+  --dk: var(--deck-chance);
+  justify-self: start;
+  align-self: start;
+  transform: rotate(-8deg);
+}
+
+.chest {
+  --dk: var(--deck-chest);
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: end;
+  align-self: end;
+  transform: rotate(8deg);
+}
+
+/* The deck the card in the air came from. */
+.isDrawing {
+  box-shadow:
+    0 0 0 4px var(--ink),
+    4px 4px 0 -1px color-mix(in srgb, var(--dk) 70%, #000),
+    8px 8px 0 -2px color-mix(in srgb, var(--dk) 50%, #000);
+}
+
+/* ---- turn / dice ------------------------------------------------------- */
+
+.mid {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.turn {
+  font-family: var(--f-display);
+  font-size: 72px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* The dice are the shared RollDice (src/Client/RollDice.jsx + its own module),
+ * the very same component the phone uses — a real cube, 88px here, tumbled by
+ * WAAPI on one decelerating curve. The flat `.die` + `tumble` keyframes that
+ * used to be here went with TvDice.jsx: they re-randomised their pips every
+ * 80ms, which is what made a landing read as a jump cut. */
+
+/* ---- the overlay layer -------------------------------------------------- */
+
+.ov {
+  display: none;
+  place-items: center;
+  padding: 32px;
+  background: color-mix(in srgb, var(--ground) 72%, transparent);
+}
+
+.ov[data-on] {
+  display: grid;
+}
+
+/* The centre is 736px wide (1024 minus the two 140px corner tiles and the
+ * gaps), so the reference's 700px trade panel plus this layer's 32px padding
+ * does not quite fit. The panels keep their width as a wish and give up the
+ * last few pixels rather than let `overflow: hidden` slice their edges off. */
+.ov > * {
+  max-width: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- card --------------------------------------------------------------- */
+
+.gcard {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: 440px;
+  /* 500, not the prototype's 540: the centre is 744px tall under the owner's
+   * 70/30 override and the overlay layer takes 32px off each end. */
+  min-height: 500px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 30px 60px -30px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px var(--line);
+  /* flies in from the Chance deck's corner… */
+  --fx: -220px;
+  --fy: -220px;
+  animation: tvCardIn var(--t-card) cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* …or from the Community deck's. */
+.gcard[data-deck="chest"] {
+  --fx: 220px;
+  --fy: 220px;
+}
+
+.gcard[data-deck="chance"] {
+  --deck: var(--deck-chance);
+}
+
+.gcard[data-deck="chest"] {
+  --deck: var(--deck-chest);
+}
+
+@keyframes tvCardIn {
+  0% {
+    opacity: 0;
+    transform: translate(var(--fx), var(--fy)) rotate(-14deg) scale(0.35);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(3deg) scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.gcHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 26px;
+  background: var(--deck);
+  color: #fff;
+  font: 800 20px/1 var(--f-body);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.gcHead svg {
+  width: 36px;
+  height: 36px;
+  flex: none;
+}
+
+.gcBody {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 20px;
+  padding: 28px 26px;
+  text-align: center;
+}
+
+.gcText {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.gcAmt {
+  padding: 8px 22px;
+  border-radius: 999px;
+  font-family: var(--f-display);
+  font-size: 44px;
+  font-weight: 700;
+  background: var(--neu-bg);
+  color: var(--ink);
+}
+
+.gcAmt.pos {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.gcAmt.neg {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+.gcFoot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 26px;
+  border-top: 1px solid var(--line);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.gcWho {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gcVerdict {
+  flex: none;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---- auction ------------------------------------------------------------ */
+
+.auc {
+  display: grid;
+  gap: 22px;
+  width: 680px;
+  padding: 28px;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  animation: panelIn var(--t-enter) ease-out both;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+}
+
+.aucTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.aucTitle svg {
+  width: 26px;
+  height: 26px;
+  color: var(--ink);
+}
+
+/* 220px, not the reference's 240, and a 20px gap: the prototype's right-hand
+ * stat was a two-character countdown ("4s") and this build puts a player's NAME
+ * there instead, so the column beside the ticket needs the difference. */
+.aucMain {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.aucRight {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ticket {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  border-radius: 20px;
+  background: var(--tint);
+  color: var(--on-tint);
+}
+
+/* (0,2,0) so it wins over bits.module.css's .mark whatever order the two
+ * modules end up in. The colours come from --mark-bg / --mark-fg, which the
+ * shared file already reads from an ancestor. */
+.ticket .ticketMark {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.grp {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pname {
+  font-family: var(--f-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.price {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* min-width: 0 on both grid items, or their automatic minimum size (min-content
+ * of a 112px ring plus a 64px number plus a name) makes them wider than the
+ * track and the panel's `overflow` slices the chips in half. */
+.bidRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Turn-based: no countdown. A full ring in --crim when somebody leads, the
+ * plain line colour when nobody has bid yet. */
+.ring {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.ring.ringOn {
+  background: var(--crim);
+}
+
+/* The separating ring goes on a WRAPPER, never on the Tok itself: the token is
+ * about to carry a portrait with a rim of its own, and a box-shadow set from
+ * out here would replace it. */
+.ringIn {
+  display: grid;
+  border-radius: 50%;
+  box-shadow: 0 0 0 5px var(--surface);
+}
+
+.ringEmpty {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.ringEmpty svg {
+  width: 38px;
+  height: 38px;
+}
+
+.aucBid {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.aucBid span {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.aucBid strong {
+  display: inline-block;
+  font-family: var(--f-display);
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.aucBid strong.pulse {
+  animation: pulse 200ms ease-out;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.aucTurn {
+  flex: none;
+  max-width: 104px;
+  text-align: right;
+}
+
+.aucTurn strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.aucTurn span {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bidders {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bidder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 44px;
+  padding: 0 8px 0 4px;
+  border-radius: 999px;
+  background: var(--sunk);
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bidder.isLead {
+  box-shadow: inset 0 0 0 3px var(--crim);
+}
+
+/* Whose move it is. The leader is never to move, so these two never meet. */
+.bidder.isTurn {
+  box-shadow: inset 0 0 0 3px var(--ink);
+}
+
+.bidder.isOut {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+/* ---- trade -------------------------------------------------------------- */
+
+.trade {
+  display: grid;
+  gap: 22px;
+  width: 700px;
+  padding: 28px;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  animation: panelIn var(--t-enter) ease-out both;
+}
+
+.trHead {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.trHead svg {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  color: var(--muted);
+}
+
+.trHead strong {
+  flex: 1 1 0;
+  min-width: 0;
+  font-family: var(--f-display);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.trCols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.trCol {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--sunk);
+}
+
+.ofH {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ofItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.ofField {
+  min-width: 0;
+}
+
+.ofField strong {
+  display: block;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ofField span {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cashMark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  color: var(--ink);
+}
+
+.ofNone {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.status {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: var(--neu-bg);
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.status svg {
+  width: 24px;
+  height: 24px;
+}
+
+.status.pos {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.status.neg {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+/* ---- game over ---------------------------------------------------------- */
+
+.over {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: 660px;
+  padding: 28px 32px;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  animation: panelIn var(--t-enter) ease-out both;
+}
+
+/* The winner, full height, beside the cup and their name. */
+.overHead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.overFig {
+  flex: none;
+  display: grid;
+  place-items: end center;
+}
+
+.overWho {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.overCup {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--neu-bg);
+  color: var(--warn, #de951f);
+}
+
+.overCup svg {
+  width: 44px;
+  height: 44px;
+}
+
+.overTitle {
+  font-family: var(--f-display);
+  font-size: 50px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-align: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overSub {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Bootstrap is global and gives `ol` a 2rem padding-left at (0,0,1), so this
+ * one cannot hide in :where() — a single class (0,1,0) is the lowest weight
+ * that still wins. */
+.overList {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 62px;
+  padding: 0 20px 0 14px;
+  border-radius: 18px;
+  background: var(--sunk);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.overRow.isWin {
+  box-shadow: inset 0 0 0 3px var(--ink);
+}
+
+.overRow.isOut {
+  opacity: 0.55;
+}
+
+.overRank {
+  flex: none;
+  width: 26px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.overName {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.overMoney {
+  flex: none;
+  font-family: var(--f-display);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gcard,
+  .auc,
+  .trade,
+  .over {
+    animation: tvFadeIn 200ms ease-out both !important;
+  }
+
+  .aucBid strong.pulse {
+    animation: none !important;
+  }
+}
+
+@keyframes tvFadeIn {
+  from {
+    opacity: 0;
+  }
+}

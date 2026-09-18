@@ -1,0 +1,611 @@
+/* The big-screen TV board.
+ *
+ * One fixed 1920x1080 canvas (.screen) scaled to the window by useTvScale, on a
+ * letterbox of --ground (.root). Every colour comes from the [data-client] block
+ * in styles/tokens.css — BoardScreen puts `data-client=""` on .root, so the TV
+ * and the phone controller read exactly the same tokens and flip light/dark with
+ * the OS together.
+ *
+ * Two globals are loaded above every CSS module and have to be neutralised here
+ * rather than edited (Login still depends on both):
+ *   src/styles/main.css   `* { margin:0; padding:0; color:#fff }`, body #191528,
+ *                         Nunito on <body>
+ *   src/CDN/bootstrap.min.css   its own button / input reboot, incl. button:focus
+ * tokens.css already undoes the white text once, with `[data-client] * { color:
+ * inherit }` — that is a (0,1,0) rule, so ANY rule in here that paints text is
+ * written with two classes (`.tile .price`, not `.price`) and wins whatever
+ * order the bundler picks. Same for the button/input resets, which have to beat
+ * bootstrap's (0,1,1) `button:focus`.
+ *
+ * Structural resets that only need to beat an element selector are written as
+ * `.root :where(button)` — a plain `.root button` is (0,1,1) and would silently
+ * outrank every single-class component rule in this file.
+ */
+
+/* --------------------------------------------------------------------------
+ * The page the TV sits on: a letterbox, never scrolled.
+ * ------------------------------------------------------------------------ */
+
+.root {
+  position: fixed;
+  inset: 0;
+  /* `hidden` first as the fallback, then `clip`: same painting, but it cannot
+   * be scrolled programmatically, so nothing can nudge the canvas off-centre. */
+  overflow: hidden;
+  overflow: clip;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* main.css paints <body> the global dark purple. The TV is a --ground page in
+ * both themes, so while it is mounted <body> is painted the same colour (an
+ * overscroll bounce or a rubber-band on a TV browser would otherwise flash
+ * purple round the letterbox). useTvChrome adds and removes the class. */
+:global(body.tv-active) {
+  background: #f4f6f8;
+  overflow: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(body.tv-active) {
+    background: #0d0f13;
+  }
+}
+
+.root :where(button, input) {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+.root :where(svg) {
+  display: block;
+}
+
+/* --------------------------------------------------------------------------
+ * The canvas. Fixed 1920x1080; BoardScreen writes
+ * `transform: translate(-50%, -50%) scale(s)` on it.
+ *
+ * Centred by absolute positioning rather than by a centring flex/grid parent:
+ * a 1920px box inside a 1366px container makes the track 1920px wide too, and
+ * `place-items: center` then centres it inside the TRACK, which overflows to
+ * the right only. left/top 50% + translate(-50%,-50%) is exact at any size,
+ * and the scale composes onto the same transform.
+ * ------------------------------------------------------------------------ */
+
+.screen {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  display: grid;
+  /* OWNER OVERRIDE (reference §0): the board takes ~70% of the width, the right
+   * column ~30%. 1920 − 2×28 padding − 32 gap = 1832, split 7:3 → board 1282,
+   * side 550. A square board could never pass 53% on 16:9, so the board is a
+   * wide rectangle that fills the full 1024px height instead. */
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  gap: 32px;
+  padding: 28px;
+  background: var(--ground);
+  color: var(--ink);
+  transition: background-color var(--t-fast) ease-out;
+}
+
+/* --------------------------------------------------------------------------
+ * Board: 11 x 11, 140px corners, 4px gaps. The token overlay is a sibling of
+ * the grid inside .boardWrap, not a child of it — an absolutely positioned
+ * child of a grid container is laid out against its grid area, which would put
+ * every token in the wrong place.
+ * ------------------------------------------------------------------------ */
+
+.boardWrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 1024px;
+}
+
+/* ~1282 x 1024: corners 150 x 140, top/bottom tiles ~105 x 140, left/right
+ * tiles 150 x ~78, centre ~974 x 744. Nothing downstream may assume the board
+ * is square or 1024 wide — TvTokens measures it. */
+.board {
+  position: relative;
+  display: grid;
+  grid-template-columns: 150px repeat(9, minmax(0, 1fr)) 150px;
+  grid-template-rows: 140px repeat(9, minmax(0, 1fr)) 140px;
+  gap: 4px;
+  width: 100%;
+  height: 1024px;
+}
+
+/* The board centre. TvCenter lives in another CSS module and leaves its
+ * placement to the shell, so the shell places it: anything in this grid that
+ * is not one of the 40 tiles is the centre. Two classes (`:not(.tile)` counts
+ * as one) so it lands whatever order the bundler gives the two modules. The
+ * token layer is not in this grid — an absolutely positioned child of a grid
+ * container is laid out against its grid area, which is exactly the trap this
+ * rule would spring on it. */
+.board > :not(.tile) {
+  grid-area: 2 / 2 / 11 / 11;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tokens {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* One player's piece: the round token, sized inline by TvTokens. The origin is
+ * its bottom edge, so the squash-and-stretch on a hop reads as the disc
+ * crouching and springing off the tile rather than pulsing in place. */
+.token {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 100%;
+}
+
+/* An outer ring in the page colour, so two touching discs — and a disc over a
+ * tile's mark — stay separate. */
+.token .tokRing {
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* --------------------------------------------------------------------------
+ * One tile.
+ * ------------------------------------------------------------------------ */
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  /* The bottom 36px is the PIECE LANE: it is reserved on every tile of the row
+   * whether or not anyone is standing there, and the mark/name/price block
+   * centres in what is left. That is the whole point — a tile's content must
+   * never move because a piece arrived or left, so the room is made
+   * structurally, once, for all of them. 36px covers the tallest disc (28px)
+   * plus its 6px inset with a little air. */
+  padding: 16px 4px 36px;
+  border-radius: 10px;
+  background: var(--surface);
+  transition: box-shadow var(--t-fast) ease-out;
+}
+
+/* The colour band sits on the board's inner edge, so the ring of tiles reads as
+ * one loop. --tint is written per tile by Tile.jsx. */
+.tile::before {
+  content: "";
+  position: absolute;
+  background: var(--tint);
+  border-radius: 4px;
+}
+
+.tile[data-side="b"]::before {
+  top: 0;
+  left: 6px;
+  right: 6px;
+  height: 8px;
+}
+
+.tile[data-side="t"]::before {
+  bottom: 0;
+  left: 6px;
+  right: 6px;
+  height: 8px;
+}
+
+.tile[data-side="l"]::before {
+  right: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 8px;
+}
+
+.tile[data-side="r"]::before {
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 8px;
+}
+
+.tile[data-side="c"]::before {
+  display: none;
+}
+
+/* The top row's lane is along its top edge, where its pieces stand — its colour
+ * band is the one along the bottom. */
+.tile[data-side="t"] {
+  padding: 36px 4px 16px;
+}
+
+/* The side columns read as a row: mark, then the name beside it. They are
+ * 150px wide and only ~78px tall, so every horizontal pixel is worth more than
+ * a vertical one — hence the smaller mark (32px, set in Tile.jsx), the tighter
+ * gap and the slimmer paddings. That buys the name enough width to wrap to two
+ * lines instead of being cut after six characters. */
+.tile[data-side="l"],
+.tile[data-side="r"] {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+}
+
+.tile[data-side="l"] {
+  padding: 4px 12px 4px 8px;
+}
+
+.txt {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tile[data-side="l"] .txt,
+.tile[data-side="r"] .txt {
+  justify-items: start;
+  flex: 1 1 auto;
+}
+
+/* The owner dot is absolutely positioned in the tile's top-right corner, which
+ * on the side columns is right on top of the name's first line. The 20px it
+ * needs is kept free on EVERY side tile, owned or not, so buying a property
+ * never re-flows its name. */
+.tile[data-side="l"] .txt,
+.tile[data-side="r"] .txt {
+  padding-right: 20px;
+}
+
+/* Price and pips on one line. */
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tile[data-side="l"] .meta,
+.tile[data-side="r"] .meta {
+  justify-content: flex-start;
+}
+
+/* One line with an ellipsis on the side columns, where a tile is only ~78px
+ * tall. The top and bottom rows are 105px wide and 140px tall since the board
+ * went wide, so a long name gets a second line there before it is cut. */
+/* A property name never breaks inside a word: "Minecraf / t" is not a name.
+ * It wraps at spaces only, over at most two lines; if a single word still does
+ * not fit, fitName.js steps the type down (data-tight) rather than cutting it,
+ * and an ellipsis is the last resort — on a whole word, never inside one. */
+.tile .name {
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+/* The two steps down. Each side has its own base size, so each has its own
+ * pair; the two-attribute selectors outrank the plain ones whatever the order. */
+.tile[data-tight="1"] .name {
+  font-size: 13px;
+}
+
+.tile[data-tight="2"] .name {
+  font-size: 12px;
+}
+
+.tile[data-side="l"][data-tight="1"] .name,
+.tile[data-side="r"][data-tight="1"] .name {
+  font-size: 12px;
+}
+
+.tile[data-side="l"][data-tight="2"] .name,
+.tile[data-side="r"][data-tight="2"] .name {
+  font-size: 11px;
+}
+
+.tile[data-side="c"][data-tight="1"] .name {
+  font-size: 15px;
+}
+
+.tile[data-side="c"][data-tight="2"] .name {
+  font-size: 14px;
+}
+
+.tile[data-side="b"] .name,
+.tile[data-side="t"] .name {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-align: center;
+}
+
+/* "Ереван Молл", "Rainbox 6 Siege", "Community": on a 150px-wide side tile
+ * these need two lines, and at 13px/1.15 two lines plus the price line still
+ * clear the ~78px height with the 4px paddings. */
+.tile[data-side="l"] .name,
+.tile[data-side="r"] .name {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.tile .price {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tile .pips {
+  color: var(--ink);
+}
+
+.tile[data-side="c"] .name {
+  font-size: 16px;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-align: center;
+  line-height: 1.1;
+}
+
+/* Owner marker: an 18px token with no letter, in the owner's figure colour.
+ * `grid` rather than the default inline box: an inline wrapper adds a line
+ * box's leading above the token, which pushed it 8px down into the mark. */
+.own {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  line-height: 0;
+}
+
+.tile[data-side="t"] .own {
+  top: auto;
+  bottom: 14px;
+}
+
+.own .ownTok {
+  font-size: 0;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* Where the players standing on this tile come to rest. Always empty: the
+ * pieces themselves live in .tokens so they can fly between tiles without a
+ * tile ever re-rendering, and this is only the anchor TvTokens measures. It is
+ * as tall as the largest disc, and the discs share one edge of it (the bottom,
+ * or the top on the top row) so a tile going from two players to three does not
+ * make them jump.
+ *
+ * The top row keeps the prototype's top-left slot: its colour band is along the
+ * bottom edge, and a small disc tucked up beside the mark leaves the name and
+ * price underneath completely clear. */
+.here {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  width: 0;
+  height: 28px;
+  pointer-events: none;
+}
+
+.tile[data-side="t"] .here {
+  bottom: auto;
+  top: 6px;
+}
+
+/* The tile in focus: the current player's, or the one being auctioned. */
+.tile.act {
+  z-index: 1;
+  box-shadow: 0 0 0 4px var(--ink);
+}
+
+/* --------------------------------------------------------------------------
+ * Host / TV controls. Mounted by TvSide wherever it wants them.
+ * ------------------------------------------------------------------------ */
+
+.controls {
+  display: grid;
+  gap: 10px;
+}
+
+.ctlRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.controls .btn {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 120ms ease-out,
+    background-color var(--t-fast) ease-out,
+    box-shadow var(--t-fast) ease-out;
+}
+
+.controls .btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.controls .btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Destructive: outlined, never a solid block of red on a 55" screen. */
+.controls .danger {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--neg);
+  color: var(--neg);
+}
+
+/* Bootstrap's reboot has `button:focus { outline: 5px auto ... }` at (0,1,1),
+ * so both of these need two classes to land. */
+.controls .btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.controls .btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.controls .note {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.controls .bad {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--neg);
+}
+
+@media (hover: hover) {
+  .controls .btn:hover:not(:disabled) {
+    background: var(--neu-bg);
+  }
+
+  .controls .danger:hover:not(:disabled) {
+    background: var(--neg-bg);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * The "no room yet" screen and the loading line. Same two actions as before —
+ * open a room code, or host a new game.
+ * ------------------------------------------------------------------------ */
+
+.gate {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  overflow: clip;
+  padding: 24px;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.gateCard {
+  display: grid;
+  gap: 18px;
+  width: min(520px, 100%);
+  padding: 36px;
+  border-radius: 28px;
+  background: var(--surface);
+  box-shadow: 0 30px 60px -30px var(--shadow);
+}
+
+.gate .gateTitle {
+  font-family: "Unbounded", var(--f-display), system-ui, sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.gate .gateSub {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.gate .input {
+  width: 100%;
+  min-height: 56px;
+  padding: 0 18px;
+  margin: 0;
+  border: 0;
+  border-radius: 18px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.gate .input::placeholder {
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.gate .input:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.gate .or {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .screen,
+  .controls .btn {
+    transition: none !important;
+  }
+
+  .controls .btn:active:not(:disabled) {
+    transform: none;
+  }
+}
