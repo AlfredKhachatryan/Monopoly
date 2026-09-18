@@ -5,17 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:sql": "node supabase/tests/auction_trade.test.mjs"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "^6.1.2",
-    "@fortawesome/free-solid-svg-icons": "^6.1.2",
-    "@fortawesome/react-fontawesome": "^0.2.0",
     "@lordicon/react": "^1.10.0",
     "@supabase/supabase-js": "^2.45.0",
     "framer-motion": "^13.2.0",
     "lottie-web": "^5.12.2",
+    "lucide-react": "^1.47.0",
     "react": "^18.2.0",
     "react-animated-numbers": "^0.18.0",
     "react-dom": "^18.2.0",
@@ -25,6 +25,7 @@
     "styled-components": "^6.1.11"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@vitejs/plugin-react": "^6.1.1",
     "vite": "^8.2.2"
   }
