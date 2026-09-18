@@ -1,0 +1,194 @@
+/* Design tokens.
+ *
+ * The :root block below is the dark palette the Board and the Login page are
+ * built on (they use styled-components and read a few of these directly).
+ *
+ * The one idea worth knowing about the phone Client: --tint is not fixed.
+ * ClientScreen sets it on its root element to the colour of the cell the player
+ * is standing on, and --on-tint to whichever of black or white stays readable
+ * on top of it. Every rule in the controller reads those two, so the whole phone
+ * re-themes on a move with no re-render and no runtime style generation.
+ */
+
+:root {
+  /* surfaces, darkest to lightest */
+  --bg: #100e17;
+  --surface: #17151f;
+  --surface-2: #1f1c2a;
+  --surface-3: #2a2637;
+  --line: #ffffff14;
+  --line-strong: #ffffff26;
+
+  /* text */
+  --text: #f4f2f8;
+  --text-dim: #f4f2f8a6;
+  --text-faint: #f4f2f866;
+
+  /* fixed meaning colours, never themed */
+  --money-in: #35c88a;
+  --money-out: #ff5c7a;
+  --warn: #de951f;
+  --neutral: #8a8598;
+
+  /* player figure colours, same as the Board */
+  --fig0: #d92650;
+  --fig1: #1f8f5d;
+  --fig2: #f56cc6;
+  --fig3: #6f6cf5;
+
+  /* set by ClientScreen per cell; these are only the fallback */
+  --accent: #d92650;
+  --on-accent: #ffffff;
+
+  /* spacing scale */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+
+  /* radii */
+  --r1: 8px;
+  --r2: 12px;
+  --r3: 18px;
+  --r-pill: 999px;
+
+  /* type: Bebas Neue for names, money and the big button; Nunito for prose */
+  --font: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Bebas Neue", "Oswald", "Arial Narrow", sans-serif;
+
+  /* glass */
+  --glass: #ffffff12;
+  --glass-strong: #ffffff1f;
+  --glass-edge: #ffffff2e;
+  --glass-blur: 18px;
+
+  /* film grain, inlined so it needs no request; tiled at 160px */
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  --t-xs: 11px;
+  --t-sm: 13px;
+  --t-md: 15px;
+  --t-lg: 18px;
+  --t-xl: 24px;
+  --t-2xl: 32px;
+
+  /* the smallest thing a thumb should have to hit */
+  --tap: 44px;
+
+  --shadow-1: 0 2px 10px #00000052;
+  --shadow-2: 0 8px 30px #00000066;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---------------------------------------------------------------------------
+ * "4D Split" phone controller tokens.
+ *
+ * Scoped to the client screen only, so the Board and the Login page keep the
+ * dark :root palette above untouched. Light is the default and dark follows the
+ * operating system; there is no in-app switch.
+ *
+ * --tint / --on-tint are written inline on the same element by ClientScreen,
+ * from accentFor(cell) / readableOn(accent), so the whole controller re-themes
+ * on a move with no re-render of anything below it.
+ * ------------------------------------------------------------------------- */
+
+[data-client] {
+  /* Every colour below flips with the OS, so the browser's own chrome inside
+   * the controller has to flip with it too. Without this the scrollbar of a
+   * long game log and the <select> arrow in the debug row stayed in light-mode
+   * paint on top of the dark sheet — a black chevron on a near-black --sunk. */
+  color-scheme: light dark;
+
+  --tint: #5f6b7a;
+  --on-tint: #ffffff;
+
+  --surface: #ffffff;
+  --sunk: #f1f3f6;
+  --ink: #0e1116;
+  --muted: #535c69;
+  --line: #e1e5eb;
+  --ground: #f4f6f8;
+
+  --glow-base: #ffffff;
+  --glow-mix: 55%;
+
+  --pos: #177a45;
+  --pos-bg: #e2f4e9;
+  --neg: #b42323;
+  --neg-bg: #fbe4e4;
+  --neu-bg: #eceff3;
+  --ev-bg: color-mix(in srgb, #ffffff 82%, transparent);
+
+  --shadow: rgba(14, 17, 22, 0.45);
+  --focus: #0e1116;
+
+  --die-bg: #ffffff;
+  --pip: #0e1116;
+  --die-bc: #c9d0da;
+
+  --crim: #e0284c;
+  --deck-chance: #e0284c;
+  --deck-chest: #5b55d6;
+
+  --t-fast: 200ms;
+  --t-enter: 280ms;
+  --t-exit: 180ms;
+  --t-card: 400ms;
+
+  --f-display: "Geologica", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* While the phone controller is mounted the page itself is a light page.
+ * main.css paints <body> the global dark purple, which iOS shows as a flash of
+ * the wrong colour under an overscroll bounce; ClientScreen adds this class for
+ * as long as it is on screen and takes it off again on unmount. */
+body.client-active {
+  background: #f4f6f8;
+}
+
+@media (prefers-color-scheme: dark) {
+  body.client-active {
+    background: #0d0f13;
+  }
+}
+
+/* main.css opens with `* { color: #fff }`. A universal selector lands on every
+ * element directly, so it beats inheritance, and inside the light-mode
+ * controller that would paint every line of text white. Undo it once, here, at
+ * a specificity every component rule can still override — and only inside the
+ * controller, so the Board and the Login page keep the rule they were built on.
+ * This file is loaded before any CSS module, so equal-specificity rules in the
+ * modules win. */
+[data-client] * {
+  color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-client] {
+    --surface: #171a20;
+    --sunk: #222730;
+    --ink: #eef1f5;
+    --muted: #a3abb7;
+    --line: #2c3139;
+    --ground: #0d0f13;
+
+    --glow-base: #0d0f13;
+    --glow-mix: 45%;
+
+    --pos: #3ddc84;
+    --pos-bg: rgba(61, 220, 132, 0.15);
+    --neg: #ff6b6b;
+    --neg-bg: rgba(255, 107, 107, 0.16);
+    --neu-bg: #272c35;
+    --ev-bg: color-mix(in srgb, #171a20 80%, transparent);
+
+    --shadow: rgba(0, 0, 0, 0.8);
+    --focus: #eef1f5;
+
+    --die-bg: #eef1f5;
+    --pip: #0d0f13;
+    --die-bc: #eef1f5;
+  }
+}
