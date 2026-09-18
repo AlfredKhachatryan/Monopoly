@@ -1,0 +1,23 @@
+/* The brand logo inside a Mark (Mark.jsx, path data from marks.js), rendered
+ * as an inline <svg><path/></svg> rather than an <img> or a CSS mask -- see
+ * marks.js's header comment for why a mask silently fails on these
+ * particular (intrinsic-size-less) source files.
+ *
+ * `fill: currentColor` here, not just the `fill="currentColor"` attribute
+ * Mark.jsx already sets on the element: a presentation attribute loses to
+ * *any* CSS rule that targets the element, from any stylesheet, in any load
+ * order, so a same-specificity `svg { fill: none; stroke: currentColor }`
+ * elsewhere (that's how lucide-react's own icons are styled) could otherwise
+ * win by loading second. Repeating it as a real declaration, scoped to this
+ * CSS-module class -- a hashed name, guaranteed unique across the whole
+ * bundle -- means there's nothing for it to lose to. */
+.logo,
+.logo path {
+  fill: currentColor;
+  stroke: none;
+}
+
+.logo {
+  display: block;
+  flex: none;
+}

@@ -1,0 +1,128 @@
+/* The two shared atoms: a player token and a board-space mark.
+ *
+ * Both are sized from props rather than from a descendant selector, because
+ * they are used across several CSS modules (the screen, the event rows, the
+ * sheets) and a module cannot reach into another module's class names.
+ * Callers that need more than a size — a ring, a shadow — pass `className`. */
+
+.tok {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--tk, 24px);
+  height: var(--tk, 24px);
+  /* Visible, not the (harmless-until-now) default: call sites add their own
+   * outer box-shadow to .tok (a --surface separation ring, the current-player
+   * ink ring, the auction lead ring, ...) via their own classNames combined
+   * with .tok, and those rings must not be clipped. The circular *look* comes
+   * from border-radius on this box (for the colour-dot fallback) and again on
+   * .tokImg (for the token art), not from clipping this element. */
+  overflow: visible;
+  border-radius: 50%;
+  background: var(--c, var(--muted));
+  /* Tok.jsx sets --tc to whichever of black/white (readableOn) stays AA on
+   * --c for a known figure colour, or to var(--surface) for the "unknown
+   * figure" fallback swatch (var(--muted)), which reads dark in dark mode
+   * and light in light mode — the opposite of --ink, and exactly what that
+   * swatch needs in both themes. #fff is only a last-resort default. */
+  color: var(--tc, #fff);
+  font-family: var(--f-body);
+  font-size: var(--tf, 12px);
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+/* The token art inside .tok (Tok.jsx), for a known figure at a readable
+ * size. The art itself already carries its colour disc and white inner ring
+ * (src/Images/figures/*-token.svg), so there is nothing to paint here beyond
+ * filling the circle and clipping to it — no tint, no background, no ::after
+ * ring layered on top. */
+.tokImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--mk, 52px);
+  height: var(--mk, 52px);
+  border-radius: var(--mk-r, 16px);
+  /* --mark-bg / --mark-fg let an ancestor (the ticket, say) repaint every mark
+   * inside it; without them the mark takes the space's own group colour. */
+  background: var(--mark-bg, var(--mk-bg, var(--tint)));
+  color: var(--mark-fg, var(--mk-fg, var(--on-tint)));
+  transition:
+    background-color 300ms ease-out,
+    color 300ms ease-out;
+}
+
+.mark svg {
+  display: block;
+}
+
+/* The full-body character (Figure.jsx). Sized from props like .tok/.mark;
+ * callers pass `className` for placement (the TV board positions/animates
+ * it). */
+.figure {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+
+.figureImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.mono {
+  font-family: var(--f-display);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+/* House / hotel pips (boardDisplay.jsx's Pips), shared by the ticket and the
+ * sheets. */
+.pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pips i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.pips b {
+  display: block;
+  width: 22px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--crim);
+  box-shadow: 0 0 0 1.5px var(--pips-ring, var(--surface));
+}
+
+/* Visually hidden, still readable by assistive tech. */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
