@@ -1,0 +1,540 @@
+/* The login screen.
+ *
+ * Same two halves as the phone controller (src/Client/screen.module.css): a
+ * radial wash of --tint on top, a white panel pinned to the floor underneath.
+ * Here --tint is the colour of the character you picked rather than of the
+ * space you stand on, and it is written on the root by LoginScreen.jsx.
+ *
+ * Every colour comes from the [data-client] block in styles/tokens.css, which
+ * the root opts into with `data-client=""` — that block also carries the
+ * `[data-client] * { color: inherit }` rule that undoes main.css's global
+ * `* { color: #fff }`.
+ *
+ * Three things this file has to work around, none of which it may fix at
+ * source: Bootstrap's reboot (`button:focus { outline: 5px auto … }` and its
+ * own input styling), main.css's `* { margin: 0; padding: 0; color: #fff }`,
+ * and a <body> painted #191528 in Nunito. The resets below live inside
+ * :where() so they weigh nothing and every single-class rule after them wins.
+ */
+
+/* Only so the aura's gradient can cross-fade when the pick changes: an
+ * unregistered custom property is a plain token substitution, so a
+ * background-image built from one jumps. Registered, it interpolates, and the
+ * whole wash slides from one character's colour to the next.
+ *
+ * Deliberately NOT named --tint: this file is bundled into the app's one
+ * stylesheet, and registering --tint would type it for the Board and the phone
+ * controller too. --login-tint is used nowhere else. */
+@property --login-tint {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #5f6b7a;
+}
+
+.screen {
+  position: relative;
+  height: 100dvh;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  /* `hidden` as the fallback, then `clip`: clip does not turn this box into a
+   * scroll container, so nothing inside it — a focus(), the keyboard opening —
+   * can scroll the screen off its own floor. The panel below is the one and
+   * only scroll container on this page. */
+  overflow: hidden;
+  overflow: clip;
+  /* --tint is what every rule below reads; --login-tint is what JS writes and
+   * what actually animates. */
+  --tint: var(--login-tint);
+  transition: --login-tint 300ms ease-out;
+}
+
+.screen *,
+.screen *::before,
+.screen *::after {
+  box-sizing: border-box;
+}
+
+/* Keep FIRST: zero-specificity resets, so every component rule below beats
+ * them on source order alone (a plain `.screen button {…}` would be (0,1,1)
+ * and silently outweigh the single-class rules it is meant to seed). */
+.screen :where(button, input) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.screen :where(button) {
+  cursor: pointer;
+  transition:
+    transform 120ms ease-out,
+    background-color 300ms ease-out,
+    color 300ms ease-out,
+    box-shadow var(--t-fast) ease-out;
+}
+
+.screen :where(button):active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.screen :where(button):disabled {
+  cursor: default;
+}
+
+.screen :focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* Bootstrap 4's reboot paints `button:focus { outline: 5px auto
+ * -webkit-focus-ring-color }` — a plain :focus, not :focus-visible — so every
+ * button here wore Chrome's native ring the moment it was tapped. The ring
+ * this design wants is the keyboard-only one above; this takes the other one
+ * back off. (0,3,0) here clears Bootstrap's (0,1,1). */
+.screen :where(button, input, a, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+.screen :where(h1, p, label) {
+  margin: 0;
+  padding: 0;
+}
+
+/* The column. Full width on a phone, a 440px card of a page on a desktop —
+ * the same content either way, never stretched across a monitor. */
+.app {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overflow: clip;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  background: radial-gradient(
+    130% 70% at 50% 0%,
+    color-mix(in srgb, var(--tint) var(--glow-mix), var(--glow-base)) 0%,
+    color-mix(in srgb, var(--tint) 12%, var(--glow-base)) 72%,
+    var(--ground) 100%
+  );
+}
+
+/* --------------------------------------------------------------------- aura */
+
+/* `flex: 1 1 0` — a basis of zero, not auto, so the aura's height is exactly
+ * "the screen minus the panel" and never a function of what is inside it. Two
+ * things follow: the keyboard takes the aura away before it takes a pixel of
+ * the panel, and the hero can be sized from the measured gap with no chance of
+ * a layout loop (see useFitHeight). */
+.aura {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+  padding: calc(env(safe-area-inset-top, 0px) + 20px) 20px 8px;
+}
+
+.brand {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  text-align: center;
+  min-width: 0;
+}
+
+/* There is no logo. The name, set confidently, is the logo. */
+.wordmark {
+  font-family: var(--f-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.sub {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* `end`, not `center`: the characters stand on the panel rather than hovering
+ * in the middle of the wash with a void underneath them. */
+.hero {
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  min-height: 0;
+  min-width: 0;
+}
+
+.heroOne {
+  display: grid;
+  place-items: end center;
+}
+
+/* Before a pick: the whole cast standing there, dimmed, waiting to be chosen. */
+.heroRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+/* A negative margin, not a negative `gap` — `gap` clamps at zero, so the
+ * line-up silently overflowed the column and the Yeti lost an arm to the
+ * clip. LoginScreen.jsx works out --lap from the width it actually has. */
+.heroRow > * + * {
+  margin-left: var(--lap, 0px);
+}
+
+/* -------------------------------------------------------------------- panel */
+
+.panel {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 18px 20px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  border-radius: 28px 28px 0 0;
+  background: var(--surface);
+  box-shadow: 0 -16px 40px -24px var(--shadow);
+  /* The one scroll container on the page. `contain` keeps a rubber-band at the
+   * end of the list from turning into a page-level bounce behind the
+   * keyboard. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lab {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  height: 56px;
+  padding: 0 16px;
+  border-radius: 16px;
+  background: var(--sunk);
+  color: var(--ink);
+  /* 16px is the floor iOS will not zoom past on focus. */
+  font-family: var(--f-body);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 56px;
+}
+
+/* A ring drawn inside the field, not an outline: the outline reset above takes
+ * the native one off for pointer focus, and this one is wanted for both. */
+/* One 2px ring, drawn inside the field, for pointer focus and keyboard focus
+ * alike — an outline on top of it read as a double border at 3px. */
+.input:focus {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.screen :where(input):focus-visible {
+  outline: none;
+}
+
+.input:disabled {
+  color: var(--muted);
+  opacity: 1; /* Bootstrap fades disabled inputs; --muted is the fade we want */
+}
+
+/* Room codes are case-sensitive, so nothing here transforms the value. The
+ * display face and the letter-spacing are what make it read as a code. */
+.code {
+  font-family: var(--f-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+/* Nothing typed, nothing to say: the line collapses rather than holding open a
+ * gap the size of a sentence that is not there. It stays in the tree either
+ * way, because it is the aria-live region that announces the room. */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.status[data-on] {
+  min-height: 26px;
+}
+
+.statusText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.good {
+  color: var(--pos);
+}
+
+.warn {
+  color: var(--neg);
+}
+
+.info {
+  color: var(--muted);
+}
+
+.faces {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.faces > * {
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--surface);
+  border-radius: 50%;
+}
+
+.faces > *:first-child {
+  margin-left: 0;
+}
+
+/* ------------------------------------------------------------------ picker */
+
+.picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* The stage the figure manual reserves for the full figures: a wash of 14% of
+ * the character's own colour, the figure on it, the name under it. */
+.card {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 2px 8px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--fc) 14%, var(--sunk));
+  box-shadow: inset 0 0 0 2.5px transparent;
+  transition:
+    transform 160ms var(--ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    box-shadow 160ms ease-out,
+    background-color 200ms ease-out,
+    filter 200ms ease-out,
+    opacity 200ms ease-out;
+}
+
+.cardOn {
+  background: color-mix(in srgb, var(--fc) 20%, var(--sunk));
+  box-shadow:
+    inset 0 0 0 2.5px var(--fc),
+    0 12px 22px -14px color-mix(in srgb, var(--fc) 85%, #000);
+  transform: translateY(-3px);
+}
+
+.cardOn:active:not(:disabled) {
+  transform: translateY(-3px) scale(0.97);
+}
+
+/* Taken. With the silhouette art available this is only the stage going flat —
+ * the figure itself is replaced by .cardSil below, which is a shape, not a
+ * washed-out picture. Without it (before the figure swap lands) the greyscale
+ * fallback in FigurePicker takes over and this is what dims it. */
+.cardOff {
+  background: var(--sunk);
+  opacity: 0.55;
+}
+
+.cardOff :global(img) {
+  filter: grayscale(1);
+}
+
+.cardArt {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
+/* One colour, exactly --muted, in both themes: the silhouette SVG as a mask
+ * over a flat fill. An <img> could not be recoloured; a filter stack could not
+ * hit a token. */
+.cardSil {
+  display: block;
+  background: var(--muted);
+  mask: var(--sil) center / contain no-repeat;
+  -webkit-mask: var(--sil) center / contain no-repeat;
+}
+
+.cardName {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.cardTag {
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--neu-bg);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------------- foot */
+
+.foot {
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+/* The controller's banner language: a pill that states what went wrong, right
+ * above the thing that failed. */
+.msg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: var(--neg-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neg) 35%, transparent);
+  color: var(--neg);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 72px;
+  padding: 0 14px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: var(--tint);
+  color: var(--on-tint);
+  font-family: var(--f-display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: uppercase;
+  box-shadow: 0 16px 28px -18px color-mix(in srgb, var(--tint) 80%, #000);
+}
+
+/* A button you cannot press must not look pressable. */
+.submit:disabled {
+  background: var(--sunk);
+  color: var(--muted);
+  box-shadow: none;
+}
+
+/* Wider than a phone: the column stops being "the screen" and starts being a
+ * thing standing on the page, so it gets an edge of its own — without it the
+ * aura's wash just stopped mid-air against --ground. */
+@media (min-width: 480px) {
+  .app {
+    box-shadow: 0 0 70px -24px var(--shadow);
+  }
+}
+
+@media (hover: hover) {
+  .submit:not(:disabled):hover {
+    box-shadow:
+      inset 0 0 0 3px color-mix(in srgb, var(--on-tint) 45%, transparent),
+      0 16px 28px -18px color-mix(in srgb, var(--tint) 80%, #000);
+  }
+
+  .card:not(:disabled):hover {
+    background: color-mix(in srgb, var(--fc) 22%, var(--sunk));
+  }
+}
+
+/* ------------------------------------------------------ short screens / keyboard */
+
+/* Somewhere around here the keyboard is up, or the phone is a small one held
+ * in landscape. The wordmark stops being a headline and the sub-line goes, so
+ * the fields and the button keep the room they need. (The hero itself is not
+ * rendered at all below 560px — see LoginScreen.jsx.) */
+@media (max-height: 640px) {
+  .wordmark {
+    font-size: 26px;
+  }
+
+  .aura {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  }
+
+  .panel {
+    gap: 12px;
+    padding-top: 14px;
+  }
+}
+
+@media (max-height: 560px) {
+  .sub {
+    display: none;
+  }
+
+  .wordmark {
+    font-size: 22px;
+  }
+
+  .aura {
+    gap: 0;
+    padding-bottom: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .submit {
+    transition: none;
+  }
+}
