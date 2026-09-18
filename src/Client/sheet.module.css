@@ -1,0 +1,397 @@
+/* Bottom sheets: Mine, Players, Game. Tokens come from [data-client] on the
+ * client root (see src/styles/tokens.css) — --tint --on-tint --surface --sunk
+ * --ink --muted --line --ground --pos --pos-bg --neg --neg-bg --neu-bg --ev-bg
+ * --shadow --focus --crim --deck-chance --deck-chest --t-fast --t-enter
+ * --t-exit --f-display --f-body. */
+
+/* `.wrap` doesn't exist as its own element: `.backdrop` and `.sheet` are both
+ * absolutely positioned directly against the nearest positioned ancestor (see
+ * the comment in Sheet.jsx), which is `.app` in screen.module.css. */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(5, 6, 8, 0.55);
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  max-height: 82dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-variant-numeric: tabular-nums;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -16px 40px -24px var(--shadow);
+}
+
+/* The sheet takes focus itself when it opens (tabindex="-1" in Sheet.jsx), so
+ * that no single control is lit up on a thumb tap. A container is not a
+ * control: it never shows a ring, not even for a keyboard user, who gets one
+ * on the close button the moment they press Tab. Doubling `:focus-visible`
+ * puts this at (0,3,0) so it clears `.app :focus-visible` (0,2,0) in
+ * screen.module.css no matter which of the two CSS modules the bundler emits
+ * first — a plain `.sheet:focus-visible` would only tie with it and leave the
+ * outcome to source order. */
+.sheet:focus,
+.sheet:focus-visible:focus-visible {
+  outline: none;
+}
+
+/* :where() keeps this at the specificity of `.sheet` alone (0,1,0) instead of
+ * (0,1,1) for a bare `.sheet button`. At (0,1,1) this reset beat every
+ * single-class component rule below it that also targets a <button>
+ * (.close, .rowBtn, .settingRow, .leaveRow, .go) regardless of source order,
+ * wiping out their background/border/color/padding. At (0,1,0) it ties with
+ * those rules and — because it stays declared first — loses the cascade to
+ * them, which is the point: this is only a reset for buttons nothing else
+ * styles. */
+.sheet :where(button) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sheet button:focus-visible,
+.sheet select:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.sheet button:disabled {
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet button:active {
+    transform: none;
+  }
+}
+
+.grip {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 8px auto 8px;
+  border-radius: 4px;
+  background: var(--line);
+  flex: 0 0 auto;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px 8px;
+  flex: 0 0 auto;
+}
+
+.title {
+  flex: 1;
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  background: var(--sunk);
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 20px calc(env(safe-area-inset-bottom) + 20px);
+}
+
+.empty {
+  padding: 24px 0 16px;
+  font-size: 16px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------- shared list */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list > li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.list > li:last-child {
+  border-bottom: 0;
+}
+
+.list > li.dim {
+  opacity: 0.45;
+}
+
+.list > li.rowFocus {
+  margin: 0 -12px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--sunk);
+  border-bottom-color: transparent;
+}
+
+.rowMain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rowTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rowSub {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* For a line 2 that must never lose words to an ellipsis: the players
+ * sheet's money, and the deeds sheet's blocked-build reason. Wraps instead
+ * of truncating. */
+.rowSubWrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.rowNum {
+  flex: none;
+  text-align: right;
+}
+
+.rowNum strong {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.rowBtn {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.rowBtn:disabled {
+  /* Muted but legible: an explicit --muted text colour plus a moderate
+   * opacity, not the old opacity-0.4-on-inherited-ink combo, which faded the
+   * text and its --sunk background toward the same value and nearly erased
+   * the contrast between them. */
+  opacity: 0.55;
+  color: var(--muted);
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  vertical-align: 2px;
+}
+
+.tagMe {
+  background: var(--crim);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------ my hand */
+
+.sum {
+  margin: 0;
+  padding-bottom: 8px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.groupLabel {
+  padding-top: 16px;
+  padding-bottom: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.setHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 16px;
+  padding-bottom: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.setDots {
+  flex: 1 1 auto;
+  height: 2px;
+  background: linear-gradient(90deg, currentColor 50%, transparent 0) 0 0 / 8px 2px repeat-x;
+  opacity: 0.4;
+}
+
+/* Pips (house/hotel markers) now live in bits.module.css, shared with the
+ * ticket via boardDisplay.jsx's <Pips>. */
+
+/* --------------------------------------------------------------- game sheet */
+
+.log {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  width: 100%;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.settingValue {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaveRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  width: 100%;
+  border-radius: 14px;
+  border: 1.5px solid var(--neg);
+  color: var(--neg);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.leaveRow:disabled {
+  opacity: 0.5;
+}
+
+.debugRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--sunk);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  padding: 0 12px;
+}
+
+.go {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.go:disabled {
+  opacity: 0.5;
+}
