@@ -1,0 +1,460 @@
+/* Trade UI: the "Offer a trade" compose sheet (TradeSheet.jsx) and the
+ * incoming-offer overlay (OfferOverlay.jsx). Tokens come from [data-client]
+ * on the client root, same as sheet.module.css / screen.module.css —
+ * --surface --sunk --ink --muted --line --pos --pos-bg --neg --neg-bg
+ * --neu-bg --focus --crim --f-display --f-body --t-enter …
+ *
+ * Button reset: `.sheet :where(button)` (sheet.module.css) and
+ * `.app :where(button)` (screen.module.css) are both (0,1,0) resets, and
+ * bundle order between THIS module and sheet.module.css/screen.module.css is
+ * NOT guaranteed (they are separate CSS modules; Vite/Rollup does not
+ * promise this file's output lands after theirs). A tie at equal
+ * specificity is resolved per DECLARATION, not per rule: every property this
+ * file shares with the reset (background, color, the `font` shorthand's
+ * font-size/font-weight/font-family) can independently lose to it, even
+ * while properties only this file sets (width, height, border-radius) keep
+ * applying — which is exactly the half-styled-button bug a real render
+ * exposed here (measured via getComputedStyle: border-radius was correct,
+ * background was the reset's `none`, font-weight was the reset's
+ * `inherit`-d 400). So every selector that touches a <button> is a
+ * TWO-CLASS (or class+attribute) compound, at minimum (0,2,0), which beats
+ * the (0,1,0) reset outright regardless of source order. Never drop back to
+ * a bare single-class button selector here. */
+
+/* --------------------------------------------------------- compose sheet */
+
+.trWho {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.trWho .trP {
+  flex: 1 1 0;
+  min-width: 76px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-height: 76px;
+  padding: 8px 4px;
+  border-radius: 16px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.trP > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trWho .trP[aria-checked="true"] {
+  box-shadow: inset 0 0 0 2.5px var(--ink);
+}
+
+.trTo {
+  padding-bottom: 12px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.trH {
+  padding: 8px 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.trChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trChips .trChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 4px 12px 4px 4px;
+  border-radius: 14px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.trChips .trChip[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2.5px var(--ink);
+}
+
+.trChips .trChip[aria-pressed="true"]::after {
+  content: "✓";
+  font-weight: 800;
+}
+
+.trChips .trChip:disabled {
+  opacity: 0.45;
+}
+
+.trChip > span {
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.trHint {
+  padding: 4px 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.trNone {
+  padding: 4px 0 8px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+/* Two rows, always: label+stepper never share a line with the quick chips,
+ * so nothing has to wrap mid-row at 360px. Row 2 (the quick chips) drops
+ * out below 380px instead of wrapping awkwardly onto its own half-empty
+ * line — there just is not room for two 44px pills plus their gap next to
+ * anything else down there. */
+.trCash {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  padding-bottom: 4px;
+}
+
+.trCashRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.trStepGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.trStepGroup .trStepBtn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.trStepGroup .trStepBtn:disabled {
+  opacity: 0.35;
+}
+
+.trCashVal {
+  display: block;
+  min-width: 44px;
+  text-align: center;
+  font-family: var(--f-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.trCashQuick {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.trCashQuick .trQuick {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@media (max-width: 379px) {
+  .trCashQuick {
+    display: none;
+  }
+}
+
+.bSum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--line);
+}
+
+.bStat {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bStat span {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bStat strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bSum .bConfirm {
+  flex: 1 1 140px;
+  min-height: 56px;
+  border-radius: 18px;
+  background: var(--ink);
+  color: var(--surface);
+  font-family: var(--f-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.bSum .bConfirm:disabled {
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------------- incoming offer */
+
+.owrap {
+  position: absolute;
+  inset: 0;
+  /* Above the sheets (sheet.module.css: .backdrop 20, .sheet 21) — an incoming
+   * offer is an alertdialog and must never render invisibly behind an open
+   * sheet while still trapping focus. ClientScreen also closes any non-trade
+   * sheet when an offer arrives; this is the belt to that suspenders. */
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 20px 48px;
+}
+
+.oscrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 6, 8, 0.55);
+}
+
+.offer {
+  position: relative;
+  width: 100%;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+}
+
+/* Doubled to (0,3,0) so it clears `.app :focus-visible` (0,2,0) in
+ * screen.module.css regardless of bundle order — same trick as `.sheet` in
+ * sheet.module.css. The card takes focus itself on open; nothing inside it
+ * should look "selected" for a thumb tap. */
+.offer:focus,
+.offer:focus-visible:focus-visible {
+  outline: none;
+}
+
+.ofHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ofHead strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ofCols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.ofCol {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--sunk);
+  min-width: 0;
+}
+
+.ofH {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ofItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-size: 14px;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.ofItemMain {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ofItemName {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ofItemSub {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ofCoin {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--sunk);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+.ofNone {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.ofNet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ofNet strong {
+  font-family: var(--f-display);
+  font-size: 20px;
+}
+
+.ofNetPos {
+  color: var(--pos);
+}
+
+.ofNetNeg {
+  color: var(--neg);
+}
+
+.ofReason {
+  margin: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--neg);
+}
+
+.ofAct {
+  display: flex;
+  gap: 8px;
+}
+
+.ofAct .ofSec {
+  flex: 1 1 0;
+  min-height: 56px;
+  border-radius: 18px;
+  border: 1.5px solid var(--ink);
+  background: none;
+  color: var(--ink);
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ofAct .ofSec:disabled {
+  opacity: 0.5;
+}
+
+.ofAct .ofPri {
+  flex: 1.4 1 0;
+  min-height: 56px;
+  border-radius: 18px;
+  background: var(--ink);
+  color: var(--surface);
+  font-family: var(--f-display);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.ofAct .ofPri:disabled {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .offer {
+    transition: none;
+  }
+}
