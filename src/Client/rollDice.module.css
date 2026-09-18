@@ -1,0 +1,125 @@
+/* The shared dice (RollDice.jsx) — phone and TV.
+ *
+ * Flat by design: a white (dark: near-white) rounded die, ink pips, one 1px
+ * --die-bc hairline. No gradients, no gloss, no bevel — the cube reads as a
+ * cube because it MOVES like one, not because it is shaded like one.
+ *
+ * Sizing is entirely by custom property, so one component serves 44px on the
+ * phone, 34px in its decide state and 88px on the TV:
+ *   --die       edge length
+ *   --die-gap   between the two dice
+ *   --die-r     corner radius (scaled from --die unless a caller sets it)
+ *
+ * Nothing here animates: every frame of a throw is written by WAAPI from
+ * RollDice.jsx, and only ever onto `transform` / `opacity`.
+ */
+
+.dice {
+  --die: 44px;
+  --die-gap: 8px;
+  --die-r: calc(var(--die) * 0.27);
+  display: flex;
+  align-items: center;
+  gap: var(--die-gap);
+  /* The cube needs depth to read as one. Tied to the die's own size so the
+   * 88px TV pair is not drawn with a 44px lens. */
+  perspective: calc(var(--die) * 9);
+  perspective-origin: 50% 45%;
+}
+
+/* One die's box. Also the padding the hop and the contact shadow live in, so
+ * neither can change the row's height — no layout, ever. */
+.slot {
+  position: relative;
+  display: block;
+  width: var(--die);
+  height: var(--die);
+  transform-style: preserve-3d;
+}
+
+/* The contact shadow. Soft, and it tightens as the die comes down (RollDice
+ * writes scale + opacity on it from the same sampled trajectory as the cube). */
+.shade {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: calc(var(--die) * -0.09);
+  height: calc(var(--die) * 0.2);
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, var(--shadow) 0%, transparent 72%);
+  opacity: 0.3;
+  transform: scale(1);
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+.cube {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Six flat faces, each carrying its own 3x3 pip grid. They are painted once
+ * and never change, which is the whole point: a face can only appear by being
+ * turned towards the viewer. */
+.face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  gap: 7%;
+  padding: 16%;
+  border: 1px solid var(--die-bc);
+  border-radius: var(--die-r);
+  background: var(--die-bg);
+  backface-visibility: hidden;
+  transform: var(--f) translateZ(calc(var(--die) / 2));
+}
+
+.face i {
+  display: block;
+  border-radius: 50%;
+  background: var(--pip);
+  opacity: 0;
+}
+
+.face i.pipOn,
+.flat i.pipOn {
+  opacity: 1;
+}
+
+/* ---- prefers-reduced-motion path --------------------------------------- */
+
+/* One flat face, no cube, no tumble. It dims for the length of the beat and
+ * then shows the result — same information in the same order, none of the
+ * movement. */
+.flat {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  gap: 7%;
+  padding: 16%;
+  border: 1px solid var(--die-bc);
+  border-radius: var(--die-r);
+  background: var(--die-bg);
+  transition: opacity 180ms linear;
+}
+
+.flat i {
+  display: block;
+  border-radius: 50%;
+  background: var(--pip);
+  opacity: 0;
+}
+
+.flatRolling {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shade {
+    display: none;
+  }
+}
