@@ -1,11 +1,16 @@
 // Scenario data for the offline client preview harness
 // (client-harness.html / src/dev/clientHarness.jsx / src/dev/mockSupabase.js).
 //
-// Every scenario builds a plausible 4-player mid-game room row shaped exactly
-// like supabase/migrations/20260918140000_game_rules.sql +
+// Every scenario builds a plausible mid-game room row shaped exactly like
+// supabase/migrations/20260918140000_game_rules.sql +
 // 20260918160000_game_log.sql produce: { uuid, position, Players,
 // current_order, game }. "Afo" (fig1) is always the local player the harness
 // logs the toolbar in as.
+//
+// Most of them seat four (Ero/Afo/Koli/Gaya = fig0..fig3); "six-players" and
+// "tv-six-players" fill the room to the cap of six so the phone and the TV can
+// be previewed at full load. Six seats and the eight figures fig0..fig7 come
+// from supabase/migrations/20260920100000_six_players.sql.
 //
 // Board layout reference (src/Hooks/baseState.jsx, 1-indexed):
 //   streets   2,4 (#D92650) · 7,9,10 (#eb75e7) · 12,14,15 (#F5786C)
@@ -24,18 +29,45 @@
 // reacts the same way it would against the real backend.
 
 import { initialState } from "../Hooks/baseState";
+import { FIGS, MAX_PLAYERS as RULES_MAX_PLAYERS } from "../Hooks/rules";
 
 export const ROOM_UUID = "MOCK01";
+
+// The eight selectable figures and the six-seat cap. Taken from
+// src/Hooks/rules.js so the harness can never disagree with the client, and
+// matching supabase/migrations/20260920100000_six_players.sql.
+export const FIGURES = FIGS;
+export const MAX_PLAYERS = RULES_MAX_PLAYERS;
 
 export const PLAYER_IDS = {
   ero: "mock-ero",
   afo: "mock-afo",
   koli: "mock-koli",
   gaya: "mock-gaya",
+  bat: "mock-bat",
+  mummy: "mock-mummy",
 };
 
 export const ME_PLAYER_ID = PLAYER_IDS.afo;
 export const ME_FIGURE = "fig1";
+
+// A board straight out of initialState() may still carry only fig0..fig3 (that
+// file is owned by another agent). The server's own data step -- see
+// public.mono_upgrade_cells in 20260920100000_six_players.sql -- brings every
+// stored board up to the eight-key shape, so the harness does the same to
+// whatever it builds: `defaults` first, existing values second, so nothing
+// already set is overwritten.
+function upgradeCells(board) {
+  for (const cell of Object.values(board)) {
+    const bought = { ...(cell.bought || {}) };
+    for (const f of FIGURES) {
+      if (!(f in cell)) cell[f] = false;
+      if (!(f in bought)) bought[f] = false;
+    }
+    cell.bought = bought;
+  }
+  return board;
+}
 
 // A separate set of ids for `tv-autoplay` (src/dev/tvHarness.jsx): every
 // seat there is a bot, and the bot-scheduling code in mockSupabase.js only
@@ -47,6 +79,8 @@ export const AUTOPLAY_PLAYER_IDS = {
   afo: "mock-bot-afo",
   koli: "mock-bot-koli",
   gaya: "mock-bot-gaya",
+  bat: "mock-bot-bat",
+  mummy: "mock-bot-mummy",
 };
 
 // `extra(board, own)` lets a scenario hand out one or two more cells on top
@@ -54,7 +88,7 @@ export const AUTOPLAY_PLAYER_IDS = {
 // tradable (house-free) set or single cell for Afo to offer -- the default
 // board only gives Afo the salmon set, and that one has houses on purpose.
 function buildBoard(extra) {
-  const board = initialState();
+  const board = upgradeCells(initialState());
   const own = (id, fig) => {
     board[id].bought[fig] = true;
   };
@@ -157,7 +191,7 @@ function baseRow({
 // ---------------------------------------------------------------------------
 
 function customRow({ players, board, boardMutator, currentOrder = 0, phase = "roll", doubles = 0, dice = null, winner = null }) {
-  const finalBoard = board || buildBoard(boardMutator);
+  const finalBoard = board ? upgradeCells(board) : buildBoard(boardMutator);
   placeTokens(finalBoard, players);
   return {
     uuid: ROOM_UUID,
@@ -283,14 +317,16 @@ function richPlayers() {
   ];
 }
 
-function autoplayPlayers() {
+function autoplayPlayers(keys = ["ero", "afo", "koli", "gaya"]) {
   const table = {
     ero: { name: "Ero", figure: "fig0", playerId: AUTOPLAY_PLAYER_IDS.ero },
     afo: { name: "Afo", figure: "fig1", playerId: AUTOPLAY_PLAYER_IDS.afo },
     koli: { name: "Koli", figure: "fig2", playerId: AUTOPLAY_PLAYER_IDS.koli },
     gaya: { name: "Gaya", figure: "fig3", playerId: AUTOPLAY_PLAYER_IDS.gaya },
+    bat: { name: "Bat", figure: "fig4", playerId: AUTOPLAY_PLAYER_IDS.bat },
+    mummy: { name: "Mummy", figure: "fig5", playerId: AUTOPLAY_PLAYER_IDS.mummy },
   };
-  return ["ero", "afo", "koli", "gaya"].map((key, i) => ({
+  return keys.map((key, i) => ({
     ...table[key],
     money: 1600,
     position: 1,
@@ -300,6 +336,59 @@ function autoplayPlayers() {
     jailCards: 0,
     bankrupt: false,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// The full room: six seats, fig0..fig5, every figure holding something.
+//
+// `six-players` (phone) and `tv-six-players` (TV) share this so the two
+// layouts are previewed against the *same* row -- the phone's player strip and
+// the TV's side panel both have to survive six names, six token stacks on one
+// cell's worth of board and six sets of holdings.
+//
+// Seat order is Ero(fig0) · Afo(fig1, "me") · Koli(fig2) · Gaya(fig3) ·
+// Bat(fig4) · Mummy(fig5), so `current_order: 1` is still the local player's
+// turn exactly like every other phone scenario.
+// ---------------------------------------------------------------------------
+
+const SIX_SEATS = [
+  { name: "Ero", figure: "fig0", money: 1180, position: 6, playerId: PLAYER_IDS.ero, inJail: false, jailTurns: 0, jailCards: 0, bankrupt: false },
+  { name: "Afo", figure: "fig1", money: 1450, position: 15, playerId: PLAYER_IDS.afo, inJail: false, jailTurns: 0, jailCards: 0, bankrupt: false },
+  { name: "Koli", figure: "fig2", money: 860, position: 9, playerId: PLAYER_IDS.koli, inJail: false, jailTurns: 0, jailCards: 0, bankrupt: false },
+  { name: "Гаяне Ованнисян-Мкртчян", figure: "fig3", money: 2050, position: 22, playerId: PLAYER_IDS.gaya, inJail: true, jailTurns: 1, jailCards: 0, bankrupt: false },
+  { name: "Bat", figure: "fig4", money: 640, position: 1, playerId: PLAYER_IDS.bat, inJail: false, jailTurns: 0, jailCards: 1, bankrupt: false },
+  { name: "Mummy", figure: "fig5", money: 310, position: 6, playerId: PLAYER_IDS.mummy, inJail: false, jailTurns: 0, jailCards: 0, bankrupt: false },
+];
+
+function sixPlayers(overrides = {}) {
+  return SIX_SEATS.map((p, i) => ({ ...p, order: i, ...(overrides[p.figure] || {}) }));
+}
+
+// The default buildBoard() holdings plus a slice for fig4 and fig5, so no seat
+// on the TV's side panel is empty and the two new figures appear both as an
+// owner badge and as a token sharing cell 6 with Ero.
+function sixBoard() {
+  return buildBoard((board, own) => {
+    own(19, "fig4");
+    own(20, "fig4");
+    own(36, "fig4");
+    own(24, "fig5");
+    own(25, "fig5");
+    own(28, "fig5");
+    own(38, "fig5");
+    board[19].houses = 0;
+  });
+}
+
+function sixRow(extra = {}) {
+  return customRow({
+    players: sixPlayers(extra.playerOverrides),
+    board: sixBoard(),
+    currentOrder: extra.currentOrder ?? 1,
+    phase: extra.phase ?? "roll",
+    doubles: extra.doubles ?? 0,
+    dice: extra.dice ?? null,
+  });
 }
 
 export const SCENARIOS = {
@@ -328,6 +417,184 @@ export const SCENARIOS = {
         playerOverrides: { afo: { position: 25, money: 40 } },
       }),
       intro: { actorId: PLAYER_IDS.afo, target: 35 }, // Windows, #6F6CF5, $320, unowned
+    }),
+  },
+
+  // The owner's bug report: "I cannot buy the second Railroad". I already own
+  // one railroad (26) and land on another, unowned one (36). The act row must
+  // offer Buy $200 / Pass exactly as it does for a street.
+  "my-buy-railroad": {
+    label: "my-buy-railroad",
+    describe: "I already own railroad 26 and land on the unowned railroad 36.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 30 } },
+        boardMutator: (board, own) => {
+          board[26].bought.fig2 = false; // Koli's by default
+          own(26, "fig1"); // mine, so I land on 36 already holding one
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 36 }, // RailRoad "Carry", $200, unowned
+    }),
+  },
+
+  // Same question for the second utility: I own 13 (Light) and land on 28
+  // (Water).
+  "my-buy-utility": {
+    label: "my-buy-utility",
+    describe: "I already own utility 13 and land on the unowned utility 28.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 23 } },
+        boardMutator: (board, own) => {
+          board[13].bought.fig0 = false; // Ero's by default
+          own(13, "fig1");
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 28 }, // Communal "Water", $150, unowned
+    }),
+  },
+
+  // What a phone sees after a RELOAD (or any first load) while it is already
+  // standing, mid-turn, on an unowned space: the row is in phase "act" and no
+  // live `land` event will ever arrive again for it.
+  "my-buy-reloaded": {
+    label: "my-buy-reloaded",
+    describe: "Fresh load, already standing on the unowned railroad 36 in phase act.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "act",
+        dice: [4, 6],
+        playerOverrides: { afo: { position: 36 } },
+        boardMutator: (board, own) => {
+          board[26].bought.fig2 = false;
+          own(26, "fig1");
+        },
+      }),
+    }),
+  },
+
+  // The same fresh load, but the log says I already put this space up for
+  // auction and nobody bid. The offer must stay gone: that is what passing on
+  // a space means, and it has to survive a reload the same way the offer
+  // itself now does.
+  "my-buy-declined": {
+    label: "my-buy-declined",
+    describe: "Fresh load on railroad 36 after I passed and its auction found no bidder.",
+    build: () => {
+      const row = baseRow({
+        currentOrder: 1,
+        phase: "act",
+        dice: [4, 6],
+        playerOverrides: { afo: { position: 36 } },
+      });
+      row.game.log = [
+        ...row.game.log,
+        { type: "land", figure: "fig1", cell: 36, kind: "road", seq: 1, by: PLAYER_IDS.afo },
+        { type: "auction_start", figure: "fig1", cell: 36, seq: 2, by: PLAYER_IDS.afo },
+        { type: "auction_none", cell: 36, seq: 3, by: PLAYER_IDS.gaya },
+      ];
+      return { row };
+    },
+  },
+
+  // "Advance to the nearest railroad" (Chance mc8, index 7 -- c5 in the SQL).
+  // The one card that puts a token on a railroad with no roll-and-land of its
+  // own: the roll lands on Chance 23, the card then moves me again, inside the
+  // same action, onto railroad 26. Two `move`s and two `land`s in one
+  // `game.events` batch, and the buy offer has to be decided from the SECOND
+  // landing -- which is precisely the bookkeeping the "cannot buy the second
+  // Railroad" report turned out to be about.
+  //
+  // 26 is Koli's by default, so it is handed to nobody here and I already hold
+  // 16, making this the exact shape of the original report: a second railroad,
+  // free, reached by the one route nothing else in the harness covers.
+  "my-card-nearest-road": {
+    label: "my-card-nearest-road",
+    describe: "Chance 23 → nearest railroad card → land on the unowned railroad 26. BUY must appear.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 20 } },
+        boardMutator: (board, own) => {
+          board[26].bought.fig2 = false; // free it up: this is the one I must be offered
+          board[16].bought.fig3 = false; // Gaya's by default
+          own(16, "fig1"); // mine, so 26 would be my SECOND railroad
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 23, forceCard: { deck: "chance", index: 7 } },
+    }),
+  },
+
+  // The same card from Chance 37, the only Chance cell with no railroad above
+  // it: the target wraps round to railroad 6 and the move therefore passes
+  // Start, so the batch also carries a `collect` of $200 with reason `passGo`.
+  // 6 is Ero's by default and stays his, so this is the RENT half of the card:
+  // one railroad owned is $25, doubled by the card to $50.
+  "my-card-nearest-road-wrap": {
+    label: "my-card-nearest-road-wrap",
+    describe: "Chance 37 → nearest railroad wraps to Ero's railroad 6: +$200 Start, −$50 double rent.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 34 } },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 37, forceCard: { deck: "chance", index: 7 } },
+    }),
+  },
+
+  // The third and last Chance cell, 8, whose nearest railroad going forward is
+  // 16 -- so between this, `my-card-nearest-road` (23 → 26) and
+  // `my-card-nearest-road-wrap` (37 → 6) every Chance cell on the board has its
+  // target pinned down, which is the only way an off-by-one in the `> pos`
+  // comparison could not hide somewhere.
+  //
+  // This is also the one place the DOUBLED multi-railroad rate is exercised:
+  // Ero is given 16 on top of his default 6, so the normal rent for a landing
+  // there is the two-railroad rate of $50, and the card's road_mult of 2 makes
+  // it $100. Both numbers are distinct from every undoubled rate in the table
+  // (25/50/100/200), so the charge alone proves the multiplier was applied and
+  // that it multiplied the count-based rate rather than replacing it.
+  "my-card-nearest-road-rent": {
+    label: "my-card-nearest-road-rent",
+    describe: "Chance 8 → nearest railroad 16, owned by Ero who holds 2: −$100 (2-railroad $50, doubled).",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 5 } },
+        boardMutator: (board, own) => {
+          board[16].bought.fig3 = false; // Gaya's by default
+          own(16, "fig0"); // Ero's second railroad, so his rate is $50 before the card
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 8, forceCard: { deck: "chance", index: 7 } },
+    }),
+  },
+
+  // The utility twin of the same card kind (Chance mc9, index 8 -- c4 in the
+  // SQL), kept because it is the only place the server's `util_mult` override
+  // is reachable at all: Ero owns utility 13 and only that one, so ordinary
+  // rent would be 4x dice, and the card forces 10x instead. The dice are the
+  // ORIGINAL roll's, not a re-throw -- see the `nearest` case in
+  // mockSupabase.js's applyCard() for why.
+  "my-card-nearest-utility": {
+    label: "my-card-nearest-utility",
+    describe: "Chance 8 → nearest utility card → Ero's utility 13 at 10× dice, not 4×.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 5 } },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 8, forceCard: { deck: "chance", index: 8 } },
     }),
   },
 
@@ -772,6 +1039,117 @@ export const SCENARIOS = {
     }),
   },
 
+  // ---------------------------------------------------------------------
+  // Six seats. The room at the cap: six names in the player strip, two
+  // tokens sharing cell 6, and holdings for every figure including the two
+  // new ones (fig4 Bat, fig5 Mummy).
+  // ---------------------------------------------------------------------
+
+  "six-players": {
+    label: "six-players",
+    describe: "A full room: six players, fig0..fig5, my turn. Phone layout at full load.",
+    build: () => ({ row: sixRow({ currentOrder: 1, phase: "roll" }) }),
+  },
+
+  "six-players-not-my-turn": {
+    label: "six-players-not-my-turn",
+    describe: "Full six-player room, the 6th seat (Mummy, fig5) is to move.",
+    build: () => ({ row: sixRow({ currentOrder: 5, phase: "roll" }) }),
+  },
+
+  // ---------------------------------------------------------------------
+  // Jail and doubles. The field is `game.doubles` (the count of consecutive
+  // doubles THIS player has rolled); `Players[].inJail` / `.jailTurns` /
+  // `.jailCards` are the per-player jail state. Events: roll{doubles:bool},
+  // jail{reason:"gtj"|"card"|"doubles"}, jailStay{turn}, jailLeave{how:
+  // "doubles"|"fee"|"pay"|"card"}, again{doubles}. See the jail/doubles
+  // section of supabase/tests/auction_trade.test.mjs for the full contract.
+  // ---------------------------------------------------------------------
+
+  "jail-in-jail-card": {
+    label: "jail-in-jail-card",
+    describe: "I am in jail on my turn (1 turn served) holding a Get Out Of Jail Free card: roll / pay 50$ / use card.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 11, inJail: true, jailTurns: 1, jailCards: 1 } },
+      }),
+    }),
+  },
+
+  "jail-in-jail-no-card": {
+    label: "jail-in-jail-no-card",
+    describe: "In jail on my turn with no card and only 40$: the pay-50$ button must be refused.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 11, inJail: true, jailTurns: 1, jailCards: 0, money: 40 } },
+      }),
+    }),
+  },
+
+  "jail-in-jail-last-chance": {
+    label: "jail-in-jail-last-chance",
+    describe: "In jail, two turns already served: the next failed roll takes the 50$ fine and moves me anyway.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 11, inJail: true, jailTurns: 2, jailCards: 0 } },
+      }),
+    }),
+  },
+
+  "jail-gtj-cell": {
+    label: "jail-gtj-cell",
+    describe: 'Lands on "Go To Jail" (31) ~600ms after load: jail{reason:"gtj"}, no 200$ for passing Start.',
+    build: () => ({
+      row: baseRow({ currentOrder: 1, phase: "roll" }),
+      intro: { actorId: PLAYER_IDS.afo, target: 31, delay: 600 },
+    }),
+  },
+
+  "jail-doubles-1": {
+    label: "jail-doubles-1",
+    describe: "Rolls their 1st double ~600ms after load: game.doubles goes 0 -> 1, the turn stays mine.",
+    build: () => ({
+      row: baseRow({ currentOrder: 1, phase: "roll" }),
+      intro: { actorId: PLAYER_IDS.afo, target: 21, forceDoubles: true, delay: 600 },
+    }),
+  },
+
+  "jail-doubles-2": {
+    label: "jail-doubles-2",
+    describe: "Already on 1 double; rolls their 2nd ~600ms after load: game.doubles goes 1 -> 2.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        doubles: 1,
+        dice: [4, 4],
+        playerOverrides: { afo: { position: 21 } },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 25, forceDoubles: true, delay: 600 },
+    }),
+  },
+
+  "jail-doubles-3": {
+    label: "jail-doubles-3",
+    describe: "Already on 2 doubles; the 3rd ~600ms after load goes straight to jail (no move by that roll) and game.doubles resets to 0.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        doubles: 2,
+        dice: [5, 5],
+        playerOverrides: { afo: { position: 25 } },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, forceDoubles: true, delay: 600 },
+    }),
+  },
+
   loading: {
     label: "loading",
     describe: "The initial fetch never resolves.",
@@ -958,15 +1336,14 @@ export const SCENARIOS = {
         currentOrder: 0,
         phase: "roll",
         boardMutator: (board) => {
-          // Only two seats exist in this room: strip the default board's
-          // fig2/fig3 ownership so no cell is "owned" by a nonexistent player.
+          // Only two seats exist in this room: strip every other figure's
+          // ownership so no cell is "owned" by a nonexistent player.
           for (const cell of Object.values(board)) {
-            if (cell.bought) {
-              cell.bought.fig2 = false;
-              cell.bought.fig3 = false;
+            for (const f of FIGURES) {
+              if (f === "fig0" || f === "fig1") continue;
+              if (cell.bought) cell.bought[f] = false;
+              cell[f] = false;
             }
-            cell.fig2 = false;
-            cell.fig3 = false;
           }
         },
       }),
@@ -981,13 +1358,69 @@ export const SCENARIOS = {
     }),
   },
 
+  "tv-six-players": {
+    label: "tv-six-players",
+    describe: "A full room: six players, fig0..fig5, one of them jailed. The TV side panel at full load.",
+    build: () => ({ row: sixRow({ currentOrder: 1, phase: "roll" }) }),
+  },
+
+  "tv-six-autoplay": {
+    label: "tv-six-autoplay",
+    describe: "All six seats are bots: a full-load game plays itself indefinitely, auctions and trades included.",
+    build: () => ({
+      row: customRow({
+        players: autoplayPlayers(["ero", "afo", "koli", "gaya", "bat", "mummy"]),
+        board: initialState(),
+        currentOrder: 0,
+        phase: "roll",
+      }),
+      autoplay: true,
+    }),
+  },
+
+  "tv-jail-in-jail-card": {
+    label: "tv-jail-in-jail-card",
+    describe: "Afo is in jail on their turn holding a Get Out Of Jail Free card (TV jail badge + card count).",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 11, inJail: true, jailTurns: 1, jailCards: 1 } },
+      }),
+    }),
+  },
+
+  "tv-jail-gtj-cell": {
+    label: "tv-jail-gtj-cell",
+    describe: 'Afo lands on "Go To Jail" (31) ~900ms after load: the token flies to 31 and then to Jail (11).',
+    build: () => ({
+      row: baseRow({ currentOrder: 1, phase: "roll" }),
+      intro: { actorId: PLAYER_IDS.afo, target: 31, delay: 900 },
+    }),
+  },
+
+  "tv-jail-doubles-3": {
+    label: "tv-jail-doubles-3",
+    describe: "Afo is on 2 doubles; the 3rd ~900ms after load sends them to jail without moving by that roll.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        doubles: 2,
+        dice: [5, 5],
+        playerOverrides: { afo: { position: 25 } },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, forceDoubles: true, delay: 900 },
+    }),
+  },
+
   "tv-empty-room": {
     label: "tv-empty-room",
     describe: "The room exists but nobody has joined yet (empty-room hint).",
     build: () => ({
       row: {
         uuid: ROOM_UUID,
-        position: initialState(),
+        position: upgradeCells(initialState()),
         Players: [],
         current_order: 0,
         game: {
@@ -1059,6 +1492,8 @@ const LOGIN_SEATS = {
   afo: { name: "Afo", figure: "fig1", playerId: PLAYER_IDS.afo },
   koli: { name: "Koli", figure: "fig2", playerId: PLAYER_IDS.koli },
   gaya: { name: "Gaya", figure: "fig3", playerId: PLAYER_IDS.gaya },
+  bat: { name: "Bat", figure: "fig4", playerId: PLAYER_IDS.bat },
+  mummy: { name: "Mummy", figure: "fig5", playerId: PLAYER_IDS.mummy },
 };
 
 // A room nobody has played in yet: everyone on Start, 2500$, no ownership.
@@ -1097,7 +1532,7 @@ const LOGIN_SCENARIOS = {
 
   "login-found": {
     label: "login-found",
-    describe: "Code prefilled, room found with 2 of 4 seats taken (Ghost + Witch).",
+    describe: "Code prefilled, room found with 2 of the 6 seats taken (Imp + Specter).",
     login: { roomCode: ROOM_UUID, playerInfo: null },
     build: () => ({ row: lobbyRow(["ero", "koli"]) }),
   },
@@ -1111,9 +1546,16 @@ const LOGIN_SCENARIOS = {
 
   "login-full": {
     label: "login-full",
-    describe: "All four seats taken: every figure disabled, the room is full.",
+    describe: "All six seats taken: the room is full even though fig6/fig7 are still unclaimed.",
     login: { roomCode: ROOM_UUID, playerInfo: null },
-    build: () => ({ row: lobbyRow(["ero", "afo", "koli", "gaya"]) }),
+    build: () => ({ row: lobbyRow(["ero", "afo", "koli", "gaya", "bat", "mummy"]) }),
+  },
+
+  "login-five-seated": {
+    label: "login-five-seated",
+    describe: "Five of the six seats taken: one seat left, three figures still free to pick from.",
+    login: { roomCode: ROOM_UUID, playerInfo: null },
+    build: () => ({ row: lobbyRow(["ero", "afo", "koli", "gaya", "bat"]) }),
   },
 
   "login-returning": {
@@ -1135,11 +1577,11 @@ const LOGIN_SCENARIOS = {
 
   "login-live-take": {
     label: "login-live-take",
-    describe: "A second player joins ~1.5s after load and the Mummy goes grey live.",
+    describe: "A second player joins ~1.5s after load and the Mummy (fig5) goes grey live.",
     login: { roomCode: ROOM_UUID, playerInfo: null },
     build: () => ({
       row: lobbyRow(["ero"]),
-      intro: { delay: 1500, join: { name: "Gaya", figure: "fig3", playerId: PLAYER_IDS.gaya } },
+      intro: { delay: 1500, join: { name: "Mummy", figure: "fig5", playerId: PLAYER_IDS.mummy } },
     }),
   },
 };
