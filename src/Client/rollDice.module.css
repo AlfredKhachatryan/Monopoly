@@ -4,8 +4,8 @@
  * --die-bc hairline. No gradients, no gloss, no bevel — the cube reads as a
  * cube because it MOVES like one, not because it is shaded like one.
  *
- * Sizing is entirely by custom property, so one component serves 44px on the
- * phone, 34px in its decide state and 88px on the TV:
+ * Sizing is entirely by custom property, so one component serves 36px on the
+ * phone, 30px in its decide state and 88px on the TV:
  *   --die       edge length
  *   --die-gap   between the two dice
  *   --die-r     corner radius (scaled from --die unless a caller sets it)
@@ -15,30 +15,58 @@
  */
 
 .dice {
-  --die: 44px;
+  --die: 36px;
   --die-gap: 8px;
-  --die-r: calc(var(--die) * 0.27);
+  /* 0.27 of the edge is not a rounded die, it is a rounded CARD: at a two-face
+   * angle each face reads as its own little pill and the cube falls apart into
+   * loose rectangles, which is exactly how both the phone and the TV reports
+   * described it. A real die's corner is a fillet, not a 27% radius. 0.12 still
+   * softens the silhouette, and it leaves a far smaller notch at the eight
+   * vertices for `.core` to plug. */
+  --die-r: calc(var(--die) * 0.12);
   display: flex;
   align-items: center;
   gap: var(--die-gap);
-  /* The cube needs depth to read as one. Tied to the die's own size so the
-   * 88px TV pair is not drawn with a 44px lens. */
-  perspective: calc(var(--die) * 9);
-  perspective-origin: 50% 45%;
 }
 
-/* One die's box. Also the padding the hop and the contact shadow live in, so
- * neither can change the row's height — no layout, ever. */
+/* One die's box, and — this is the important part — the element that owns the
+ * `perspective`.
+ *
+ * It used to live on `.dice`, which contains BOTH dice: one shared projection
+ * for two objects, so each die was drawn off-axis (the left one seen from the
+ * right and vice versa) and `.slot` had to carry `preserve-3d` just to pass
+ * the shared 3D context down. Two problems fell out of that. The contact
+ * shadow, a plain 2D element, was dragged into the same 3D rendering context
+ * as the cube — and it carried `will-change`, so it was promoted to its own
+ * layer INSIDE a preserve-3d subtree, which is the documented way to make a
+ * browser flatten the context it belongs to. And the projection was never
+ * head-on, which exaggerates every seam between two faces.
+ *
+ * Perspective on the DIRECT parent of the transformed element is also the one
+ * arrangement mobile Safari has always handled: `.slot` (perspective, flat) ->
+ * `.cube` (preserve-3d) -> `.face`. Nothing between them, nothing to flatten.
+ * `-webkit-` alongside the unprefixed property for the same reason.
+ */
 .slot {
   position: relative;
   display: block;
   width: var(--die);
   height: var(--die);
-  transform-style: preserve-3d;
+  /* Tied to the die's own size so the 88px TV pair is not drawn with a 40px
+   * lens. 9x is a deliberate middle: shorter than this and the near corner is
+   * magnified enough to push the silhouette back out of the tray, longer and
+   * the cube starts to look isometric. */
+  -webkit-perspective: calc(var(--die) * 9);
+  perspective: calc(var(--die) * 9);
+  -webkit-perspective-origin: 50% 50%;
+  perspective-origin: 50% 50%;
 }
 
 /* The contact shadow. Soft, and it tightens as the die comes down (RollDice
- * writes scale + opacity on it from the same sampled trajectory as the cube). */
+ * writes scale + opacity on it from the same sampled trajectory as the cube).
+ * No `will-change`: it is a 6px-tall blurred ellipse whose only animated
+ * properties are already compositor properties, and the hint bought nothing
+ * while costing a promoted layer next to a 3D subtree. */
 .shade {
   position: absolute;
   left: 6%;
@@ -49,20 +77,56 @@
   background: radial-gradient(50% 50% at 50% 50%, var(--shadow) 0%, transparent 72%);
   opacity: 0.3;
   transform: scale(1);
-  will-change: transform, opacity;
   pointer-events: none;
 }
 
+/* No `will-change: transform` here — it was tried and pulled. WebKit (and
+ * some Chromium/Android builds) can promote a `will-change: transform`
+ * element that also carries `transform-style: preserve-3d` onto its OWN
+ * compositing layer independently of its `.face` children instead of
+ * sharing one 3D rendering context with them; the visible symptom is
+ * exactly "faces go missing mid-tumble" — a face's `backface-visibility:
+ * hidden` gets evaluated against the wrong (flattened) space and the whole
+ * face is culled instead of just its back. The cube's `transform` is
+ * rewritten every animation frame regardless (WAAPI, not a CSS transition),
+ * so the browser already treats it as animating without the hint, and
+ * removing it is strictly safer than keeping it.
+ */
 .cube {
   position: absolute;
   inset: 0;
+  -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
-  will-change: transform;
 }
 
 /* Six flat faces, each carrying its own 3x3 pip grid. They are painted once
  * and never change, which is the whole point: a face can only appear by being
- * turned towards the viewer. */
+ * turned towards the viewer.
+ *
+ * THE FALLBACK IN `var(--f, …)` IS LOad-BEARING. `--f` is written inline per
+ * face by RollDice, and the front face's rotation is the identity — which was
+ * spelled as the empty string. `style.setProperty('--f', '')` is defined to
+ * REMOVE the property, so on that one face `var(--f)` had no value and no
+ * fallback, the whole `transform` declaration became invalid at computed-value
+ * time, and it computed to `none`. The front face therefore had NO
+ * `translateZ` at all: a full-size plane sitting at z = 0, slicing through the
+ * middle of the cube. That is the "extra face floating above the body" and the
+ * "thin detached sliver" in the bug report — one plane, seen at two angles.
+ * RollDice now sends `rotateY(0deg)` for it; the fallback here means a future
+ * empty value can never resurrect the bug.
+ *
+ * The 1px edge is an inset box-shadow, not a `border`. A border participates in
+ * the box model, so the face's rendered size (and therefore whether
+ * `translateZ(--die / 2)` is really half the cube) depended on `box-sizing` —
+ * which is `border-box` inside the phone's `.app` and `content-box` on the TV,
+ * because the reset that sets it is scoped to `.app *`. It happened to come out
+ * the same either way (absolute + `inset: 0` + `width: auto` fills the
+ * containing block whatever the box model), but "happened to" is not a thing to
+ * leave under a 3D cube. A shadow paints inside and is worth exactly 0px.
+ *
+ * `-webkit-backface-visibility` alongside the unprefixed property because
+ * without it a hidden backface can render anyway on some WebKit builds, which
+ * looks like two faces fighting for the same spot rather than one cube. */
 .face {
   position: absolute;
   inset: 0;
@@ -70,11 +134,51 @@
   grid-template: repeat(3, 1fr) / repeat(3, 1fr);
   gap: 7%;
   padding: 16%;
-  border: 1px solid var(--die-bc);
   border-radius: var(--die-r);
-  background: var(--die-bg);
+  /* Per-face tone, set inline by RollDice. Six identical white faces are six
+   * identical white rectangles: with nothing but a hairline between them the
+   * cube reads as loose cards, which is exactly what the TV report described.
+   * The tones are assigned by AXIS (the two z faces share one, the two x faces
+   * another, top and bottom their own), so two faces that meet at an edge are
+   * never the same value from any angle, and because each axis pair is
+   * symmetric the shading does not slide around as the cube turns the way a
+   * baked light source would. Top is lightest, bottom darkest, and the FRONT
+   * face — the one carrying the result at rest — stays all but clean. */
+  background: color-mix(in srgb, var(--die-bg) var(--sh, 100%), var(--die-edge));
+  box-shadow: inset 0 0 0 1px var(--die-bc);
+  -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
-  transform: var(--f) translateZ(calc(var(--die) / 2));
+  -webkit-transform: var(--f, rotateY(0deg)) translateZ(calc(var(--die) / 2));
+  transform: var(--f, rotateY(0deg)) translateZ(calc(var(--die) / 2));
+}
+
+/* The core: three crossed planes through the middle of the cube, in the die's
+ * own colour, at 86% of its edge so they are strictly inside the solid and can
+ * never poke out of it.
+ *
+ * Six rounded faces do not make a solid. Each face's corner is pulled back by
+ * --die-r, so at every one of the eight vertices the three faces that meet
+ * there leave a small triangular hole, and mid-tumble you look straight THROUGH
+ * the die and out the other side. Any ray that enters one of those notches has
+ * to cross the z = 0, x = 0 or y = 0 plane on its way out, so three planes are
+ * enough to close all eight of them. A hair darker than the faces, so a notch
+ * reads as the inside of a die rather than as a hole with the tray showing
+ * through.
+ *
+ * Backfaces stay VISIBLE here: a core plane is seen from both sides by
+ * definition, and hiding half of them would put the holes straight back. */
+.core {
+  position: absolute;
+  left: 7%;
+  top: 7%;
+  width: 86%;
+  height: 86%;
+  border-radius: calc(var(--die-r) * 0.5);
+  background: color-mix(in srgb, var(--die-bg) 68%, var(--die-edge));
+  -webkit-backface-visibility: visible;
+  backface-visibility: visible;
+  -webkit-transform: var(--c, rotateY(0deg));
+  transform: var(--c, rotateY(0deg));
 }
 
 .face i {
@@ -101,9 +205,9 @@
   grid-template: repeat(3, 1fr) / repeat(3, 1fr);
   gap: 7%;
   padding: 16%;
-  border: 1px solid var(--die-bc);
   border-radius: var(--die-r);
   background: var(--die-bg);
+  box-shadow: inset 0 0 0 1px var(--die-bc);
   transition: opacity 180ms linear;
 }
 

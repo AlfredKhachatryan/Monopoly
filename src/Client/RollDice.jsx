@@ -55,14 +55,44 @@ const FACES = {
 const CELLS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
 // The cube: opposite faces sum to 7, exactly like a real die.
+//
+// The front face's rotation is the IDENTITY, and it used to be written as the
+// empty string. React sets a custom property with `style.setProperty(name,
+// value)`, and setProperty with an empty value is defined to REMOVE the
+// property — so `--f` was simply absent on this one face, `var(--f)` in
+// rollDice.module.css had nothing to resolve to and no fallback, the whole
+// `transform` declaration went invalid at computed-value time, and it computed
+// to `none`. No `translateZ`: a full-size plane parked at z = 0, cutting the
+// cube in half. Every "floating extra face" and "thin detached sliver" in the
+// bug report is that one plane seen from a different angle. It has to be a real
+// rotation, never "".
+//
+// `sh` is the face's tone, as a percentage of --die-bg mixed towards
+// --die-edge. Assigned per AXIS so no two faces that share an edge are the same
+// value (see `.face` in the stylesheet).
+//
+// The z pair is left at 100: the face carrying the RESULT is always a z face at
+// rest, and on the phone it sits on a light tray, so it has to be the cleanest
+// thing in the box. The first pass at this used 97 / 92 / 86, which was far too
+// timid — a probe of the rendered pixels put the 92% side faces at
+// rgb(242,243,243) against a tray of rgb(241,243,246), i.e. INVISIBLE, and the
+// cube read as one flat card with a couple of pips on it. These spreads are
+// wide enough that two faces meeting at an edge are always plainly two faces.
 const SIDES = [
-  { v: 1, t: "" },
-  { v: 6, t: "rotateY(180deg)" },
-  { v: 3, t: "rotateY(90deg)" },
-  { v: 4, t: "rotateY(-90deg)" },
-  { v: 5, t: "rotateX(90deg)" },
-  { v: 2, t: "rotateX(-90deg)" },
+  { v: 1, t: "rotateY(0deg)", sh: 100 },
+  { v: 6, t: "rotateY(180deg)", sh: 100 },
+  { v: 3, t: "rotateY(90deg)", sh: 85 },
+  { v: 4, t: "rotateY(-90deg)", sh: 85 },
+  { v: 5, t: "rotateX(90deg)", sh: 93 },
+  { v: 2, t: "rotateX(-90deg)", sh: 76 },
 ];
+
+// Three crossed planes through the middle of the cube. Six ROUNDED faces do not
+// enclose a volume: each corner is pulled back by --die-r, so all eight vertices
+// are open and mid-tumble you see straight through the die. Any ray through one
+// of those notches crosses x = 0, y = 0 or z = 0 on its way out, so these three
+// close all eight. See `.core` in the stylesheet.
+const CORES = ["rotateY(0deg)", "rotateY(90deg)", "rotateX(90deg)"];
 
 // Cube orientation that brings face `v` to the front. Each one uses a single
 // axis, so the order the three rotations are written in never matters at rest —
@@ -108,6 +138,25 @@ const THROW = [
   { tx: 1.75, ty: 2.5, tz: 0.75 },
   { tx: 2.5, ty: 1.75, tz: -1 },
 ];
+
+// How small the die gets while it is in the air.
+//
+// This is what keeps the tumble INSIDE its tray. A cube rotated to a random
+// orientation projects a silhouette up to its space diagonal across — 1.73x its
+// edge — and the phone's tray is only 72px tall around a 40px die, so a 44px
+// die at full size was already 4px too tall before it had moved at all, never
+// mind the hop and the perspective magnification on the near corner. Shrinking
+// it while it is off the table costs nothing (it reads as a throw going away
+// from the camera and coming back) and buys most of the difference.
+//
+// The rest of it came from the DIE, which is 36px on the phone rather than the
+// 44 it was. Both numbers were settled by measuring every animation frame of a
+// real roll against the tray's own box (~300 frames per scenario), not by
+// eyeballing a screenshot: at 44/0.3-hop the silhouette cleared the tray by
+// 15px and sat on the ticket, at 40/0.85 five frames in three hundred still
+// leaked ~2px, and the tray is 64px — not 72 — on a 640px-tall phone, which is
+// the case that actually decides it.
+const AIR_SCALE = 0.8;
 
 export const LAND_STAGGER = 120; // the second die comes down this much later
 export const CANCEL_MS = 250; // a rejected roll puts the dice back this fast
@@ -167,11 +216,13 @@ function Pips({ value }) {
 function useDie(index, hop) {
   const cubeRef = useRef(null);
   const shadeRef = useRef(null);
+  const slotRef = useRef(null);
   // Where the cube is, in absolute degrees. Never reset: a new roll continues
-  // from wherever the last one left it.
-  const at = useRef({ x: 0, y: 0, z: 0, lift: 0 });
+  // from wherever the last one left it. `k` is the in-air shrink (AIR_SCALE).
+  const at = useRef({ x: 0, y: 0, z: 0, lift: 0, k: 1 });
   const air = useRef(null);
   const anims = useRef([]);
+  const fxAnim = useRef(null);
 
   const stop = () => {
     for (const a of anims.current) {
@@ -185,11 +236,19 @@ function useDie(index, hop) {
     air.current = null;
   };
 
-  const paint = (x, y, z, lift) => {
-    at.current = { x, y, z, lift };
+  // One place that knows how a cube transform is spelled, so the WAAPI
+  // keyframes below and the committed resting transform can never drift apart.
+  // Uniform scale first, then the rotations: a uniform scale commutes with
+  // rotation, and putting it outside means it shrinks the faces' own
+  // `translateZ` along with the box — the cube gets smaller, not flatter.
+  const tf = (x, y, z, lift, k) =>
+    `translate3d(0, ${lift}px, 0) scale3d(${k}, ${k}, ${k}) rotateX(${x}deg) rotateY(${y}deg) rotateZ(${z}deg)`;
+
+  const paint = (x, y, z, lift, k = 1) => {
+    at.current = { x, y, z, lift, k };
     const cube = cubeRef.current;
     if (cube) {
-      cube.style.transform = `translate3d(0, ${lift}px, 0) rotateX(${x}deg) rotateY(${y}deg) rotateZ(${z}deg)`;
+      cube.style.transform = tf(x, y, z, lift, k);
     }
     const shade = shadeRef.current;
     if (shade) {
@@ -211,6 +270,7 @@ function useDie(index, hop) {
       y: a.from.y + a.rate.y * t,
       z: a.from.z + a.rate.z * t,
       lift: a.from.lift,
+      k: a.from.k,
     };
   };
 
@@ -219,7 +279,7 @@ function useDie(index, hop) {
     if (!cube) return;
     stop();
     const spin = AIR[index];
-    const from = { ...at.current, lift: -hop * 0.7 };
+    const from = { ...at.current, lift: -hop * 0.7, k: AIR_SCALE };
     const rate = {
       x: (360 * spin.tx) / spin.ms,
       y: (360 * spin.ty) / spin.ms,
@@ -234,12 +294,8 @@ function useDie(index, hop) {
     // loops without a seam.
     const anim = cube.animate(
       [
-        {
-          transform: `translate3d(0, ${from.lift}px, 0) rotateX(${from.x}deg) rotateY(${from.y}deg) rotateZ(${from.z}deg)`,
-        },
-        {
-          transform: `translate3d(0, ${from.lift}px, 0) rotateX(${to.x}deg) rotateY(${to.y}deg) rotateZ(${to.z}deg)`,
-        },
+        { transform: tf(from.x, from.y, from.z, from.lift, AIR_SCALE) },
+        { transform: tf(to.x, to.y, to.z, from.lift, AIR_SCALE) },
       ],
       { duration: spin.ms, iterations: Infinity, easing: "linear" },
     );
@@ -319,22 +375,30 @@ function useDie(index, hop) {
       // the air it is already up and only comes down. Either way it is on the
       // table at u = DECEL, and rocks once on the settle.
       let lift;
+      let k;
       if (u <= DECEL) {
         const v = u / DECEL;
         lift = fromAir ? from.lift * (1 - f) : -hop * Math.sin(Math.PI * v);
+        // Out of the air the die is already small and grows back into the
+        // table as it slows; thrown from rest it shrinks away and comes back,
+        // on the same half-sine as its arc.
+        k = fromAir
+          ? from.k + (1 - from.k) * f
+          : 1 - (1 - AIR_SCALE) * Math.sin(Math.PI * v);
       } else {
         lift = -hop * 0.09 * Math.sin(Math.PI * ((u - DECEL) / (1 - DECEL)));
+        k = 1;
       }
 
       frames.push({
         offset: u,
-        transform: `translate3d(0, ${lift.toFixed(2)}px, 0) rotateX(${x.toFixed(2)}deg) rotateY(${y.toFixed(2)}deg) rotateZ(${z.toFixed(2)}deg)`,
+        transform: tf(x.toFixed(2), y.toFixed(2), z.toFixed(2), lift.toFixed(2), k.toFixed(4)),
       });
-      const k = 1 - Math.min(1, Math.abs(lift) / Math.max(1, hop));
+      const grounded = 1 - Math.min(1, Math.abs(lift) / Math.max(1, hop));
       shadeFrames.push({
         offset: u,
-        transform: `scale(${(0.6 + 0.4 * k).toFixed(3)})`,
-        opacity: (0.1 + 0.2 * k).toFixed(3),
+        transform: `scale(${(0.6 + 0.4 * grounded).toFixed(3)})`,
+        opacity: (0.1 + 0.2 * grounded).toFixed(3),
       });
     }
 
@@ -350,7 +414,7 @@ function useDie(index, hop) {
       // Commit the resting orientation to the element and drop the animation,
       // so the next roll starts from a real, readable transform.
       stop();
-      paint(to.x, to.y, to.z, 0);
+      paint(to.x, to.y, to.z, 0, 1);
     };
   };
 
@@ -369,12 +433,8 @@ function useDie(index, hop) {
     stop();
     const anim = cube.animate(
       [
-        {
-          transform: `translate3d(0, ${from.lift}px, 0) rotateX(${from.x}deg) rotateY(${from.y}deg) rotateZ(${from.z}deg)`,
-        },
-        {
-          transform: `translate3d(0, 0, 0) rotateX(${to.x}deg) rotateY(${to.y}deg) rotateZ(${to.z}deg)`,
-        },
+        { transform: tf(from.x, from.y, from.z, from.lift, from.k) },
+        { transform: tf(to.x, to.y, to.z, 0, 1) },
       ],
       { duration: CANCEL_MS, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
     );
@@ -391,7 +451,7 @@ function useDie(index, hop) {
     }
     anim.onfinish = () => {
       stop();
-      paint(to.x, to.y, to.z, 0);
+      paint(to.x, to.y, to.z, 0, 1);
     };
   };
 
@@ -399,10 +459,110 @@ function useDie(index, hop) {
   const settle = (value) => {
     stop();
     const [restX, restY] = REST[face(value)];
-    paint(congruent(restX, at.current.x), congruent(restY, at.current.y), congruent(0, at.current.z), 0);
+    paint(
+      congruent(restX, at.current.x),
+      congruent(restY, at.current.y),
+      congruent(0, at.current.z),
+      0,
+      1,
+    );
   };
 
-  return { cubeRef, shadeRef, startAir, land, cancel, settle, stop };
+  // ---- the doubles beats -------------------------------------------------
+  //
+  // Played on the SLOT, not the cube: the cube's transform belongs to the
+  // throw and is rewritten every frame by the code above, so anything that
+  // touched it would either be stamped over or would stamp over a landing.
+  // The slot is the die's own box, it is never animated by anything else, and
+  // a 2D transform on it does not disturb the `perspective` it carries (that
+  // applies to its children's own coordinate space).
+  //
+  // `toward` is +1 for the die that has to move right to close the gap and -1
+  // for the other, so the pair snaps TOGETHER rather than both drifting one
+  // way. Transform only, every one of them.
+  const beat = (kind, toward) => {
+    const slot = slotRef.current;
+    if (!slot) return;
+    try {
+      fxAnim.current?.cancel();
+    } catch {
+      /* an animation whose element is gone */
+    }
+    fxAnim.current = null;
+    const nudge = (px) => `translate3d(${(px * toward).toFixed(2)}px, 0, 0)`;
+    const plans = {
+      // 1st double: the two dice knock together once and pulse. Friendly.
+      d1: {
+        ms: 440,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        frames: [
+          { offset: 0, transform: "translate3d(0, 0, 0) scale(1)" },
+          { offset: 0.34, transform: `${nudge(3.5)} scale(1.09)` },
+          { offset: 0.62, transform: `${nudge(1)} scale(0.99)` },
+          { offset: 1, transform: "translate3d(0, 0, 0) scale(1)" },
+        ],
+      },
+      // 2nd double: harder, and it rattles afterwards instead of settling.
+      d2: {
+        ms: 560,
+        easing: "cubic-bezier(0.36, 0.07, 0.19, 0.97)",
+        frames: [
+          { offset: 0, transform: "translate3d(0, 0, 0) scale(1)" },
+          { offset: 0.22, transform: `${nudge(6)} scale(1.14)` },
+          { offset: 0.42, transform: `${nudge(-2.5)} scale(1.02)` },
+          { offset: 0.58, transform: `${nudge(2.5)} scale(1.05)` },
+          { offset: 0.74, transform: `${nudge(-1.5)} scale(1)` },
+          { offset: 0.88, transform: `${nudge(1)} scale(1)` },
+          { offset: 1, transform: "translate3d(0, 0, 0) scale(1)" },
+        ],
+      },
+      // 3rd: slammed down and shaken. Vertical first, so it reads as the table
+      // being hit rather than as another sideways knock.
+      d3: {
+        ms: 720,
+        easing: "cubic-bezier(0.36, 0.07, 0.19, 0.97)",
+        frames: [
+          { offset: 0, transform: "translate3d(0, -9px, 0) scale(1.1)" },
+          { offset: 0.16, transform: "translate3d(0, 2px, 0) scale(0.9)" },
+          { offset: 0.3, transform: "translate3d(-4px, 0, 0) scale(1.02)" },
+          { offset: 0.44, transform: "translate3d(4px, 0, 0) scale(1)" },
+          { offset: 0.58, transform: "translate3d(-3px, 0, 0) scale(1)" },
+          { offset: 0.72, transform: "translate3d(2px, 0, 0) scale(1)" },
+          { offset: 0.86, transform: "translate3d(-1px, 0, 0) scale(1)" },
+          { offset: 1, transform: "translate3d(0, 0, 0) scale(1)" },
+        ],
+      },
+      // Jailed by the cell or by a card: one quiet drop, and nothing else. It
+      // has to be plainly LESS than d3 — that is the whole point of d3.
+      jail: {
+        ms: 380,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        frames: [
+          { offset: 0, transform: "translate3d(0, 0, 0) scale(1)" },
+          { offset: 0.35, transform: "translate3d(0, -4px, 0) scale(1.04)" },
+          { offset: 1, transform: "translate3d(0, 0, 0) scale(1)" },
+        ],
+      },
+    };
+    const plan = plans[kind];
+    if (!plan) return;
+    fxAnim.current = slot.animate(plan.frames, {
+      duration: plan.ms,
+      easing: plan.easing,
+      fill: "none",
+    });
+  };
+
+  const stopBeat = () => {
+    try {
+      fxAnim.current?.cancel();
+    } catch {
+      /* gone */
+    }
+    fxAnim.current = null;
+  };
+
+  return { cubeRef, shadeRef, slotRef, startAir, land, cancel, settle, stop, beat, stopBeat };
 }
 
 /**
@@ -412,13 +572,17 @@ function useDie(index, hop) {
  *            result    [d1, d2] once the server has answered, else null
  *            restAt    epoch ms at which BOTH dice must be down
  *            cancelled the action was refused: put the dice back
- * size     px per die (44 phone, 34 in the decide state, 88 TV)
+ * size     px per die (36 phone, 30 in the decide state, 88 TV)
+ * fx       null, or { id, kind } — a one-shot beat on the dice themselves.
+ *            kind  "d1" | "d2" | "d3" | "jail", escalating in that order.
+ *            id    changes once per REAL event; a resync must not replay one.
  * reduce   force the reduced-motion path (the TV listens for it itself)
  */
 export default function RollDice({
   values = [1, 1],
   roll = null,
-  size = 44,
+  fx = null,
+  size = 36,
   gap,
   radius,
   label,
@@ -426,11 +590,15 @@ export default function RollDice({
   className = "",
 }) {
   const reduce = useReduce(reduceProp);
-  // How high the throw goes. Deliberately modest: a rotating cube already
-  // projects wider than its resting face, and on the phone the dice tray is
-  // only 14px taller than the die, so a big arc would put a die over the ticket
-  // above it.
-  const hop = Math.round(size * 0.3);
+  // How high the throw goes. It used to be 0.3 x size, which on the phone put
+  // 13px of lift on top of a silhouette that was already taller than its tray,
+  // and the dice climbed out over the ticket above them. The arc is now a
+  // tenth of the die and the height comes from AIR_SCALE instead — the die
+  // reads as going away from the camera, which costs no pixels at all.
+  // Measured, not guessed: at 0.1 the silhouette still cleared the top of the
+  // phone's tray by 1.3px on the worst frame of a 18-frame capture. 0.06 puts
+  // every frame of every scenario inside it.
+  const hop = Math.max(2, Math.round(size * 0.06));
   const a = useDie(0, hop);
   const b = useDie(1, hop);
   const dice = [a, b];
@@ -559,11 +727,29 @@ export default function RollDice({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values[0], values[1], state, size]);
 
+  // ---- the doubles beat ---------------------------------------------------
+  // Keyed on `fx.id`, which ClientScreen only ever advances for a LIVE event.
+  // A refetch, a resync or a reload hands over the same id (or none) and
+  // nothing plays — the escalation is a reaction, and there is nothing to
+  // react to when the state simply reappears.
+  const seenFx = useRef(null);
+  useEffect(() => {
+    const id = fx?.id ?? null;
+    if (id === null || id === seenFx.current) return;
+    seenFx.current = id;
+    if (reduce || !fx.kind) return;
+    a.beat(fx.kind, 1);
+    b.beat(fx.kind, -1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fx?.id, reduce]);
+
   useEffect(
     () => () => {
       clearTimers();
       a.stop();
       b.stop();
+      a.stopBeat();
+      b.stopBeat();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -582,7 +768,7 @@ export default function RollDice({
       aria-label={rolling ? "Rolling" : label || `Dice ${shown[0]} and ${shown[1]}`}
     >
       {dice.map((d, i) => (
-        <span key={i} className={s.slot}>
+        <span key={i} ref={d.slotRef} className={s.slot}>
           <span ref={d.shadeRef} className={s.shade} aria-hidden="true" />
           {reduce ? (
             <span className={`${s.flat} ${rolling ? s.flatRolling : ""}`}>
@@ -590,8 +776,15 @@ export default function RollDice({
             </span>
           ) : (
             <span ref={d.cubeRef} className={s.cube}>
+              {CORES.map((t) => (
+                <span key={t} className={s.core} style={{ "--c": t }} aria-hidden="true" />
+              ))}
               {SIDES.map((side) => (
-                <span key={side.v} className={s.face} style={{ "--f": side.t }}>
+                <span
+                  key={side.v}
+                  className={s.face}
+                  style={{ "--f": side.t, "--sh": `${side.sh}%` }}
+                >
                   <Pips value={side.v} />
                 </span>
               ))}
