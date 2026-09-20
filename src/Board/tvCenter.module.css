@@ -128,6 +128,127 @@
  * used to be here went with TvDice.jsx: they re-randomised their pips every
  * 80ms, which is what made a landing read as a jump cut. */
 
+/* ---- doubles, escalating ------------------------------------------------ */
+
+/* A wrapper TvCenter owns, so the shake below is never written on the shared
+ * dice component or on anything between its `perspective` and its cube faces —
+ * a transform in there would flatten the 3D and the faces would vanish. This
+ * box sits ABOVE the perspective element, exactly like the `transform: scale()`
+ * the whole canvas already lives inside, so the cubes are unaffected. */
+.diceBox {
+  display: grid;
+  justify-items: center;
+  will-change: transform;
+}
+
+/* Stage three: the dice are thrown back down. 340ms, transform only, once. */
+.diceBox[data-stage="3"]:not([data-reduce]) {
+  animation: tvBust 380ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes tvBust {
+  0% {
+    transform: translate3d(0, -14px, 0) scale(1.06);
+  }
+  22% {
+    transform: translate3d(0, 0, 0) scale(0.94);
+  }
+  38% {
+    transform: translate3d(-9px, 0, 0) scale(1.02);
+  }
+  54% {
+    transform: translate3d(8px, 0, 0) scale(1);
+  }
+  70% {
+    transform: translate3d(-5px, 0, 0);
+  }
+  85% {
+    transform: translate3d(3px, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The run itself, in three kinds rather than three wordings.
+ *   1  you gained something         --pos
+ *   2  you are one throw from jail  --neg, and it breathes
+ *   3  you are in jail              solid --neg */
+.dbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  background: var(--pos-bg);
+  color: var(--pos);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+
+.dbl svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.dbl[data-stage="2"] {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+.dbl[data-stage="3"] {
+  background: var(--neg);
+  color: var(--surface);
+  font-size: 24px;
+}
+
+.dbl:not([data-reduce]) {
+  animation: tvDblIn 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* Stage two only: a slow breath, so a table that is talking still notices. */
+.dbl[data-stage="2"]:not([data-reduce]) {
+  animation:
+    tvDblIn 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both,
+    tvDblBreathe 1600ms ease-in-out 260ms infinite;
+}
+
+.dbl[data-stage="3"]:not([data-reduce]) {
+  animation: tvDblSlam 420ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes tvDblIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.9);
+  }
+}
+
+@keyframes tvDblBreathe {
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+@keyframes tvDblSlam {
+  0% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* ---- the overlay layer -------------------------------------------------- */
 
 .ov {
@@ -141,10 +262,10 @@
   display: grid;
 }
 
-/* The centre is 736px wide (1024 minus the two 140px corner tiles and the
- * gaps), so the reference's 700px trade panel plus this layer's 32px padding
- * does not quite fit. The panels keep their width as a wish and give up the
- * last few pixels rather than let `overflow: hidden` slice their edges off. */
+/* The centre is ~1060 x 752 since the board was widened (2026-09-20), so the
+ * panels below fit outright now; the cap stays anyway, because a long Cyrillic
+ * name or a six-row standings list must give up its last pixels rather than let
+ * `overflow: hidden` slice an edge off. */
 .ov > * {
   max-width: 100%;
   max-height: 100%;
@@ -168,10 +289,10 @@
 .gcard {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  width: 440px;
-  /* 500, not the prototype's 540: the centre is 744px tall under the owner's
-   * 70/30 override and the overlay layer takes 32px off each end. */
-  min-height: 500px;
+  width: 460px;
+  /* 520, not the prototype's 540: the centre is 752px tall and the overlay layer
+   * takes 32px off each end. */
+  min-height: 520px;
   overflow: hidden;
   border-radius: 22px;
   background: var(--surface);
@@ -298,10 +419,12 @@
 
 /* ---- auction ------------------------------------------------------------ */
 
+/* 760, not the reference's 680: the centre is ~1060 wide now, and six bidder
+ * chips need every pixel of it (see .bidders). */
 .auc {
   display: grid;
   gap: 22px;
-  width: 680px;
+  width: 760px;
   padding: 28px;
   border-radius: 26px;
   background: var(--surface);
@@ -333,12 +456,12 @@
   color: var(--ink);
 }
 
-/* 220px, not the reference's 240, and a 20px gap: the prototype's right-hand
- * stat was a two-character countdown ("4s") and this build puts a player's NAME
- * there instead, so the column beside the ticket needs the difference. */
+/* 240px and a 20px gap: the prototype's right-hand stat was a two-character
+ * countdown ("4s") and this build puts a player's NAME there instead, so the
+ * column beside the ticket needs the difference. */
 .aucMain {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 20px;
   align-items: center;
 }
@@ -493,8 +616,19 @@
   color: var(--muted);
 }
 
+/* The rotation, one chip per bidder. A grid rather than a flex row so the
+ * number of COLUMNS is a decision TvAuction makes out loud (--bidder-cols) and
+ * not something that falls out of how wide a chip happens to be.
+ *
+ * Up to four bidders sit on one line, which is what they always did: the track
+ * is `repeat(n, minmax(0, 1fr))`, the exact equivalent of the old `flex: 1 1 0`.
+ * Five or six go onto two lines of three — the panel's right-hand column is
+ * ~440px wide, so six on one line would leave 73px per chip, of which a 36px
+ * token and its padding eat 48. Two lines of three give each chip ~141px, which
+ * is what "Out" and "260$" actually need beside the face. */
 .bidders {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(var(--bidder-cols, 4), minmax(0, 1fr));
   gap: 8px;
   min-width: 0;
 }
@@ -503,7 +637,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1 1 0;
   min-width: 0;
   height: 44px;
   padding: 0 8px 0 4px;
@@ -533,7 +666,7 @@
 .trade {
   display: grid;
   gap: 22px;
-  width: 700px;
+  width: 760px;
   padding: 28px;
   border-radius: 26px;
   background: var(--surface);
@@ -663,11 +796,19 @@
 
 /* ---- game over ---------------------------------------------------------- */
 
+/* The winner and the final standings.
+ *
+ * `data-many` is set by TvCenter from five players up. Six rows at the full
+ * size would be 6x62 + 5x8 = 412px of list under a 180px figure, which is 696px
+ * inside a 752px centre with 32px of overlay padding at each end — 16px over.
+ * The compact step takes the row to 54, the gap to 6 and the figure to 150,
+ * which brings six rows back to 608 with room to spare. Nothing about the type
+ * changes: this is the one screen everybody reads at once. */
 .over {
   display: grid;
   justify-items: center;
   gap: 14px;
-  width: 660px;
+  width: 700px;
   padding: 28px 32px;
   border-radius: 26px;
   background: var(--surface);
@@ -788,6 +929,18 @@
   font-weight: 700;
 }
 
+.over[data-many] {
+  gap: 10px;
+}
+
+.over[data-many] .overList {
+  gap: 6px;
+}
+
+.over[data-many] .overRow {
+  min-height: 54px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gcard,
   .auc,
@@ -797,6 +950,14 @@
   }
 
   .aucBid strong.pulse {
+    animation: none !important;
+  }
+
+  /* The doubles chip still appears and still changes colour — it just does not
+   * move. `data-reduce` already covers the case where the shared reduce hook
+   * knows; this covers the OS asking directly. */
+  .dbl,
+  .diceBox {
     animation: none !important;
   }
 }
