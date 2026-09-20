@@ -323,3 +323,75 @@ before expecting any of these scripts to run.
    double-$200 cheap to add.
 4. Decide whether `TvCenter`'s `—` badge for `nearest`/`moveTo`/`goJail` cards
    should show the card's net effect (same family as decision 2).
+
+---
+
+## 10. The commits
+
+Nineteen commits on `playtest-prep-2026-09-20`, cut from `main` at `12429e7`.
+`main` is untouched; merge or discard the branch as one unit. Ordered so that
+each commit's imports resolve against the one before it — six of them were
+build-checked individually (the new-files commit, the six-player client, the
+reconnect rewrite, the phone commit, the TV reconnect commit and the harness),
+and the tip is verified at `81/81` tests with a passing build.
+
+```
+Hold the room together when the network wobbles      connection.js, ConnectionBadge
+Seat six players and eight figures on the server     the migration (NOT yet applied)
+Grow the room to six players and eight figures       rules/figures/login + 16 SVGs
+Reconnect the room instead of waiting for Realtime   supabase.jsx, useGameRoom.js
+Draw the die as a solid cube                         RollDice
+Play the doubles and busted cues                     useSound
+Draw the Minecraft mark as a glyph                   marks, Mark
+Say jail in one voice and show the card you hold     format, Ticket, MineSheet
+Open an event row that does not fit                  EventRow, EventView, GameSheet
+Fix the buy offer and play the doubles run …         ClientScreen, screen.css, ActRow
+Widen the board and grow the type on the tiles       Tile, fitName, tv.css, TvControls
+Fit five and six players onto the board              TvTokens, TvAuction, TvPayFx
+Show what each player holds as one slot per group    TvSide
+Play the doubles run and the trip to jail …          TvCenter
+Keep the TV correct and quiet when it reconnects     BoardScreen, BoardGrid, TvFeed
+Preview six seats, jail and the nearest card …       mockSupabase, scenarios
+Test six players, jail, railroads and the nearest …  auction_trade.test.mjs (35→81)
+Update the status, readme and test plan              README, TESTING, LAUNCH_STATUS
+Add the handoff notes …                              handoff/
+```
+
+Because whole files had to be staged (no hunk splitting was available), two
+commits carry more than their subject says. `ClientScreen.jsx` and
+`screen.module.css` each hold six to eight concerns, and `TvSide.jsx` holds the
+holdings rework, the jail chips, the reconnect threading and the card fold. The
+bodies say so where it matters.
+
+### Loose ends found while reading the diffs, none of them fixed
+
+These are pre-existing in the work as it was written and were committed as-is,
+because folding fixes into "record what exists" would have misdescribed the
+commits and added untested changes hours before a playtest.
+
+* **The doubles haptics fire twice and the two tables disagree.**
+  `ClientScreen.jsx` calls `navigator.vibrate(DICE_FX_VIBE[kind])` and then
+  `sound.play(cue)`, and `useSound`'s `play` calls `navigator.vibrate` itself.
+  `vibrate` cancels any running pattern, so the second wins and `DICE_FX_VIBE`
+  is dead for `d1`/`d2`/`d3` — only `jail`, whose cue is null, uses it. The
+  values conflict too (`d1 = [16]` against `doubles = [30,40,30]`). Pick one
+  table and delete the other.
+* `data-heat` on `ActRow.jsx:74` has no CSS selector anywhere. Dead markup.
+* `MARK_VIEWBOX` in `marks.js` is an empty object; every mark resolves to the
+  default box, so the whole per-mark-viewBox mechanism is unused scaffolding.
+* `resyncNow` in `connection.js` is built and returned and has no caller.
+* `TvSide.jsx`'s density comment (lines ~36-49) contradicts `baseDens` below it:
+  it says five players start at `d1` and six at `d2`, the code says zero and one.
+  It was written before `maxRowsFor` freed the space back. This is the one thing
+  in the tree that is actively wrong rather than merely dead.
+* `.d1` is a no-op step — densities 0/1/2 all give a 26px slot.
+* `tvSide.module.css`'s `.badge` patches `ConnectionBadge` from the call site
+  with `zoom: 0.8` and a colour override, because its Reconnect button came out
+  white-on-white in dark mode. That is a live bug in the component being papered
+  over, and `zoom` on a shared `.badge` class is exactly what made card badges
+  render 20% small before.
+* Two `setNotice` writers in `ClientScreen.jsx` can collide in one batch.
+* `src/dev/tvHarness.jsx` still calls `useRealtimeUpdates(uuid, cb)` with no
+  third argument, so the TV harness gets no resync callback. May be deliberate.
+* Several comments cite "the report", meaning agent scratchpads that are not in
+  the repo, and two in `src/dev/*` refer to files being "owned by another agent".
