@@ -82,6 +82,25 @@ const CUES = {
   card: (ctx) => tone(ctx, { freq: 700, dur: 0.18, type: "triangle", to: 950 }),
   jail: (ctx) => tone(ctx, { freq: 170, dur: 0.35, type: "square", gain: 0.09 }),
   bankrupt: (ctx) => tone(ctx, { freq: 330, dur: 0.7, type: "sawtooth", gain: 0.1, to: 90 }),
+  // First double: a short bright two-note rise, quicker/lighter than `turn`.
+  doubles: (ctx) => {
+    tone(ctx, { freq: 740, dur: 0.08, type: "triangle" });
+    tone(ctx, { freq: 988, dur: 0.12, at: 0.07, type: "triangle" });
+  },
+  // Second double: the same rise, pitched up and with a slight wobble
+  // (vibrato via a fast pitch ramp up-down) to read as tenser/hotter.
+  doublesHot: (ctx) => {
+    tone(ctx, { freq: 880, dur: 0.07, type: "triangle" });
+    tone(ctx, { freq: 1175, dur: 0.05, at: 0.07, type: "triangle", to: 1046 });
+    tone(ctx, { freq: 1046, dur: 0.09, at: 0.12, type: "triangle", to: 1245 });
+  },
+  // Third double: descending thud + a short metallic clank, clearly
+  // negative, under ~700ms total (this is the "busted to jail" cue).
+  busted: (ctx) => {
+    tone(ctx, { freq: 220, dur: 0.22, type: "sawtooth", gain: 0.1, to: 70 });
+    tone(ctx, { freq: 1400, dur: 0.16, at: 0.16, type: "square", gain: 0.045 });
+    tone(ctx, { freq: 1900, dur: 0.12, at: 0.18, type: "square", gain: 0.03 });
+  },
   win: (ctx) => {
     [523, 659, 784, 1046].forEach((f, i) =>
       tone(ctx, { freq: f, dur: i === 3 ? 0.4 : 0.14, at: i * 0.11 }),
@@ -97,6 +116,9 @@ const BUZZ = {
   win: [60, 40, 60, 40, 140],
   buy: 35,
   moneyOut: 45,
+  doubles: [30, 40, 30],
+  doublesHot: [30, 30, 30, 30, 45],
+  busted: [120, 60, 180],
 };
 
 export function useSound() {
