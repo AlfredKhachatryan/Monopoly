@@ -1,20 +1,21 @@
 // The right-hand column: which room this is, who is playing, what they own and
 // what just happened.
 //
-// PROPS (contract with the shell): roomId board players game current controls error
+// PROPS (contract with the shell): roomId board players game current controls
+// error silent
 //
 // ---------------------------------------------------------------------------
 // Everything has to fit, always
 // ---------------------------------------------------------------------------
-// The column is 1024px tall and never scrolls — a board on a wall with a
-// scrollbar is a broken board. Four players holding ten properties each is the
-// worst case the game can produce, and the latest list still has to be there
-// underneath. So the column squeezes, in this order:
+// The column is 1048px tall and never scrolls — a board on a wall with a
+// scrollbar is a broken board. SIX players, each with a stake in every colour
+// group on the board, is the worst case the game can produce, and the latest
+// list still has to be there underneath. So the column squeezes, in this order:
 //
-//   1. the latest list drops from 4 rows to 3, then to 2
-//   2. property swatches go 30px -> 26px
+//   1. the latest list gives up rows, down to a floor of two
+//   2. property slots go 26px tall -> 24
 //   3. the player cards tighten their padding and gaps, and the player token
-//      drops from the figure manual's 56px to 48px
+//      drops from the figure manual's 56px to 48, then 44
 //
 // The type never shrinks: a board is read from across a room.
 //
@@ -24,6 +25,31 @@
 // the cards above need to give something back. The loop terminates because
 // `dens` only ever increases within one set of data, and the row count does not
 // feed back into the track height.
+//
+// ---------------------------------------------------------------------------
+// The density step (2026-09-20, six players)
+// ---------------------------------------------------------------------------
+// The measured squeeze above is a safety net, not a plan: it reacts after the
+// first paint, and a board that visibly re-lays itself when the sixth player
+// joins looks broken even though it ends up right. So the STARTING density is
+// now a function of how many seats are taken, and the squeeze only ever goes
+// further from there:
+//
+//   up to 4 players   d0 — untouched, exactly the layout of the four-player
+//                     board that has been played on so far
+//   5 players         d1
+//   6 players         d2
+//
+// The numbers, for a 500px column 1048px tall with 16px grid gaps:
+//   header 81 (room line 27 + 10 + a 44px row of buttons) + 2x16 gap = 113,
+//   leaving 935 for the player cards and the feed together.
+//   A d2 card is 20 padding + 48 token + 8 + 26 of property slots = 102, so six
+//   of them with five 8px gaps come to 652 and the feed keeps 283 — seven rows'
+//   worth, against a floor of two. A d1 card is 120, so five come to 640 and the
+//   feed keeps 295. A d0 card is 120 and four come to 510.
+//
+// That budget only holds because a card's property row is exactly ONE line
+// high, which is what the group slots below are for.
 //
 // ---------------------------------------------------------------------------
 // Neutral names
@@ -37,12 +63,11 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate } from "framer-motion";
-import { ownedBy } from "../Hooks/rules";
-import { groupByColor } from "../Hooks/groupByColor";
+import { Crown, KeyRound, Lightbulb, Lock, TrainFront } from "lucide-react";
+import { JAIL_MAX_TURNS, cellKind, ownedBy, readableOn } from "../Hooks/rules";
 import { Pips, hasCyrillic } from "../Client/boardDisplay";
 import { describeEvent } from "../Client/EventView";
 import EventRow from "../Client/EventRow";
-import Mark from "../Client/Mark";
 import Tok from "../Client/Tok";
 import { fmt, fmtSigned } from "../Client/format";
 import * as figures from "../Client/figures";
@@ -61,12 +86,160 @@ const ROW_H = 40;
 const ROW_GAP = 8;
 const LABEL_H = 26;
 const MIN_ROWS = 2;
-const MAX_ROWS = 4;
+// Eight, not four: at two or three players the cards leave most of the column
+// empty (the owner's note off a real TV), and "what just happened" is the one
+// thing on this screen that can honestly use the room. What actually lands is
+// always the MEASURED fit, so a full six-player room still gets only what is
+// left over, and never less than MIN_ROWS.
+const MAX_ROWS = 8;
 
-const SW = [30, 26, 26]; // property swatch size per density step
+// Players outrank the log once the room is crowded (the owner's note off a
+// real six-player screenshot: the cards were squeezed to make room for a
+// feed nobody needed that tall). Five and six seats cap how far the feed may
+// grow even when the measured space would allow more; four or fewer keep the
+// old ceiling (MAX_ROWS), because that is exactly when the column has spare
+// height and "what just happened" is the one thing that can honestly use it.
+const maxRowsFor = (n) => (n >= 6 ? 3 : n >= 5 ? 4 : MAX_ROWS);
+
+// Property-slot height per density step, mirroring --slot-h in the CSS.
+const SW = [26, 26, 26, 24];
 // Token size per density step. 56px is the figure manual's size for a TV player
-// card; the tightest step trims it to 48 rather than touching the type.
-const TOK = [56, 56, 48];
+// card; the tighter steps trim it rather than touch the type.
+const TOK = [56, 56, 48, 44];
+// Where a room of this size starts before anything is measured. See the
+// header. Capping the feed above (maxRowsFor) frees back the space the old
+// d1/d2 floors gave away to a longer "Latest" list than a crowded room ever
+// needed — six players now starts one step roomier (d1, not d2) and five
+// starts at the four-player layout (d0), with the MEASURED squeeze below
+// still free to compress further if a real board's holdings need it.
+const baseDens = (n) => (n >= 6 ? 1 : 0);
+
+// ---------------------------------------------------------------------------
+// Property slots
+// ---------------------------------------------------------------------------
+// One slot per GROUP the player has a stake in, never one per deed. A late-game
+// player holds ten or more deeds and six of those players do not fit a 500px
+// column at any chip size; there are only ever TEN groups on this board (eight
+// colour sets, the railroads, the utilities), so a slot per group is both a
+// smaller worst case and a better answer to the question the room is actually
+// asking, which is "who is close to a set".
+//
+//   part of a set   the group's colour, one brick per cell, the owned ones lit
+//   the whole set   the bricks collapse into a solid chip of the group's colour
+//                   with a crown on it, and the buildings on the set as pips
+//
+// Railroads and utilities are groups too (x/4 and x/2) and carry the same train
+// and bulb glyphs the board does, because their accent colours are shared with
+// two of the street sets and colour alone would not tell them apart.
+const RAIL_ACCENT = "#de951f";
+const UTIL_ACCENT = "#1f8fff";
+
+// The widths below mirror tvSide.module.css exactly. They are only ever used to
+// decide WHERE TO STOP, so being a pixel or two pessimistic is free; being
+// optimistic would let a slot fall off the end of the card.
+const SLOT_PAD = 6;
+const SLOT_GAP = 5;
+const BRICK_W = 7;
+const BRICK_GAP = 2;
+const GLYPH_W = 14;
+const GLYPH_GAP = 3;
+const PIP_W = 5;
+const PIP_GAP = 2;
+const HOTEL_W = 16;
+const MORE_W = 34; // the "+N" chip
+// A card is 500 wide less its padding; the layout effect below measures the
+// real number, and this is only what the very first paint assumes.
+const PROPS_W = 464;
+
+const groupKeyOf = (cell) => {
+  const kind = cellKind(cell);
+  if (kind === "street") return cell.color;
+  if (kind === "road") return "road";
+  if (kind === "communal") return "communal";
+  return null;
+};
+
+// Every group on the board, in board order, with the cells in it. One pass per
+// board change, shared by all six cards.
+function boardGroups(board) {
+  const out = [];
+  const byKey = new Map();
+  const ids = Object.keys(board || {})
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  for (const id of ids) {
+    const cell = board[id];
+    const key = groupKeyOf(cell);
+    if (key == null) continue;
+    let g = byKey.get(key);
+    if (!g) {
+      const kind = cellKind(cell);
+      g = {
+        key,
+        kind,
+        color:
+          kind === "road" ? RAIL_ACCENT : kind === "communal" ? UTIL_ACCENT : cell.color,
+        cells: [],
+      };
+      byKey.set(key, g);
+      out.push(g);
+    }
+    g.cells.push(cell);
+  }
+  return out;
+}
+
+// What one player holds in each group they are in, in board order.
+function stakesOf(groups, fig) {
+  const out = [];
+  for (const g of groups) {
+    let own = 0;
+    let houses = 0;
+    for (const cell of g.cells) {
+      if (!cell.bought?.[fig]) continue;
+      own++;
+      houses = Math.max(houses, Math.round(Number(cell.houses)) || 0);
+    }
+    if (own === 0) continue;
+    out.push({ ...g, own, total: g.cells.length, houses, full: own === g.cells.length });
+  }
+  return out;
+}
+
+function pipsWidth(houses) {
+  if (houses >= 5) return HOTEL_W;
+  if (houses <= 0) return 0;
+  return houses * PIP_W + (houses - 1) * PIP_GAP;
+}
+
+// Mirrors .slot in tvSide.module.css.
+function slotWidth(st) {
+  if (st.full) {
+    const pips = pipsWidth(st.houses);
+    return SLOT_PAD * 2 + GLYPH_W + (pips > 0 ? GLYPH_GAP + pips : 0);
+  }
+  const bricks = st.total * BRICK_W + (st.total - 1) * BRICK_GAP;
+  const glyph = st.kind === "street" ? 0 : GLYPH_W + GLYPH_GAP;
+  return SLOT_PAD * 2 + glyph + bricks;
+}
+
+// How many slots fit on ONE line. The whole budget at the top of this file rests
+// on the property row being one line high, so it is decided here, in numbers,
+// rather than left to `flex-wrap` to discover after the fact. The worst the
+// board can produce — a stake in all ten groups, none of them complete — comes
+// to 431px of slots and gaps, inside the 464 a d0 card has.
+function fitSlots(stakes, width) {
+  let used = 0;
+  for (let i = 0; i < stakes.length; i++) {
+    const next = used + (i > 0 ? SLOT_GAP : 0) + slotWidth(stakes[i]);
+    // Anything but the last one has to leave room for the "+N" beside it.
+    const room = i === stakes.length - 1 ? width : width - SLOT_GAP - MORE_W;
+    if (next > room) return i;
+    used = next;
+  }
+  return stakes.length;
+}
 
 // `delay` is the count-up's one addition: when money moved because of a
 // TRANSFER, the coins crossing the column (TvPayFx) are the story, and the
@@ -76,7 +249,13 @@ const TOK = [56, 56, 48];
 // The flash ring is the same beat: a red or green wash round the card for as
 // long as the delta chip lingers, so a player glancing up a second later can
 // still see who gained and who lost.
-function TvCash({ value, reduce, className, delay = 0 }) {
+//
+// `silent` is the resync case (see TvFeed.js / BoardScreen.jsx): the room's
+// money may have moved by a lot while this screen was catching up, and none
+// of it is news. The design's own words for that moment are "no coins" —
+// this is the coins, so a silent change snaps the number the same way the
+// pieces snap on the board, with no count-up, no delta chip and no wash.
+function TvCash({ value, reduce, className, delay = 0, silent = false }) {
   const target = Math.round(Number(value) || 0);
   const [shown, setShown] = useState(target);
   const [delta, setDelta] = useState(null);
@@ -89,6 +268,13 @@ function TvCash({ value, reduce, className, delay = 0 }) {
     prev.current = target;
     if (from === target) {
       setShown(target);
+      return undefined;
+    }
+    if (silent) {
+      clearTimeout(wait.current);
+      clearTimeout(clear.current);
+      setShown(target);
+      setDelta(null);
       return undefined;
     }
 
@@ -122,7 +308,7 @@ function TvCash({ value, reduce, className, delay = 0 }) {
     // `delay` arrives in the same commit as the new value and must not restart
     // the count on its own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, reduce]);
+  }, [target, reduce, silent]);
 
   useEffect(
     () => () => {
@@ -144,6 +330,16 @@ function TvCash({ value, reduce, className, delay = 0 }) {
   );
 }
 
+// The sub-line for a player who is in jail. `jailTurns` is how many failed
+// rolls they have already served (0, 1 or 2), so what is LEFT is the useful
+// number — a board says "two turns to go", not "one turn done".
+function jailLine(p) {
+  const served = Math.min(Math.max(Math.round(Number(p.jailTurns)) || 0, 0), JAIL_MAX_TURNS);
+  const left = JAIL_MAX_TURNS - served;
+  if (left <= 1) return "in jail · last turn";
+  return `in jail · ${left} turns left`;
+}
+
 // The server writes an expired trade's reason in the second person. Nothing on
 // this screen is addressed to anybody, so it goes.
 function neutral(ev) {
@@ -155,6 +351,38 @@ function neutral(ev) {
   return ev;
 }
 
+// One group, one chip. `style` carries the group's colour and the ink that
+// stays readable on it; everything else is in tvSide.module.css.
+function Slot({ st }) {
+  const Glyph = st.kind === "road" ? TrainFront : st.kind === "communal" ? Lightbulb : Crown;
+  const label = `${st.own} of ${st.total}${st.full ? ", complete set" : ""}`;
+
+  if (st.full) {
+    return (
+      <span
+        className={s.slot}
+        data-full=""
+        style={{ "--g": st.color, "--on-g": readableOn(st.color) }}
+        title={label}
+      >
+        <Glyph size={GLYPH_W} aria-hidden="true" />
+        {st.houses > 0 && <Pips houses={st.houses} className={s.slotPips} />}
+      </span>
+    );
+  }
+
+  return (
+    <span className={s.slot} style={{ "--g": st.color }} title={label}>
+      {st.kind !== "street" && <Glyph size={GLYPH_W} aria-hidden="true" />}
+      <span className={s.bricks}>
+        {st.cells.map((cell, i) => (
+          <i key={cell.id} data-on={i < st.own ? "" : undefined} />
+        ))}
+      </span>
+    </span>
+  );
+}
+
 export default function TvSide({
   roomId,
   board,
@@ -162,11 +390,17 @@ export default function TvSide({
   game,
   current,
   controls,
+  // Renders nothing while the room is live — see ConnectionBadge.
+  badge = null,
   error,
   // How long the cash numbers wait before they count — see TvCash above.
   cashDelay = 0,
+  // From the shell (BoardScreen.jsx): true while `game` carries a resync's
+  // seq, so a row that only just arrived because the TV caught up does not
+  // play the "fresh" slide-in as if it had just happened. See TvFeed.js.
+  silent = false,
 }) {
-  const feed = useTvFeed(game);
+  const feed = useTvFeed(game, silent);
   const reduce = useTvReduce();
 
   const list = useMemo(
@@ -176,13 +410,15 @@ export default function TvSide({
   const over = game?.phase === "over" || !!game?.winner;
 
   // One pass over the board per render, shared by the cards and the squeeze.
+  const groups = useMemo(() => boardGroups(board), [board]);
   const cards = useMemo(
     () =>
-      list.map((p) => {
-        const owned = ownedBy(board, p.figure);
-        return { p, owned, groups: groupByColor(owned) };
-      }),
-    [list, board],
+      list.map((p) => ({
+        p,
+        deeds: ownedBy(board, p.figure).length,
+        stakes: stakesOf(groups, p.figure),
+      })),
+    [list, board, groups],
   );
 
   const ctx = useMemo(
@@ -193,14 +429,63 @@ export default function TvSide({
   // Newest first, only what can actually be drawn. Keys are `<seq>#<n within
   // that seq>` so a log that shifts (it is capped at 40) does not remount every
   // row and replay every animation.
+  //
+  // A drawn card is TWO events in the log, not one: `land` draws the card and
+  // logs `{type:'card', ...}`, then mono_apply_card's own collect/pay/repairs
+  // charge lands right behind it with the SAME seq (see the migration's
+  // mono_land / mono_apply_card, mirrored by the mock's land()/applyCard()).
+  // Both describe fine on their own, which used to mean two rows for one
+  // thing that happened once — "Card · 10$" over "You have won second prize…"
+  // — which is what the owner saw as a second notification. So the card's own
+  // consequence is folded into ITS row instead, exactly the sum TvCenter's
+  // cardAmount() already reads for the centre overlay, and the underlying
+  // event is skipped here rather than drawn a second time.
+  //
+  // The fold is handed on to the row as `cardAmount` on a COPY of the card
+  // event, which is describeEvent's agreed way in (see its `card` case): the
+  // badge is then the shared EventRow's own badge, drawn by the same code as
+  // every other money row on this screen, and this file no longer keeps a
+  // hand-built card row of its own. Only a copy, never the log's object —
+  // `game.log` is the shell's state, not ours to write on.
   const rowsData = useMemo(() => {
     const log = Array.isArray(game?.log) ? game.log : null;
     const src = log && log.length > 0 ? log : Array.isArray(game?.events) ? game.events : [];
+    const list = src.map(neutral);
+
+    const consumed = new Set();
+    const cardAmounts = new Map();
+    for (let i = 0; i < list.length; i++) {
+      const card = list[i];
+      if (!card || card.type !== "card") continue;
+      let amount = 0;
+      for (let j = i + 1; j < list.length; j++) {
+        const e = list[j];
+        if (!e || e.seq !== card.seq || e.type === "card") break;
+        const amt = Number(e.amount);
+        if (!Number.isFinite(amt)) continue;
+        const byCard = e.reason === "card" || e.reason === "repairs";
+        if (e.type === "collect" && e.figure === card.figure && byCard) {
+          amount += amt;
+          consumed.add(j);
+        } else if (e.type === "pay" && e.figure === card.figure && byCard) {
+          amount -= amt;
+          consumed.add(j);
+        } else if (e.type === "pay" && e.to === card.figure && e.reason === "card") {
+          amount += amt;
+          consumed.add(j);
+        }
+      }
+      if (amount) cardAmounts.set(i, amount);
+    }
+
     const counts = new Map();
     const out = [];
-    for (let i = 0; i < src.length; i++) {
-      const ev = neutral(src[i]);
-      if (!ev) continue;
+    for (let i = 0; i < list.length; i++) {
+      if (consumed.has(i)) continue;
+      const raw = list[i];
+      if (!raw) continue;
+      const folded = cardAmounts.get(i) ?? 0;
+      const ev = folded ? { ...raw, cardAmount: folded } : raw;
       const seq = ev.seq ?? "e";
       const n = counts.get(seq) ?? 0;
       counts.set(seq, n + 1);
@@ -218,18 +503,34 @@ export default function TvSide({
 
   // ---- the squeeze -------------------------------------------------------
   const latestRef = useRef(null);
-  const [dens, setDens] = useState(0);
+  const propsRef = useRef(null);
+  const n = list.length;
+  const floor = baseDens(n);
+  const cap = maxRowsFor(n);
+  const [dens, setDens] = useState(floor);
   const [rows, setRows] = useState(MAX_ROWS);
+  // How wide a card's property row really is. All six are the same width, so
+  // one measurement serves them all; PROPS_W only ever covers the first paint.
+  const [propsW, setPropsW] = useState(PROPS_W);
 
-  const shape = `${cards.length}:${cards.map((c) => c.owned.length).join(",")}`;
+  const shape = `${cards.length}:${cards.map((c) => c.stakes.length).join(",")}`;
   const shapeRef = useRef(shape);
   useLayoutEffect(() => {
     if (shapeRef.current === shape) return;
     shapeRef.current = shape;
-    setDens(0); // a new hand of properties gets the full layout offered again
-  }, [shape]);
+    setDens(floor); // a new hand of properties gets the full layout offered again
+  }, [shape, floor]);
+
+  // A seat filling or emptying changes where the squeeze starts, and it must
+  // never START below the floor for the room's size.
+  useLayoutEffect(() => {
+    setDens((d) => (d < floor ? floor : d));
+  }, [floor]);
 
   useLayoutEffect(() => {
+    const box = propsRef.current;
+    if (box && box.clientWidth > 0 && box.clientWidth !== propsW) setPropsW(box.clientWidth);
+
     const el = latestRef.current;
     if (!el) return;
     const h = el.clientHeight;
@@ -238,9 +539,12 @@ export default function TvSide({
       setDens(dens + 1);
       return;
     }
+    // Players outrank the log (maxRowsFor, above): a crowded room's feed never
+    // grows past its cap even when the measured space would allow more, so
+    // the player cards keep first claim on whatever the column has spare.
     const fit = Math.max(
       MIN_ROWS,
-      Math.min(MAX_ROWS, Math.floor((h - LABEL_H + ROW_GAP) / (ROW_H + ROW_GAP))),
+      Math.min(cap, Math.floor((h - LABEL_H + ROW_GAP) / (ROW_H + ROW_GAP))),
     );
     if (fit !== rows) setRows(fit);
   });
@@ -248,7 +552,6 @@ export default function TvSide({
   const sw = SW[Math.min(dens, SW.length - 1)];
   const tokSize = TOK[Math.min(dens, TOK.length - 1)];
   const shown = rowsData.slice(0, rows);
-  const n = list.length;
   const code = roomId || "—";
 
   return (
@@ -266,6 +569,12 @@ export default function TvSide({
             {n} {n === 1 ? "player" : "players"}
           </span>
         </div>
+        {/* A row of its own. The TV variant of the badge is deliberately big —
+            it has to be read from a sofa — and in the room line it simply ate
+            the room code. It draws nothing at all while the room is live, so
+            this row costs no height until something is actually wrong, and the
+            squeeze below absorbs it when it appears. */}
+        {badge && <div className={s.badge}>{badge}</div>}
         {controls && <div className={s.controls}>{controls}</div>}
         {error && (
           <p className={s.err} role="status">
@@ -275,8 +584,8 @@ export default function TvSide({
         {n === 0 && <p className={s.hint}>Open /Login on your phone and enter {code}</p>}
       </div>
 
-      <div className={s.players}>
-        {cards.map(({ p, owned, groups }) => {
+      <div className={s.players} style={{ "--slot-h": `${sw}px` }}>
+        {cards.map(({ p, deeds, stakes }, ci) => {
           const isNow =
             !over &&
             !!current &&
@@ -284,13 +593,14 @@ export default function TvSide({
               ? current.playerId === p.playerId
               : current.figure === p.figure);
           const isWin = !!game?.winner && game.winner === p.figure;
-          const deeds = owned.length;
+          const fit = fitSlots(stakes, propsW);
+          const more = stakes.length - fit;
           const sub = p.bankrupt
             ? "Out of the game"
             : [
                 FIGURE_NAME[p.figure] || null,
                 deeds > 0 ? `${deeds} deed${deeds === 1 ? "" : "s"}` : null,
-                `on ${board?.[p.position]?.header ?? "the board"}`,
+                p.inJail ? jailLine(p) : `on ${board?.[p.position]?.header ?? "the board"}`,
               ]
                 .filter(Boolean)
                 .join(" · ");
@@ -312,29 +622,51 @@ export default function TvSide({
                   <strong className={s.plLine}>
                     <span lang={hasCyrillic(p.name) ? "ru" : undefined}>{p.name}</span>
                     {isNow && <span className={s.now}>Now</span>}
-                    {p.inJail && !p.bankrupt && <span className={s.tag}>Jail</span>}
+                    {/* Jail is a STATE, not a footnote: it decides what that
+                        player may do for up to three turns, so on the TV it is
+                        painted, not mentioned. `jailTurns` is how many failed
+                        rolls they have already served. */}
+                    {p.inJail && !p.bankrupt && (
+                      <span className={`${s.tag} ${s.tagJail}`}>
+                        <Lock size={13} aria-hidden="true" />
+                        Jail
+                      </span>
+                    )}
+                    {!p.bankrupt && Number(p.jailCards) > 0 && (
+                      <span className={`${s.tag} ${s.tagKey}`} title="Get out of jail free">
+                        <KeyRound size={13} aria-hidden="true" />
+                        {Number(p.jailCards) > 1 ? `x${Number(p.jailCards)}` : "Free"}
+                      </span>
+                    )}
                     {p.bankrupt && <span className={s.tag}>Out</span>}
                     {isWin && <span className={`${s.tag} ${s.tagWin}`}>Winner</span>}
                   </strong>
                   <span className={s.plSub}>{sub}</span>
                 </div>
-                <TvCash value={p.money} reduce={reduce} className={s.cash} delay={cashDelay} />
+                <TvCash
+                  value={p.money}
+                  reduce={reduce}
+                  className={s.cash}
+                  delay={cashDelay}
+                  silent={silent}
+                />
               </div>
 
-              <div className={s.props}>
-                {deeds === 0 ? (
+              {/* One line, always: the card's height is load-bearing for the
+                  whole column (see the budget at the top of this file), so the
+                  slots that do not fit become a "+N" rather than a second row.
+                  `ci === 0` is the one the width is measured off — every card
+                  is the same width, so one ref is enough. */}
+              <div className={s.props} ref={ci === 0 ? propsRef : undefined}>
+                {stakes.length === 0 ? (
                   <span className={s.propsEmpty}>No properties yet</span>
                 ) : (
-                  groups.map(([color, cells]) => (
-                    <div className={s.grp} key={color ?? "none"}>
-                      {cells.map((cell) => (
-                        <span className={s.sw} key={cell.id}>
-                          <Mark cell={cell} size={sw} radius={Math.round(sw * 0.27)} />
-                          <Pips houses={cell.houses} className={s.swPips} />
-                        </span>
-                      ))}
-                    </div>
-                  ))
+                  <>
+                    {stakes.slice(0, fit).map((st) => (
+                      <Slot key={st.key} st={st} />
+                    ))}
+                    {more > 0 && <span className={s.slotMore}>+{more}</span>}
+                  </>
                 )}
               </div>
             </article>
@@ -354,6 +686,16 @@ export default function TvSide({
                  marks and icon circles. The row's 40px min-height and 4px
                  padding were already sized for exactly this. */
               size={32}
+              /* Cards only, and it is not a preference. Every other row on
+                 this screen is a short phrase that reads fine as one clamped
+                 line, but a deck sentence is a sentence ("You have won second
+                 prize in a beauty contest…") and one nowrap line either blew
+                 .evs's grid track open or, once that was pinned, cut the text
+                 off with no ellipsis at all (report 2 in the handoff). Two
+                 lines, not .evWrap's default three: a row's height is the unit
+                 the whole column budget at the top of this file is written in,
+                 and .evs sets --ev-lines: 2 to say so. */
+              wrap={r.ev.type === "card"}
               fresh={feed != null && (r.seq == null || r.seq === feed.seq)}
             />
           ))}
