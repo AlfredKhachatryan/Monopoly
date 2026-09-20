@@ -3,15 +3,53 @@
  * background is a variable: the sheet sets --ev-row-bg: var(--sunk) on its list
  * and the row stops pretending to be translucent glass over the tint. */
 
+/* The <li>. The flex layout moved down to `.evIn` so the row can be a BUTTON
+ * without the list item pretending to be one: an expandable row renders
+ * <li class=ev><button class="evIn evTap"> and an inert one renders
+ * <li class=ev><span class=evIn>, and both lay out identically. */
 .ev {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 4px 6px 4px 4px;
+  display: block;
   border-radius: 14px;
   background: var(--ev-row-bg, var(--ev-bg));
   color: var(--ink);
+}
+
+/* `.ev .evIn`, not `.evIn`: the controller's element reset
+ * (`.app :where(button)` in screen.module.css) zeroes padding at (0,1,0), and
+ * this file's position in the bundle relative to that one is not something to
+ * bet a row's padding on. (0,2,0) settles it. */
+.ev .evIn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 6px 4px 4px;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+/* A row you can open. Thumb-sized, and it says so. */
+.ev .evTap {
+  min-height: 44px;
+  cursor: pointer;
+  border-radius: 14px;
+}
+
+.ev .evTap:active {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+/* Once the label is more than one line, centring drags the token and the badge
+ * down with it. The nudge puts the FIRST line's optical centre level with the
+ * 26px token beside it instead of level with its top edge. */
+.ev .evTop {
+  align-items: flex-start;
+}
+
+.ev .evTop .evName {
+  padding-top: 3px;
 }
 
 .evIc {
@@ -39,6 +77,32 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Up to three lines instead of an ellipsis, for the full log.
+ *
+ * Three is what a sheet with room to scroll wants; a list whose row height is
+ * load-bearing wants fewer. The TV's "Latest" feed is the latter — its whole
+ * column budget is written in units of one 40px row (src/Board/TvSide.jsx) and
+ * it turns this on for exactly one kind of row, a drawn card's long sentence —
+ * so the count is a variable a list can set on itself rather than a second
+ * class that would say all of this again with one number changed. Nobody but
+ * .evs in tvSide.module.css sets it, and the fallback is the old literal. */
+.evWrap {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: var(--ev-lines, 3);
+  line-clamp: var(--ev-lines, 3);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Opened: the whole sentence, however long it is. */
+.evFull {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-weight: 600;
 }
 
 /* The newest row carries the most weight. */

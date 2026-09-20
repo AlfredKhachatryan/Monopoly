@@ -142,7 +142,7 @@ export default function Aura({
                 role={b.tone === "err" ? "alert" : "status"}
                 className={`${s.bn} ${b.tone === "err" ? s.bnErr : ""} ${
                   b.tone === "good" ? s.bnGood : ""
-                }`}
+                } ${b.tone === "warn" ? s.bnWarn : ""}`}
                 variants={fadeUp}
                 initial="hidden"
                 animate="show"
@@ -193,6 +193,12 @@ export default function Aura({
               <span className={`${s.skel} ${s.skelTurn}`} />
             ) : null}
             {ordered.length > 0 && (
+              // Same 22px token a 4-player room has always shown; past four it
+              // steps down to 20 — Tok's own floor for drawing the figure art
+              // at all (below that it falls back to a lettered dot, which
+              // would be a worse regression than a slightly smaller token) —
+              // so a 5th/6th seat wraps onto its own line (`.order`'s
+              // `flex-wrap`) sooner, rather than squeezing onto the first.
               <ol className={s.order} aria-label="Turn order">
                 {ordered.map((p) => (
                   <li
@@ -201,7 +207,7 @@ export default function Aura({
                       current?.playerId === p.playerId && !winner ? s.isNow : ""
                     } ${p.bankrupt ? s.isOut : ""}`}
                   >
-                    <Tok player={p} size={22} className={s.oTok} />
+                    <Tok player={p} size={ordered.length > 4 ? 20 : 22} className={s.oTok} />
                     <span className={s.sr}>
                       {p.name}
                       {p.bankrupt ? " (out)" : ""}
@@ -230,7 +236,16 @@ export default function Aura({
           </div>
           <ul className={s.evs} aria-label="What just happened" aria-live="polite">
             {events.map((it) => (
-              <EventRow key={it.key} event={it.ev} ctx={ctx} fresh={it.fresh} />
+              <EventRow
+                key={it.key}
+                event={it.ev}
+                ctx={ctx}
+                fresh={it.fresh}
+                // Single line, as it was: this block is above the ticket and
+                // the roll button and must not grow. A row whose text does not
+                // fit becomes a button that opens the full log at itself.
+                onOpen={onOpenLog ? () => onOpenLog(it.logKey) : undefined}
+              />
             ))}
           </ul>
         </div>
