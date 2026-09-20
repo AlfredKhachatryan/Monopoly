@@ -32,6 +32,7 @@ import { useWalkingTokens } from "../Hooks/useWalkingTokens";
 import { accentFor, nameOfFig, readableOn } from "../Hooks/rules";
 import { useReveal, REVEAL } from "../Client/useReveal";
 import { announceBatch } from "../Client/transfers";
+import ConnectionBadge from "../Components/ConnectionBadge";
 import BoardGrid from "./BoardGrid";
 import RoomGate from "./RoomGate";
 import TvControls from "./TvControls";
@@ -88,6 +89,7 @@ function Main() {
     setUserData([]);
     setCurrentOrder(0);
     setGame({});
+    seqRef.current = -1; // a different room, so the old room's seq means nothing
     setUuid(newUuid);
   }
 
@@ -95,7 +97,10 @@ function Main() {
   const [userData, setUserData] = useState(null);
   const [currentOrder, setCurrentOrder] = useState(null);
   const [game, setGame] = useState({});
-  const { data, loading } = useFetch(uuid);
+  // `refetch` is what repairs the screen after a drop; it goes to
+  // useRealtimeUpdates below, which calls it on every resync trigger
+  // (resubscribe, tab visible, pageshow, online, focus, heartbeat).
+  const { data, loading, refetch } = useFetch(uuid);
 
   // ---- the reveal buffer -------------------------------------------------
   // The row that carries a roll also carries everything the roll caused, and
@@ -112,7 +117,21 @@ function Main() {
   // flight) keys off the held `game` / `pos`, so they all release together.
   // The dice are the one exception: they get `reveal.roll` directly, because
   // they are the thing everyone is waiting for.
-  const tvFeed = useTvFeed(game);
+  // ---- resync -------------------------------------------------------------
+  // A row that arrives because the TV asked for it again is NOT news. It is the
+  // present, and the TV may well have missed three turns getting to it. So a
+  // refetched row is applied SILENTLY: `silentSeq` marks the seq that arrived
+  // that way, useTvFeed is told not to announce it (so no card, no dice, no
+  // doubles chip, no jail beat, no coins, no "fresh" event rows), and the
+  // pieces snap to where everybody now is instead of flying a route nobody
+  // took. Whatever happened while the screen was deaf happened; the board's job
+  // on coming back is to be correct, not to perform.
+  const [silentSeq, setSilentSeq] = useState(-1);
+  const [snapKey, setSnapKey] = useState(0);
+  const liveSeq = Number(game?.seq) || 0;
+  const silent = silentSeq >= 0 && liveSeq === silentSeq;
+
+  const tvFeed = useTvFeed(game, silent);
   const snapshot = useMemo(
     () => ({ pos, userData, currentOrder, game }),
     [pos, userData, currentOrder, game],
@@ -148,18 +167,37 @@ function Main() {
   const cashDelay =
     payItems.length > 0 ? payDelay + REVEAL.COIN_MS - REVEAL.CASH_LEAD : 0;
 
-  function updatePos(pos, user, order, g) {
+  // `game.seq` is monotonic across every action, new_game included, so it is
+  // the one honest answer to "is this row older than what I already have?". A
+  // resync and a Realtime push can cross on the wire — the refetch was sent
+  // before the push arrived and lands after it — and without this the board
+  // would visibly step backwards a turn. Equal seqs are allowed through: the
+  // same row read twice writes the same thing.
+  const seqRef = useRef(-1);
+
+  function updatePos(pos, user, order, g, fromResync = false) {
+    const next = Number(g?.seq) || 0;
+    if (next < seqRef.current) return;
+    seqRef.current = next;
     if (pos) {
       setPos(pos);
     }
     setUserData(user);
     setCurrentOrder(order);
     setGame(g || {});
+    // Both of these are set in the same batch as `setGame`, so the flag and the
+    // row it describes reach the render together.
+    setSilentSeq(fromResync ? next : -1);
+    if (fromResync) setSnapKey((k) => k + 1);
   }
 
+  // The first read of a room is a resync by the same argument: nothing on it
+  // just happened, the TV is only catching up with a room that already exists.
+  // (useTvFeed adopts its first seq silently anyway; this makes it explicit and
+  // covers the refetches that follow.)
   useEffect(() => {
     if (data) {
-      updatePos(data.position, data.Players, data.current_order, data.game);
+      updatePos(data.position, data.Players, data.current_order, data.game, true);
     }
   }, [data]);
 
@@ -172,7 +210,21 @@ function Main() {
     );
   };
 
-  useRealtimeUpdates(uuid, handleInserts); //when DB is updated he does some function
+  // …and what it hands back is the connection's own state: "live" almost
+  // always, "reconnecting" while the channel is being rebuilt, "offline" when
+  // it has given up. <ConnectionBadge> draws nothing at all unless it is one of
+  // the last two, so the room only ever hears about the network when the
+  // network is the reason nothing is happening. Written defensively — the
+  // offline harness's mock returns nothing at all, and a board on a wall must
+  // not go blank over a missing status object.
+  const conn = useRealtimeUpdates(uuid, handleInserts, refetch); //when DB is updated he does some function
+  const connection = useMemo(
+    () =>
+      uuid && conn?.status
+        ? { status: conn.status, since: conn.since, reconnect: conn.reconnect }
+        : undefined,
+    [uuid, conn?.status, conn?.since, conn?.reconnect],
+  );
 
   async function boardAction(action, payload) {
     setBoardError(null);
@@ -296,8 +348,18 @@ function Main() {
           current={current}
           focusCellId={focusCellId}
           shown={shownTokens}
+          /* Bumped on a resync: the pieces are put where they are now rather
+             than flown there, because nobody in the room watched them move. */
+          snapKey={snapKey}
           roll={reveal.roll}
           roller={roller}
+          /* This render's `shownGame` may carry a seq that just moved (a
+             resync snaps straight through, see the note above `silentSeq`)
+             without it being NEWS — TvCenter keeps its own useTvFeed to time
+             its card/jail/trade beats, and without this flag it has no way to
+             tell "just caught up" from "just happened" and replays a card for
+             something that happened while the screen was deaf. */
+          silent={silent}
         />
         <TvSide
           roomId={uuid}
@@ -306,6 +368,13 @@ function Main() {
           game={shownGame ?? {}}
           current={current}
           controls={controls}
+          /* Same reason as BoardGrid's: TvSide's own useTvFeed only marks a
+             row "fresh" (the slide-in) for a batch that arrived live. */
+          silent={silent}
+          /* Beside the room code: the one place on this screen that already
+             talks about the connection rather than about the game. Renders
+             nothing while the room is live. */
+          badge={<ConnectionBadge conn={connection} variant="tv" />}
           error={boardError}
           cashDelay={cashDelay}
         />

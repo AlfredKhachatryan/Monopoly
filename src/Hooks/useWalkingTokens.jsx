@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
+import { FIGS } from "./rules";
 
 // Turns the "which cell has which figure" flags in `pos` into a map of
 // displayed positions ({ fig0: 12, fig2: 3 }). TokenLayer animates the
@@ -15,7 +16,6 @@ import { useReducedMotion } from "framer-motion";
 //   because a dice roll can never exceed 12.
 // - Only one interval runs at a time, whatever number of figures move.
 
-const FIGS = ["fig0", "fig1", "fig2", "fig3"];
 const CELLS = 40;
 const WALK = false; // true = hop cell by cell, false = one arc per move
 const STEP_MS = 290; // one hop per cell when walking

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-labelledby="t"><title id="t">Mummy — extra figure</title>
+  <ellipse cx="80" cy="188" rx="46" ry="7" fill="#0E1116" opacity=".12"/>
+  <rect x="60" y="148" width="16" height="32" rx="6" fill="#E3E7EE"/>
+  <rect x="84" y="148" width="16" height="32" rx="6" fill="#E3E7EE"/>
+  <ellipse cx="66" cy="182" rx="12" ry="5.5" fill="#0E1116"/>
+  <ellipse cx="94" cy="182" rx="12" ry="5.5" fill="#0E1116"/>
+  <path d="M52 108 L22 118 L24 132 L52 124 Z M108 108 L138 118 L136 132 L108 124 Z" fill="#E3E7EE"/>
+  <circle cx="22" cy="125" r="7" fill="#56606E"/>
+  <circle cx="138" cy="125" r="7" fill="#56606E"/>
+  <path d="M50 104 C50 92 110 92 110 104 L108 156 L52 156 Z" fill="#E3E7EE"/>
+  <path d="M104 50 C116 44 124 50 130 40" fill="none" stroke="#E3E7EE" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="80" cy="66" r="30" fill="#E3E7EE"/>
+  <g fill="none" stroke="#56606E" stroke-width="3" stroke-linecap="round">
+    <path d="M54 50 L106 45 M52 84 L108 88"/>
+    <path d="M52 112 L108 118 M52 128 L108 124 M52 142 L108 146"/>
+    <path d="M60 164 L76 160 M84 170 L100 166"/>
+    <path d="M32 118 L35 130 M44 114 L46 126 M128 118 L125 130 M116 114 L114 126"/>
+  </g>
+  <path d="M52 60 L108 57 L108 73 L52 75 Z" fill="#0E1116"/>
+  <circle cx="68" cy="66" r="6.5" fill="#FFFFFF"/>
+  <circle cx="69" cy="67" r="3.2" fill="#0E1116"/>
+  <circle cx="94" cy="65" r="3.5" fill="#FFFFFF"/>
+</svg>

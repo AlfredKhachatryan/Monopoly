@@ -14,19 +14,21 @@
 // is wrong for half the board. Results are cached per word and size, so the
 // whole board costs a few dozen measurements once.
 
-// The text column's content width per side, straight out of tv.module.css:
-//   rows    ~105px tile − 4px padding × 2
-//   corner   150px tile − 4px padding × 2
-//   flanks   150px tile − 12 − 8 padding − 32px mark − 6px gap − 20px kept
+// The text column's content width per side, straight out of tv.module.css
+// (re-measured 2026-09-20 for the wider board: 1364 × 1048, corners 158 × 144,
+// row tiles ~112 × 144, flanks 158 × 80):
+//   rows    ~112px tile − 4px padding × 2
+//   corner   158px tile − 4px padding × 2
+//   flanks   158px tile − 12 − 8 padding − 36px mark − 6px gap − 20px kept
 //            free, always, for the owner dot in the corner above
 //
 // NOTHING here depends on who is standing on the tile or who owns it: a tile
 // must look identical whether or not there are pieces on it, so the fit is a
 // function of the name and the side of the board, and only of those.
-const AVAIL = { b: 97, t: 97, c: 142, l: 72, r: 72 };
+const AVAIL = { b: 104, t: 104, c: 150, l: 76, r: 76 };
 // The base font size per side, matching .name in tv.module.css.
-const BASE = { b: 14, t: 14, c: 16, l: 13, r: 13 };
-const STEPS = 2; // 14 → 13 → 12 (16 → 15 → 14 on a corner)
+const BASE = { b: 15, t: 15, c: 17, l: 14, r: 14 };
+const STEPS = 2; // 15 → 14 → 13 (17 → 16 → 15 on a corner)
 
 const cache = new Map();
 let ctx;

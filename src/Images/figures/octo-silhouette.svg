@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" fill="currentColor" role="img" aria-labelledby="t"><title id="t">Octo silhouette</title>
+  <g fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round">
+    <path d="M52 108 C40 130 30 150 42 164 C50 172 58 164 52 158"/><path d="M66 114 C62 140 56 160 66 176"/><path d="M80 116 C80 144 80 164 74 180"/><path d="M94 114 C98 140 104 160 94 176"/><path d="M108 108 C120 130 130 150 118 164 C110 172 102 164 108 158"/>
+  </g>
+  <ellipse cx="80" cy="78" rx="40" ry="44"/>
+</svg>

@@ -330,22 +330,31 @@
 
 /* ------------------------------------------------------------------ picker */
 
+/* Eight cards, four columns wide — the grid itself wraps them into two rows
+ * with no extra markup (FigurePicker.jsx renders one flat list of eight
+ * buttons; this is the only place "four across" is decided). The row gap is
+ * a notch tighter than a single row ever needed, because two of them now
+ * share the vertical budget one used to spend alone — see LoginScreen.jsx's
+ * `pickH` for the matching cut on the card's own height. */
 .picker {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 /* The stage the figure manual reserves for the full figures: a wash of 14% of
- * the character's own colour, the figure on it, the name under it. */
+ * the character's own colour, the figure on it, the name under it. Padding is
+ * trimmed from the single-row original (8px top/bottom) for the same reason
+ * as the grid gap above; `min-height: 44px` is the tap-target floor and does
+ * not move — the card stays comfortably above it either way. */
 .card {
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
   min-height: 44px;
-  padding: 8px 2px 8px;
+  padding: 6px 2px;
   border-radius: 20px;
   background: color-mix(in srgb, var(--fc) 14%, var(--sunk));
   box-shadow: inset 0 0 0 2.5px transparent;
@@ -514,6 +523,17 @@
   .panel {
     gap: 12px;
     padding-top: 14px;
+  }
+
+  /* The two-row picker is the tallest single thing in the panel; on exactly
+   * the viewport this query targets (360×640 is the reference short phone)
+   * every pixel it gives back here is a pixel the hero above gets to keep. */
+  .picker {
+    gap: 4px;
+  }
+
+  .card {
+    padding: 4px 2px;
   }
 }
 

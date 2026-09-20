@@ -138,21 +138,36 @@
   color: var(--ink);
 }
 
-/* "…pays everyone": the whole table, overlapped so four tokens still fit the
- * 64px slot the single token would have had. */
+/* "…pays everyone": the other side of the table, overlapped so the row still
+ * sits in roughly the 64px slot a single token would have had. Four faces at
+ * 40px is what it always was; five (a full six-player room minus the payer)
+ * come in at 34 and overlap a little harder — `data-tight`, set by TvPayFx. */
 .everyone {
   display: flex;
   align-items: center;
 }
 
-.everyone > * {
+.everyone > *:not(.everyoneMore) {
   margin-right: -14px;
   box-shadow: 0 0 0 3px var(--surface);
   border-radius: 50%;
 }
 
-.everyone > *:last-child {
+.everyone[data-tight] > *:not(.everyoneMore) {
+  margin-right: -12px;
+}
+
+.everyone > *:not(.everyoneMore):last-child {
   margin-right: 0;
+}
+
+/* Only ever reached if a room somehow holds more than six. */
+.everyoneMore {
+  padding-left: 8px;
+  font-family: var(--f-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .sr {

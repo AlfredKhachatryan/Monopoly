@@ -2,9 +2,14 @@
 // name, the houses on it — and then either a stub of Price / Rent / Owner if it
 // can be owned, or a single line of what the space does if it cannot.
 //
-// The Build pill only appears when you own at least one complete colour set
-// somewhere on the board; it opens the deeds sheet, which is where building
-// actually happens.
+// The Build pill is about THIS space, and only this space. It used to appear
+// whenever the viewer owned a finished colour set anywhere on the board, which
+// put a "Build" button on Free Parking, on Jail, and on a street owned by
+// nobody — three places where pressing it could not possibly build anything.
+// The caller now passes `canBuild` = "you own this street, you hold its whole
+// colour set, and it is this street's turn to take the next house"; see
+// `buildHere` in ClientScreen. Building anywhere else is reached through the
+// Deeds tab, which is what that tab is for.
 
 import { Hammer } from "lucide-react";
 import {
@@ -19,7 +24,7 @@ import {
   streetRent,
 } from "../Hooks/rules";
 import { groupLabel, Pips, hasCyrillic } from "./boardDisplay";
-import { fmt, fmtText } from "./format";
+import { fmt, fmtText, jailLine } from "./format";
 import Mark from "./Mark";
 import s from "./screen.module.css";
 
@@ -34,10 +39,11 @@ function noteFor(cell, lastCard, me) {
       return `Pay ${fmt(cell.price || 0)}`;
     // Standing on Jail is two different facts. Saying "Just visiting" to a
     // player who is locked up is the ticket contradicting the banner.
+    // Both this and the banner in ClientScreen come out of jailLine(), so the
+    // ticket can no longer say "turn 2 of 3" while the banner says "roll 2 of
+    // 3" six inches above it.
     case "jail":
-      return me?.inJail
-        ? `In jail · turn ${Math.min((me.jailTurns || 0) + 1, JAIL_MAX_TURNS)} of ${JAIL_MAX_TURNS}`
-        : "Just visiting";
+      return me?.inJail ? jailLine(me, { max: JAIL_MAX_TURNS }) : "Just visiting";
     case "parking":
       return "Nothing to pay here. Take a breather.";
     case "gtj":

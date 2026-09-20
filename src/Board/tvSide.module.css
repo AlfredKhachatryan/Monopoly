@@ -1,14 +1,14 @@
 /* Right column — room, players, latest events.
  *
- * Sizes follow the reference's §0 OWNER OVERRIDE: the column is ~550px wide,
- * not the prototype's ~808. Nothing here hard-codes that number — every width
- * is a percentage of whatever cell the shell hands over — so a later change to
- * the 70/30 split needs no edit in this file.
+ * The column is 500px wide (tv.module.css's .screen grid), down from 550 so the
+ * board could have the difference. Nothing here hard-codes that number — every
+ * width is a percentage of whatever cell the shell hands over — so a later
+ * change to the split needs no edit in this file.
  *
- * The three density steps (.d0 / .d1 / .d2) are the squeeze described in
- * TvSide.jsx. Swatch and figure sizes are props, so what changes here is the
- * room a row of them needs; the type never shrinks — a board is read from
- * across a room.
+ * The four density steps (.d0 … .d3) are the squeeze described in TvSide.jsx.
+ * Figure size and the property-slot height are props / custom properties, so
+ * what changes here is the room a row of them needs; the type never shrinks —
+ * a board is read from across a room.
  *
  * The event rows come from src/Client/EventRow.jsx and src/Client/
  * events.module.css, which belong to the phone and are not edited. They are
@@ -36,18 +36,25 @@
   --pl-pad: 14px 18px;
   --pl-gap: 10px;
   --pls-gap: 10px;
-  --sw-h: 38px;
+  --slot-h: 26px;
 }
 
 .d1 {
-  --sw-h: 34px;
+  --pl-pad: 14px 18px;
+  --pl-gap: 10px;
+  --pls-gap: 8px;
 }
 
 .d2 {
   --pl-pad: 10px 14px;
   --pl-gap: 8px;
   --pls-gap: 8px;
-  --sw-h: 34px;
+}
+
+.d3 {
+  --pl-pad: 8px 12px;
+  --pl-gap: 6px;
+  --pls-gap: 6px;
 }
 
 /* ---- header ------------------------------------------------------------- */
@@ -84,7 +91,40 @@
   color: var(--muted);
 }
 
-/* The shell's buttons get a row of their own: at 550px they have no business
+/* The connection badge's row. `:empty` rather than a conditional height: the
+ * badge renders nothing while the room is live, and a grid gap around an empty
+ * div would still cost 10px of the column's budget. */
+.badge {
+  display: flex;
+  min-width: 0;
+  /* The shared badge's `tv` variant is drawn for a full-width banner — 34px
+   * type beside a 64px Reconnect button — and "Offline — check Wi-Fi" is about
+   * 600px of that. This column is 500. `zoom` rather than a transform because
+   * zoom is a LAYOUT scale: the row shrinks with its contents instead of
+   * leaving a 96px hole where the unscaled box used to be. At 0.8 the label is
+   * still 27px, which is the whole point of the tv variant. The component
+   * itself is not ours to restyle (src/Components/ConnectionBadge). */
+  zoom: 0.8;
+
+  /* Its Reconnect button paints `background: var(--ink); color: var(--on-tint)`,
+   * and on this screen --on-tint is the ink that stays readable on the TINT
+   * (the focus tile's colour), which has nothing to do with --ink. In the dark
+   * theme --ink is near-white, so the button came out white-on-white: a blank
+   * pill. Pinned here, locally, to the colour that is actually readable on
+   * --ink. The component is not ours to fix; it is in the report. */
+  --on-tint: var(--surface);
+}
+
+/* (0,1,1), so it lands whatever order the two modules load in. */
+.badge button {
+  color: var(--surface);
+}
+
+.badge:empty {
+  display: none;
+}
+
+/* The shell's buttons get a row of their own: at 500px they have no business
  * competing with the room code for the same line. */
 .controls {
   display: flex;
@@ -118,6 +158,14 @@
 
 .players {
   display: grid;
+  /* An explicit `minmax(0, 1fr)` column, not the implicit `auto` a bare
+     `display: grid` gets: `auto` sizes the track to the widest CHILD's
+     max-content contribution, and a long unclamped name (or a five-digit cash
+     figure) could blow it past the 500px column .screen hands this aside —
+     see the identical fix on .evs below, where a nowrap card sentence did
+     exactly that. min-width: 0 on the descendants stops working once the
+     track itself has already grown past the column. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--pls-gap);
   min-height: 0;
   min-width: 0;
@@ -198,6 +246,9 @@
 
 .now,
 .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex: none;
   padding: 2px 8px;
   border-radius: 6px;
@@ -217,6 +268,19 @@
 }
 
 .tagWin {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+/* Locked up. Loud on purpose — it is a state that lasts up to three turns and
+ * decides what that player may do, so it is not a footnote in --muted. */
+.tagJail {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+/* A Get Out Of Jail Free card in hand. */
+.tagKey {
   background: var(--pos-bg);
   color: var(--pos);
 }
@@ -314,45 +378,98 @@
   }
 }
 
-/* ---- property swatches -------------------------------------------------- */
+/* ---- property slots ----------------------------------------------------- */
 
+/* ONE LINE, ALWAYS. The whole column's vertical budget (TvSide.jsx, top) rests
+ * on a card being a fixed height, so this row never wraps and never scrolls:
+ * TvSide counts the slots that fit and turns the rest into a "+N". `nowrap`
+ * and the clip are the belt to that braces — if an estimate is ever a pixel
+ * out, the row stays one line high rather than shoving the Latest list off the
+ * bottom of the screen. */
 .props {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 5px 12px;
-  min-height: var(--sw-h);
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 5px;
+  height: var(--slot-h);
   min-width: 0;
+  overflow: hidden;
 }
 
 .propsEmpty {
-  align-self: center;
   font-size: 15px;
   color: var(--muted);
 }
 
-.grp {
+/* One colour group. Part of a set: the group's colour as one brick per cell,
+ * the owned ones lit, on a sunk chip. The whole set: the chip itself goes solid
+ * in the group's colour and carries a crown (or the railroad / utility glyph)
+ * and the buildings. */
+.slot {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  flex: none;
+  gap: 3px;
+  height: var(--slot-h);
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--sunk);
+  color: var(--g);
 }
 
-.sw {
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  color: var(--ink);
+.slot[data-full] {
+  background: var(--g);
+  color: var(--on-g);
+}
+
+.bricks {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.bricks i {
+  display: block;
+  width: 7px;
+  height: 16px;
+  border-radius: 2px;
+  /* Not yet owned: the group's colour at a whisper, so the chip still reads as
+   * "three of these, one of them mine" from the sofa. */
+  background: color-mix(in srgb, var(--g) 22%, var(--sunk));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--g) 45%, transparent);
+}
+
+.bricks i[data-on] {
+  background: var(--g);
+  box-shadow: none;
 }
 
 /* Two classes so these beat bits.module.css's own .pips rules regardless of
- * which module the bundler emits first. */
-.sw .swPips i {
-  width: 4px;
-  height: 4px;
+ * which module the bundler emits first. The pips are painted in --on-g, which
+ * is whichever of black/white stays readable on the set's colour. */
+.slot .slotPips {
+  color: var(--on-g);
 }
 
-.sw .swPips b {
+.slot .slotPips i {
+  width: 5px;
+  height: 5px;
+}
+
+.slot .slotPips b {
   width: 16px;
-  height: 4px;
+  height: 5px;
+}
+
+/* Groups that did not fit the line. Only ever reached by a player holding a
+ * stake in nine or ten groups at once. */
+.slotMore {
+  flex: none;
+  padding: 0 6px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: var(--slot-h);
+  color: var(--muted);
 }
 
 /* ---- latest ------------------------------------------------------------- */
@@ -368,16 +485,40 @@
 
 .evs {
   display: grid;
+  /* THE CROP BUG. A bare `display: grid` with no `grid-template-columns` gets
+     one implicit column sized `auto`, which tracks the WIDEST row's
+     max-content contribution rather than the space actually on offer. A row
+     is EventRow's own `.evName` (events.module.css) — `white-space: nowrap` —
+     and its max-content width is the whole sentence unwrapped, `overflow`/
+     `text-overflow` on that span notwithstanding: those trim what PAINTS
+     inside a box already sized smaller, they do not shrink the box's own
+     contribution to an ancestor's track sizing. The longest card text ("You
+     have won second prize…") was exactly such a row, so this track grew past
+     the 500px column, and — since `.latest` above clips its overflow rather
+     than reflowing it — every row in the list, not just the long one, showed
+     up cropped along the same stretched right edge. `minmax(0, 1fr)` pins the
+     column to the space `.latest` actually has, the same fix as `.players`
+     above and for the identical reason. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
   min-width: 0;
   --ev-row-bg: var(--surface);
+  /* Read by .evWrap in src/Client/events.module.css, which TvSide.jsx turns on
+     for a drawn card's row and nothing else. The shared default is three lines,
+     which is right for a sheet that scrolls; this column does not scroll, and a
+     row's height is the unit its whole budget is written in (see the header of
+     TvSide.jsx), so two is what it can pay for. The deck's longest sentence
+     fits in two at this width — the alternative was one nowrap line that cut
+     it off with no ellipsis at all. */
+  --ev-lines: 2;
 }
 
 .latest .evs > li {
   min-height: 40px;
+  min-width: 0;
   gap: 8px;
   padding: 4px 10px 4px 4px;
   border-radius: 13px;

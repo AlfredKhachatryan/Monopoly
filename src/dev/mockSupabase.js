@@ -18,12 +18,13 @@
 // supabase/migrations/20260918140000_game_rules.sql (mono_* helpers) and
 // 20260918160000_game_log.sql (the `game.log` field) so anything reading
 // `game.events` / `game.log` sees the same JSON it would from the real RPC.
-// Card decks are a small hand-picked subset (4 Chance, 4 Community), not the
+// Card decks are a small hand-picked subset (9 Chance, 6 Community), not the
 // full 15/16 from the SQL -- enough to exercise every card `kind` at least
-// once.
+// once, `back` excepted (no scenario needs it yet).
 
-import { useEffect, useRef, useState } from "react";
-import { ownerOf, cellKind, priceOf, rentFor, canBuild } from "../Hooks/rules";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRealtimeConnection } from "../Hooks/connection";
+import { ownerOf, cellKind, priceOf, rentFor, canBuild, FIGS, MAX_PLAYERS } from "../Hooks/rules";
 import {
   SCENARIOS,
   SCENARIO_NAMES,
@@ -37,6 +38,33 @@ import {
   ME_FIGURE,
 } from "./scenarios";
 
+// ---------------------------------------------------------------------------
+// Seats and figures. Mirrors supabase/migrations/20260920100000_six_players.sql
+// VERBATIM: eight selectable figures, six seats. The two spare figures exist so
+// the sixth player to pick still has a choice -- they are not extra seats.
+// Ownership lives per cell in `bought`, so every cell carries all eight keys.
+// ---------------------------------------------------------------------------
+
+// FIGS / MAX_PLAYERS come from src/Hooks/rules.js so the mock can never drift
+// from the client's own idea of the figure list. Re-exported under the local
+// name this file already used.
+export const FIGURES = FIGS;
+export { MAX_PLAYERS };
+
+// Player names the mock's stand-in seats use, one per figure. fig0..fig3 keep
+// the four the harness has always shown; fig4..fig7 are named after their
+// figures (Bat / Mummy / Octo / Slime, see src/Client/figures.js).
+const BOT_NAMES = {
+  fig0: "Ero",
+  fig1: "Afo",
+  fig2: "Koli",
+  fig3: "Gaya",
+  fig4: "Bat",
+  fig5: "Mummy",
+  fig6: "Octo",
+  fig7: "Slime",
+};
+
 // Grep dist/ for this after `npm run build` to prove the mock never ships.
 export const MOCK_SUPABASE_MARKER = "MONOPOLY_MOCK_SUPABASE_v1";
 // eslint-disable-next-line no-console
@@ -49,6 +77,14 @@ console.info(`[mock] ${MOCK_SUPABASE_MARKER} -- offline client preview backend i
 let room = null; // the current row, as fetchRoom/realtime deliver it
 let listeners = new Set(); // (payload) => void, mimics postgres_changes callbacks
 let fetchMode = "normal"; // "normal" | "hang" | "error"
+// Simulated network cut, driven by window.__mockConn.drop() / .restore(). While
+// it is on: no realtime event is delivered, every open channel is told
+// CHANNEL_ERROR, and fetchRoom/gameAction fail the way a dead Wi-Fi link makes
+// them fail (error.network === true), so the whole reconnect path in
+// src/Hooks/connection.js runs for real in the harness.
+let mockDropped = false;
+let mockChannels = new Set(); // stand-in for supabase.getChannels()
+let mockOpened = 0; // lifetime count of subscriptions opened, for leak checks
 let pendingActionError = null; // one-shot message the next gameAction() call rejects with
 let autoplayToken = 0; // bumped on every loadScenario() to cancel a running bot loop
 
@@ -185,15 +221,39 @@ export function enableLinkBridge(role) {
   }
 }
 
+// How long the "socket" takes to deliver an UPDATE, in ms. 0 = synchronous,
+// which is what the mock has always done and what every existing scenario
+// still gets. See `mockConn.latency()` for why this knob exists.
+let realtimeLatency = 0;
+
+// How long the RPC's RETURN leg takes: the gap between the server committing
+// our action and our own reply landing back on this phone. 0 = the reply is
+// handed back in the same tick as the commit, which is what the mock has
+// always done -- and which is precisely why it could not model the window a
+// real round trip leaves open, where a resync issued by somebody else's timer
+// can read the committed row and adopt it before our own reply arrives.
+let replyLag = 0;
+
 function emit(newRow) {
+  // The commit is ALWAYS synchronous: `room` is the table, and a fetch issued
+  // one millisecond after an action must already see the new row, exactly as
+  // it would against Postgres. Only the DELIVERY of the change event can lag,
+  // which is the whole point of the knob.
   room = newRow;
-  for (const fn of listeners) {
-    try {
-      fn({ new: clone(newRow) });
-    } catch {
-      /* a bad subscriber should not break the room */
+  const deliver = () => {
+    // Read `listeners` at fire time, not at emit time: a channel torn down
+    // during the delay must not be called, and one opened during it is a real
+    // subscriber by then.
+    for (const fn of listeners) {
+      try {
+        fn({ new: clone(newRow) });
+      } catch {
+        /* a bad subscriber should not break the room */
+      }
     }
-  }
+  };
+  if (realtimeLatency > 0) setTimeout(deliver, realtimeLatency);
+  else deliver();
   if (linkRole === "authority") linkSend({ type: "row", row: clone(newRow) });
 }
 
@@ -224,6 +284,30 @@ const CHANCE_DECK = [
     hotel: 100,
     text: "Make general repairs on all your property: $25 per house, $100 per hotel.",
   },
+  // c9 in the SQL. Both decks carry BOTH a goJail and a jailCard there, so
+  // both carry both here: the jail/doubles harness scenarios have to be able
+  // to reach every jail entrance and exit from either deck.
+  { id: "mc7", kind: "goJail", text: "Go directly to Jail. Do not pass Start, do not collect $200." },
+  // mc8/mc9 are c5 and c4 in the SQL, texts VERBATIM. They are APPENDED rather
+  // than slotted in next to the other movement cards on purpose: the previous
+  // session's scratch drivers and both handoff documents name Chance cards by
+  // their numeric index (`__forceCard: { deck: 'chance', index: 5 }` is the
+  // repairs card and has to stay the repairs card), so renumbering would
+  // silently retarget every one of those scripts at a different card.
+  //
+  // WHY THESE TWO MATTER MORE THAN THEIR SIZE SUGGESTS. `nearest` is the only
+  // card kind that puts a player onto a railroad or a utility WITHOUT a
+  // roll-and-land sequence: the roll lands on a Chance cell, and the card then
+  // moves the token a second time inside the SAME action, so one `game.events`
+  // batch carries two `move`s and two `land`s. Everything on the phone that
+  // decides "am I standing somewhere I could buy" has to read the LAST of those
+  // two landings, not the first -- which is exactly the class of mistake the
+  // "I cannot buy the second Railroad" report turned out to be.
+  //
+  // Note the SQL's `what` is a mono_cell_kind(), not a colour or a group name:
+  // 'road' for the four railroads, 'communal' for the two utilities.
+  { id: "mc8", kind: "nearest", what: "road", text: "Advance to the nearest railroad. If it is owned, pay double rent." },
+  { id: "mc9", kind: "nearest", what: "communal", text: "Advance to the nearest utility. If it is owned, pay 10 times your dice." },
 ];
 
 const COMMUNITY_DECK = [
@@ -232,6 +316,8 @@ const COMMUNITY_DECK = [
   { id: "mk3", kind: "goJail", text: "Go directly to Jail. Do not pass Start, do not collect $200." },
   { id: "mk4", kind: "collect", amount: 20, text: "Income tax refund. Collect $20." },
   { id: "mk5", kind: "collectEach", amount: 10, text: "It is your birthday. Collect $10 from every player." },
+  // k5 in the SQL -- see the note on mc7 above.
+  { id: "mk6", kind: "jailCard", text: "Get Out Of Jail Free. Keep this card until you need it." },
 ];
 
 function drawCard(deck, forceIndex) {
@@ -306,6 +392,62 @@ function moveTo(board, players, idx, newPos, collectGo, events) {
 function findCellOfKind(board, kind) {
   const found = Object.values(board).find((c) => cellKind(c) === kind);
   return found ? found.id : null;
+}
+
+// The target cell of an "advance to the nearest <kind>" card. Mirrors
+// mono_apply_card's `when 'nearest'` branch (20260918140000_game_rules.sql
+// lines 553-566) arithmetic for arithmetic:
+//
+//   select c.key::integer ... where kind = what and c.key::integer > pos
+//   order by c.key::integer limit 1;            -- the next one FORWARD
+//   if target is null then
+//     target := public.mono_cell_of_kind(board, what);   -- else wrap to the first
+//   end if;
+//
+// Two things about that are easy to get wrong and are therefore spelled out.
+// (1) The comparison is strictly `> pos`, so a card drawn while standing ON a
+// cell of the sought kind would send you a full lap around rather than leave
+// you put -- unreachable on this board (no Chance cell is a railroad) but
+// copied anyway, because "matches the server" is the whole contract of this
+// file. (2) The fallback is mono_cell_of_kind, which is `order by key limit 1`
+// -- the LOWEST-numbered cell of the kind, not "the nearest going backwards".
+// From Chance 37 that is railroad 6 / utility 13, and the move to it is a
+// forward wrap past Start, which is where the $200 comes from.
+function nearestOfKind(board, pos, kind) {
+  const ids = Object.values(board || {})
+    .filter((c) => cellKind(c) === kind)
+    .map((c) => c.id)
+    .sort((a, b) => a - b);
+  if (ids.length === 0) return null;
+  const forward = ids.find((id) => id > pos);
+  return forward ?? ids[0];
+}
+
+// Rent for a landing, with the two multiplier overrides mono_rent takes
+// (20260918140000_game_rules.sql lines 211-262). The client's own
+// rules.js `rentFor()` has no such parameters -- it is the phone's display
+// helper and it is not this file's to change -- so the overrides are applied
+// here, and ONLY in the shapes the SQL actually uses:
+//
+//   road:     (25 << greatest(cnt - 1, 0)) * coalesce(road_mult, 1)
+//             ... a plain multiplication on top of the normal 25/50/100/200,
+//             so delegating to rentFor() and scaling the answer is exact.
+//   communal: coalesce(dice_sum, 7) * coalesce(util_mult, cnt >= 2 ? 10 : 4)
+//             ... note the COALESCE: util_mult REPLACES the 4x/10x choice, it
+//             does not multiply it. Passing 10 for a single-utility owner is
+//             therefore 10x dice, NOT 40x, and scaling rentFor()'s answer
+//             would have produced exactly that 40x bug. Computed from scratch
+//             instead, guarded by the same "nobody owns it, no rent" check
+//             mono_rent opens with.
+function rentWithMults(board, id, diceSum, roadMult, utilMult) {
+  const cell = board?.[id];
+  const kind = cellKind(cell);
+  if (kind === "road") return rentFor(board, id, diceSum) * (roadMult ?? 1);
+  if (kind === "communal" && utilMult != null) {
+    if (!ownerOf(cell)) return 0;
+    return (diceSum ?? 7) * utilMult;
+  }
+  return rentFor(board, id, diceSum);
 }
 
 // ---------------------------------------------------------------------------
@@ -491,6 +633,41 @@ function applyCard(board, players, idx, card, diceSum, events, out) {
       moveTo(board, players, idx, card.cell, true, events);
       land(board, players, idx, diceSum, events, out);
       break;
+    // "Advance to the nearest railroad / utility" -- mono_apply_card's
+    // `when 'nearest'`, lines 553-566. Four details, all of them load-bearing
+    // and all of them taken from the SQL rather than from the Monopoly
+    // rulebook, which disagrees with this server in two places:
+    //
+    // 1. `pos` is read BEFORE the move (the mock's `players[idx].position` at
+    //    entry is the Chance cell the roll landed on), so the search starts
+    //    from the Chance cell, not from wherever the roll began.
+    // 2. `collectGo` is TRUE. moveTo() pays $200 whenever `newPos <= oldPos`,
+    //    so wrapping from Chance 37 round to railroad 6 collects the Start
+    //    bonus -- and, per the real rulebook, should. From Chance 8 or 23 the
+    //    target is a higher cell and nothing is paid.
+    // 3. road_mult 2 and util_mult 10 are BOTH handed to land() regardless of
+    //    which kind was sought, exactly as the SQL does it; the one that does
+    //    not apply to the target's kind is simply never read. So a railroad
+    //    reached this way charges double the normal 25/50/100/200, and a
+    //    utility charges 10x dice even when its owner holds only one utility.
+    // 4. THE DICE ARE NOT RE-THROWN. The official rules say "throw the dice
+    //    again and pay ten times the amount thrown"; this server reuses the
+    //    ORIGINAL roll's `dice_sum` (it is simply the `dice_sum` argument
+    //    mono_apply_card was called with). Mirrored, deliberately -- matching
+    //    the server beats matching Hasbro.
+    //
+    // The `if target is not null` guard is kept too: a board with no cell of
+    // the sought kind draws the card, announces it, and then does nothing at
+    // all -- no move, no land, no second event. Only reachable on a hand-built
+    // board, but it is what the server would do.
+    case "nearest": {
+      const target = nearestOfKind(board, players[idx].position, card.what);
+      if (target != null) {
+        moveTo(board, players, idx, target, true, events);
+        land(board, players, idx, diceSum, events, out, undefined, 2, 10);
+      }
+      break;
+    }
     // Shapes below mirror mono_apply_card's payEach / collectEach / repairs
     // exactly: each is a run of `charge()` calls, one `pay` event per player
     // pair (reason 'card'), or one `pay` for the drawer (reason 'repairs').
@@ -531,7 +708,12 @@ function applyCard(board, players, idx, card, diceSum, events, out) {
 
 // Resolve the cell the player stands on. `forceCard` (dev-only) skips the
 // random draw so a scenario can guarantee which card shows up.
-function land(board, players, idx, diceSum, events, out, forceCard) {
+//
+// `roadMult` / `utilMult` are mono_land's own two trailing default arguments
+// (`road_mult integer default 1, util_mult integer default null`, lines
+// 628-634 of the migration). Only the `nearest` card ever passes them -- every
+// other caller, here and there, takes the defaults and gets ordinary rent.
+function land(board, players, idx, diceSum, events, out, forceCard, roadMult = 1, utilMult = null) {
   const fig = players[idx].figure;
   const pos = players[idx].position;
   const cell = board[pos];
@@ -543,7 +725,7 @@ function land(board, players, idx, diceSum, events, out, forceCard) {
     if (owner && owner !== fig) {
       const ownerIdx = players.findIndex((p) => p.figure === owner);
       if (ownerIdx >= 0 && !players[ownerIdx].bankrupt) {
-        const amount = rentFor(board, pos, diceSum);
+        const amount = rentWithMults(board, pos, diceSum, roadMult, utilMult);
         charge(players, board, idx, amount, ownerIdx, "rent", pos, events);
       }
     }
@@ -560,12 +742,21 @@ function land(board, players, idx, diceSum, events, out, forceCard) {
   // start / parking / jail (visiting): nothing extra, same as the SQL.
 }
 
+// One-shot forced dice for the very next roll, whoever makes it, set by
+// `mockDev.forceNextRoll([d1, d2])`. The SQL harness gets the same control from
+// setseed(); a headless check that has to land on one specific cell through the
+// real `roll` action needs it here too. Consumed on use, so it can never leak
+// into a later roll.
+let nextRoll = null;
+
 function performRoll(board, players, idx, events, initialDoubles, out, opts = {}) {
   const { forceTarget, forceDoubles, forceCard } = opts;
   const fig = players[idx].figure;
   const cellsCount = Object.keys(board).length;
-  const d1 = 1 + Math.floor(Math.random() * 6);
-  const d2 = forceDoubles ? d1 : 1 + Math.floor(Math.random() * 6);
+  const forced = nextRoll;
+  nextRoll = null;
+  const d1 = forced ? forced[0] : 1 + Math.floor(Math.random() * 6);
+  const d2 = forced ? forced[1] : forceDoubles ? d1 : 1 + Math.floor(Math.random() * 6);
   events.push({ type: "roll", figure: fig, d1, d2, doubles: d1 === d2 });
 
   const oldPos = players[idx].position || 1;
@@ -648,7 +839,14 @@ function finalize(st, gmPrev, seq, events, patch) {
   const prevLog = Array.isArray(gmPrev.log) ? gmPrev.log : [];
   let log = prevLog.concat(events.map((e) => ({ ...e, seq, by: patch.actorId ?? null })));
   if (log.length > 40) log = log.slice(log.length - 40);
-  st.current_order = Math.min(Math.max(patch.turn, 0), 3);
+  // Six seats now, and clamped to the seats this room actually has rather than
+  // to a constant -- mirrors `least(greatest(turn, 0), greatest(n - 1, 0))` in
+  // supabase/migrations/20260920100000_six_players.sql (it was `, 3)` here and
+  // there, which pinned a room to its first four players).
+  st.current_order = Math.min(
+    Math.max(patch.turn, 0),
+    Math.max((st.Players || []).length - 1, 0),
+  );
   st.game = {
     seq,
     phase: patch.phase,
@@ -737,10 +935,10 @@ function applyAction(prevRow, action, payload) {
       if (!pid || name == null || figure == null) {
         throw new Error("name, figure and playerId are required");
       }
-      if (!["fig0", "fig1", "fig2", "fig3"].includes(figure)) {
+      if (!FIGURES.includes(figure)) {
         throw new Error(`Unknown figure ${figure}`);
       }
-      if (players.length >= 4) throw new Error("Room is full");
+      if (players.length >= MAX_PLAYERS) throw new Error("Room is full");
       if (players.some((p) => p.figure === figure)) throw new Error("Figure is already taken");
       const startId = findCellOfKind(board, "start") ?? 1;
       players.push({
@@ -1047,11 +1245,11 @@ function applyAction(prevRow, action, payload) {
       for (const key of Object.keys(payloadBoard)) {
         const cell = { ...payloadBoard[key] };
         delete cell.houses;
-        cell.fig0 = false;
-        cell.fig1 = false;
-        cell.fig2 = false;
-        cell.fig3 = false;
-        cell.bought = { fig0: false, fig1: false, fig2: false, fig3: false };
+        cell.bought = {};
+        for (const f of FIGURES) {
+          cell[f] = false;
+          cell.bought[f] = false;
+        }
         freshBoard[key] = cell;
       }
       for (const p of players) {
@@ -1492,13 +1690,39 @@ export function useFetch(uuid) {
     };
   }, [uuid]);
 
-  return { data, error, loading };
+  // Mirrors the real module: the fourth member of the return value, so a
+  // screen built on useFetch (the Board, the Login page) can hand it to
+  // useRealtimeUpdates as the resync callback. See src/Hooks/supabase.jsx.
+  const refetch = useCallback(async () => {
+    if (!uuid) return;
+    const { data: d, error: err } = await fetchRoom(uuid);
+    if (err) {
+      if (!err.network) setError(err.message);
+      return;
+    }
+    setError(null);
+    setData(d);
+  }, [uuid]);
+
+  return { data, error, loading, refetch };
 }
 
 export async function fetchRoom(uuid) {
   if (fetchMode === "hang") return new Promise(() => {}); // never resolves, by design
   if (fetchMode === "error") {
-    return { data: null, error: { message: "Failed to fetch room (mock fetch-error scenario)" } };
+    // A server-side failure: it answered, it said no. `network` stays false so
+    // the phone still shows the message verbatim.
+    return {
+      data: null,
+      error: { message: "Failed to fetch room (mock fetch-error scenario)", network: false },
+    };
+  }
+  if (mockDropped) {
+    await delay(60);
+    return {
+      data: null,
+      error: { message: "TypeError: Failed to fetch", network: true },
+    };
   }
   await delay(120);
   if (!room || room.uuid !== uuid) return { data: null, error: null };
@@ -1515,27 +1739,127 @@ export async function gameAction(uuid, action, payload = {}) {
     return { data: room ? clone(room) : null, error: null };
   }
   await delay(actionDelay());
+  // Simulated network cut: the request never reaches a server, so there is no
+  // rule message to show -- `network: true` is what makes the phone say
+  // "Connection problem — try again" instead of quoting a fetch error. It is
+  // also why nothing is retried: the mock, like the real RPC, is not
+  // idempotent, and a dropped REPLY is indistinguishable from a dropped
+  // request.
+  if (mockDropped) {
+    return { data: null, error: { message: "TypeError: Failed to fetch", network: true } };
+  }
   if (!room || room.uuid !== uuid) {
-    return { data: null, error: { message: `Room ${uuid} not found` } };
+    return { data: null, error: { message: `Room ${uuid} not found`, network: false } };
   }
   if (pendingActionError) {
     const message = pendingActionError;
     pendingActionError = null; // one-shot, like the real "next action rejects"
     console.error(`[mock] game_action ${action} failed for room ${uuid}: ${message}`);
-    return { data: null, error: { message } };
+    return { data: null, error: { message, network: false } };
   }
   try {
     const newRow = applyAction(room, action, payload);
-    emit(newRow);
+    emit(newRow); // the commit; the change event may be delivered later
     afterStateChange(newRow);
     if (action === "end_turn") scheduleBotAutoplay();
+    // The return leg. Everything above has already happened as far as the
+    // server and every other client is concerned -- including a fetch issued
+    // by this same phone, which is the window the resync race lives in.
+    if (replyLag > 0) await delay(replyLag);
     return { data: clone(newRow), error: null };
   } catch (e) {
     const message = e?.message || String(e);
     console.error(`[mock] game_action ${action} failed for room ${uuid}: ${message}`);
-    return { data: null, error: { message } };
+    return { data: null, error: { message, network: false } };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Simulated connection drop (dev only, not part of the real supabase module).
+//
+//   window.__mockConn.drop()      pull the cable: every open channel is told
+//                                 CHANNEL_ERROR, no realtime event is
+//                                 delivered, fetches and actions fail as
+//                                 network errors. The badge goes to
+//                                 "Reconnecting…" and the backoff starts.
+//   window.__mockConn.restore()   plug it back in. The next rebuild subscribes
+//                                 successfully, which resyncs the room --
+//                                 including anything `stepWhileDown()` did
+//                                 while the phone could not hear it.
+//   window.__mockConn.latency(ms) how long the socket takes to DELIVER an
+//                                 UPDATE (the commit itself stays instant, so
+//                                 a fetch always sees the new row at once).
+//                                 Default 0, which is synchronous delivery --
+//                                 and synchronous delivery is exactly why the
+//                                 mock could never show the resync race that
+//                                 cost real phones their roll: here the
+//                                 Realtime echo always beat both the RPC reply
+//                                 and any refetch. Against a hosted project
+//                                 the echo is the SLOWEST of the three. Set it
+//                                 to a second or two to get the real ordering.
+//   window.__mockConn.channels()  how many subscriptions exist right now. Must
+//                                 be exactly 1 for a mounted screen, drop or
+//                                 no drop -- that is the duplicate-channel
+//                                 leak check.
+//
+// Deliberately on `window` rather than in the toolbar: the UI agents want it
+// for screenshots and the headless check wants it for assertions, and neither
+// should need a button that ships nowhere.
+// ---------------------------------------------------------------------------
+export const mockConn = {
+  drop() {
+    if (mockDropped) return;
+    mockDropped = true;
+    for (const ch of mockChannels) {
+      if (ch.alive) ch.onStatus("CHANNEL_ERROR");
+    }
+  },
+  restore() {
+    mockDropped = false;
+    // No status is pushed here on purpose. A real socket does not announce
+    // that the Wi-Fi is back -- it is the client's own retry that discovers
+    // it. Letting connection.js's watchdog find it keeps the harness honest.
+  },
+  isDropped() {
+    return mockDropped;
+  },
+  latency(ms) {
+    if (ms !== undefined) realtimeLatency = Math.max(0, Number(ms) || 0);
+    return realtimeLatency;
+  },
+  // The RPC's return leg (see `replyLag`). Together with latency() this gives
+  // the mock the same three-way ordering a hosted project has: commit first,
+  // our own reply second, the socket last.
+  replyLag(ms) {
+    if (ms !== undefined) replyLag = Math.max(0, Number(ms) || 0);
+    return replyLag;
+  },
+  channels() {
+    return mockChannels.size;
+  },
+  // Lifetime count of subscriptions opened. `channels()` says how many exist
+  // now (must be 1); this says how many were ever built, which is what proves
+  // a rebuild actually happened rather than the status just being relabelled.
+  opened() {
+    return mockOpened;
+  },
+  // Apply a real action as somebody else while this phone is cut off, so the
+  // resync after reconnecting has something to actually catch up on.
+  stepWhileDown(action, payload = {}) {
+    if (!room) return null;
+    const newRow = applyAction(room, action, payload);
+    emit(newRow); // listeners are gated on mockDropped, so nothing is delivered
+    afterStateChange(newRow);
+    return clone(newRow);
+  },
+  seq() {
+    return room?.game?.seq ?? null;
+  },
+};
+
+// Published from here, not from the harness entry points, so every mock page
+// (client, tv, login) gets it without any of those files changing.
+if (typeof window !== "undefined") window.__mockConn = mockConn;
 
 // Matches the real module's `createGame(position, makeCode, attempts)`
 // signature exactly (src/Hooks/supabase.jsx): the TV's "Host New Game" calls
@@ -1567,24 +1891,47 @@ export async function createGame(position, makeCode) {
   return { uuid, error: null };
 }
 
-export function useRealtimeUpdates(uuid, callback, onSubscribed) {
+// Same signature and same return value as the real one: `onResync` is the
+// caller's refetch, and the hook hands back `conn` for <ConnectionBadge>. The
+// whole state machine (status names, backoff, visibility/online/pageshow
+// resync, heartbeat) is the SHARED one in src/Hooks/connection.js -- this file
+// only supplies "how to open a subscription", so the reconnect behaviour the
+// harness previews is genuinely the behaviour the phones will get.
+//
+// `mockChannels` is the stand-in for supabase.getChannels(): the headless
+// checks assert there is exactly one entry after a drop/reconnect cycle.
+export function useRealtimeUpdates(uuid, callback, onResync) {
   const cbRef = useRef(callback);
   cbRef.current = callback;
-  const subRef = useRef(onSubscribed);
-  subRef.current = onSubscribed;
 
-  useEffect(() => {
-    if (!uuid) return;
-    const fn = (payload) => {
-      if (room && room.uuid === uuid) cbRef.current(payload);
-    };
-    listeners.add(fn);
-    const t = setTimeout(() => subRef.current?.(), 0);
-    return () => {
-      listeners.delete(fn);
-      clearTimeout(t);
-    };
-  }, [uuid]);
+  const connect = useCallback(
+    ({ onStatus }) => {
+      const channel = { uuid, onStatus, alive: true };
+      const fn = (payload) => {
+        if (mockDropped || !channel.alive) return; // cable unplugged
+        if (room && room.uuid === uuid) cbRef.current?.(payload);
+      };
+      channel.fn = fn;
+      listeners.add(fn);
+      mockChannels.add(channel);
+      mockOpened += 1;
+      // A real subscribe is a round trip; a zero-delay timeout is close
+      // enough, and it lets a drop taken during the handshake behave like one.
+      const t = setTimeout(() => {
+        if (!channel.alive) return;
+        onStatus(mockDropped ? "CHANNEL_ERROR" : "SUBSCRIBED");
+      }, 0);
+      return () => {
+        channel.alive = false;
+        clearTimeout(t);
+        listeners.delete(fn);
+        mockChannels.delete(channel);
+      };
+    },
+    [uuid],
+  );
+
+  return useRealtimeConnection(uuid, connect, onResync);
 }
 
 // ---------------------------------------------------------------------------
@@ -1692,6 +2039,14 @@ export const mockDev = {
       }, 400);
     }
     return clone(room);
+  },
+
+  // One-shot forced dice for the next `roll` action (see `nextRoll`). Pass
+  // null to clear. Returns what is armed.
+  forceNextRoll(pair) {
+    if (pair === undefined) return nextRoll;
+    nextRoll = Array.isArray(pair) ? [Number(pair[0]), Number(pair[1])] : null;
+    return nextRoll;
   },
 
   forceMyRoll() {
@@ -1802,9 +2157,10 @@ export const mockDev = {
   botJoinsNow() {
     if (!room) return;
     const taken = new Set(room.Players.map((p) => p.figure));
-    const free = ["fig0", "fig1", "fig2", "fig3"].find((f) => !taken.has(f));
+    if (room.Players.length >= MAX_PLAYERS) return;
+    const free = FIGURES.find((f) => !taken.has(f));
     if (!free) return;
-    const names = { fig0: "Ero", fig1: "Afo", fig2: "Koli", fig3: "Gaya" };
+    const names = BOT_NAMES;
     gameAction(room.uuid, "join", {
       name: names[free],
       figure: free,

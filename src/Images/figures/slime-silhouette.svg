@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" fill="currentColor" role="img" aria-labelledby="t"><title id="t">Slime silhouette</title>
+  <path d="M68 92 L60 56 M92 92 L100 56" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+  <path d="M34 176 C28 150 34 110 56 92 C66 84 94 84 104 92 C126 110 132 150 126 176 Q118 170 112 178 Q104 186 96 176 Q88 170 80 180 Q72 188 64 178 Q56 170 48 180 Q40 184 34 176 Z"/>
+  <circle cx="60" cy="50" r="13"/><circle cx="100" cy="50" r="13"/>
+</svg>

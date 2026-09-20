@@ -104,13 +104,17 @@ const Tile = memo(function Tile({
   const tint = accentFor(cell);
   const name = nameOf(cell);
   const line = lineOf(cell);
-  // The side columns are only ~78px tall but 150px wide, and the name sits
-  // BESIDE the mark rather than under it — so the mark gives up 8px to buy the
+  // The side columns are only 80px tall but 158px wide, and the name sits
+  // BESIDE the mark rather than under it — so the mark gives up room to buy the
   // name a second line's worth of width. On the rows and the corners the tile
-  // now also reserves a permanent piece lane along its outer edge, which is
-  // what caps the corner mark at 44 rather than the 56 it had when the pieces
-  // simply sat on top of everything.
-  const markSize = corner ? 44 : flank ? 32 : 40;
+  // also reserves a permanent piece lane along its outer edge, which is what
+  // caps the corner mark below the 56 it would have had if the pieces simply
+  // sat on top of everything.
+  //
+  // All three went up a step with the wider board (2026-09-20, see the .screen
+  // comment in tv.module.css): 112px of tile carries a 44px mark the way 105px
+  // carried 40.
+  const markSize = corner ? 50 : flank ? 36 : 44;
 
   return (
     <div
@@ -136,7 +140,7 @@ const Tile = memo(function Tile({
           <Mark
             cell={cell}
             size={markSize}
-            radius={corner ? 13 : flank ? 9 : 11}
+            radius={corner ? 14 : flank ? 10 : 12}
           />
           {/* data-txt: on the side columns, where there is no room for a lane,
               TvTokens stops the pieces at this block's left edge so they cover

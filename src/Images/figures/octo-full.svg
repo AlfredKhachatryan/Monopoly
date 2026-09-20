@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-labelledby="t"><title id="t">Octo — extra figure</title>
+  <ellipse cx="80" cy="188" rx="48" ry="7" fill="#0E1116" opacity=".12"/>
+  <g fill="none" stroke="#1E63C8" stroke-width="12" stroke-linecap="round">
+    <path d="M52 108 C40 130 30 150 42 164 C50 172 58 164 52 158"/>
+    <path d="M66 114 C62 140 56 160 66 176"/>
+    <path d="M80 116 C80 144 80 164 74 180"/>
+    <path d="M94 114 C98 140 104 160 94 176"/>
+    <path d="M108 108 C120 130 130 150 118 164 C110 172 102 164 108 158"/>
+  </g>
+  <circle cx="38" cy="148" r="3" fill="#7FB2FF"/>
+  <circle cx="122" cy="148" r="3" fill="#7FB2FF"/>
+  <circle cx="61" cy="150" r="2.5" fill="#7FB2FF"/>
+  <circle cx="99" cy="150" r="2.5" fill="#7FB2FF"/>
+  <ellipse cx="80" cy="78" rx="40" ry="44" fill="#1E63C8"/>
+  <circle cx="62" cy="54" r="5" fill="#7FB2FF"/>
+  <circle cx="98" cy="50" r="4" fill="#7FB2FF"/>
+  <circle cx="106" cy="66" r="3" fill="#7FB2FF"/>
+  <ellipse cx="66" cy="84" rx="10" ry="12" fill="#FFFFFF"/>
+  <ellipse cx="94" cy="84" rx="10" ry="12" fill="#FFFFFF"/>
+  <ellipse cx="67" cy="87" rx="5.5" ry="3.2" fill="#0E1116"/>
+  <ellipse cx="93" cy="87" rx="5.5" ry="3.2" fill="#0E1116"/>
+  <path d="M74 104 Q80 109 86 104" fill="none" stroke="#0E1116" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

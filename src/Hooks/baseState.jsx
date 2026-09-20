@@ -1,3 +1,12 @@
+import { FIGS } from "./rules";
+
+// { fig0: false, fig1: false, ... } for every figure key, generated from
+// FIGS so a fresh room's board never drifts out of sync with the figure
+// list again.
+function emptyFigFlags() {
+  return Object.fromEntries(FIGS.map((f) => [f, false]));
+}
+
 function initialState() {
   const obj = {};
   const baseItems = [
@@ -210,18 +219,10 @@ function initialState() {
 
   for (let i = 1; i <= baseItems.length; i++) {
     obj[i] = {
-      fig0: false,
-      fig1: false,
-      fig2: false,
-      fig3: false,
+      ...emptyFigFlags(),
       name: `itemCard${i} `,
       id: i,
-      bought: {
-        fig0: false,
-        fig1: false,
-        fig2: false,
-        fig3: false,
-      },
+      bought: emptyFigFlags(),
       color: baseItems[i - 1].color,
       header: baseItems[i - 1].header,
       info: baseItems[i - 1].info,

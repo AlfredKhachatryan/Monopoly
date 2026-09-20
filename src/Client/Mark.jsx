@@ -69,7 +69,7 @@ function monoSize(size) {
 export default function Mark({ cell, size = 52, radius = 16, className = "" }) {
   const tint = accentFor(cell);
   const Ico = iconFor(cell);
-  const logoPath = markFor(cell);
+  const logo = markFor(cell);
   return (
     <span
       className={`${b.mark} ${className}`}
@@ -81,16 +81,16 @@ export default function Mark({ cell, size = 52, radius = 16, className = "" }) {
       }}
       aria-hidden="true"
     >
-      {logoPath ? (
+      {logo ? (
         <svg
           className={m.logo}
-          viewBox="0 0 24 24"
+          viewBox={logo.viewBox}
           width={Math.round(size * 0.54)}
           height={Math.round(size * 0.54)}
           fill="currentColor"
           stroke="none"
         >
-          <path d={logoPath} />
+          <path d={logo.d} />
         </svg>
       ) : Ico ? (
         <Ico size={Math.round(size * 0.52)} strokeWidth={2} />

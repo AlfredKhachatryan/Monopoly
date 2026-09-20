@@ -30,11 +30,20 @@
   --warn: #de951f;
   --neutral: #8a8598;
 
-  /* player figure colours, same as the Board */
-  --fig0: #d92650;
-  --fig1: #1f8f5d;
-  --fig2: #f56cc6;
-  --fig3: #6f6cf5;
+  /* Player figure colours. Not currently read anywhere (grep `var(--fig`
+   * across src turns up nothing) and previously did not even match
+   * FIG_COLORS in src/Hooks/rules.js, which is the actual source of truth
+   * for figure colour everywhere it's rendered. Kept in sync here, for all
+   * eight figures, so there is exactly one set of numbers if something ever
+   * starts reading these. */
+  --fig0: #e0284c;
+  --fig1: #0b7a7a;
+  --fig2: #7a4fe0;
+  --fig3: #a86400;
+  --fig4: #c2358a;
+  --fig5: #56606e;
+  --fig6: #1e63c8;
+  --fig7: #4c9a1e;
 
   /* set by ClientScreen per cell; these are only the fallback */
   --accent: #d92650;
@@ -123,9 +132,16 @@
   --shadow: rgba(14, 17, 22, 0.45);
   --focus: #0e1116;
 
+  /* The die. --die-bc is the hairline BETWEEN two faces of the cube, so it has
+   * to stay clearly darker than --die-bg in both themes: when the two are the
+   * same colour the faces melt into one white blob and the cube reads as a
+   * couple of loose cards instead of a solid. (In dark mode they were literally
+   * the same value.) --die-edge is the tone the crossed core planes and the
+   * per-face shading are mixed towards. */
   --die-bg: #ffffff;
   --pip: #0e1116;
-  --die-bc: #c9d0da;
+  --die-bc: #aab4c2;
+  --die-edge: #59636f;
 
   --crim: #e0284c;
   --deck-chance: #e0284c;
@@ -189,6 +205,8 @@ body.client-active {
 
     --die-bg: #eef1f5;
     --pip: #0d0f13;
-    --die-bc: #eef1f5;
+    /* was #eef1f5 — identical to --die-bg, i.e. no hairline at all */
+    --die-bc: #99a3b1;
+    --die-edge: #4c5663;
   }
 }

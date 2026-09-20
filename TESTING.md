@@ -19,21 +19,63 @@ describing it.
 
 ---
 
+## Playtest day runbook
+
+Order of operations for whoever is hosting tomorrow:
+
+1. **Apply the pending migrations** (§0.1 below) and run every check listed
+   there. Do not skip the checks — they are the only way to know the six-seat
+   constraints and `game_action` actually landed before six people show up.
+2. **Deploy or serve** the built app (`npm run build` + host `dist/`, or
+   `npm run dev` on the host machine with phones on the same Wi-Fi).
+3. **Host a fresh room.** Do not reuse a room created before today — see 0.2.
+   Press **Host New Game** on the TV/board screen.
+4. **Before guests arrive**, with two phones on the fresh room, run Reconnect
+   checks (1) and (2) from the new "Reconnect" section below. If either fails,
+   you want to know now, not mid-game.
+5. **Share the join URL** in the format `/Login?room=CODE` (or just the code,
+   read aloud, for people typing it into `/Login` themselves).
+6. **When a phone stalls** (frozen dice, unresponsive button, or anything that
+   just sits there): wait for the connection badge to say something → open the
+   phone's **Game** sheet → press **Reconnect / refresh state** → if that does
+   nothing, refresh the page. Rejoining with the same name and figure works
+   from any phone if the original is lost or its battery dies.
+7. **Skip Turn** on the TV is for a guest who stepped away or closed their
+   phone mid-turn — use it rather than waiting them out.
+8. **Do not use `?debug` cell jumps on a jailed player.** The debug `move`
+   action ignores jail state entirely (it is a raw teleport), so jumping a
+   jailed player will desync what the server thinks their jail status is from
+   what the board shows.
+9. **Write down** anything in the T56-T60 style: a player left waiting with no
+   feedback, a popup covering something they needed, text overflowing a card,
+   a state where nobody can act, or money numbers that felt wrong. Room code
+   and what happened immediately before the problem are the two things worth
+   more than anything else in a report.
+
+---
+
 ## 0. Before you start
 
 ### 0.1 Apply the migrations
 
-**This is blocking. Nothing works until it is done.** Apply all four, in this
-order, with `supabase db push` or by pasting them into the SQL editor:
+**This is blocking. Nothing works until it is done.** Apply all seven, in this
+order, with `supabase db push` or by pasting them into the SQL editor. Per the
+owner: **the first three are already applied** to the hosted project; **the
+last four are still pending** unless told otherwise.
 
-1. `20260904123000_create_test_game_table.sql`
-2. `20260908120000_allow_create_game.sql`
-3. `20260918120000_game_action_rpc.sql`
-4. `20260918140000_game_rules.sql`
+1. `20260904123000_create_test_game_table.sql` — applied
+2. `20260908120000_allow_create_game.sql` — applied
+3. `20260918120000_game_action_rpc.sql` — applied
+4. `20260918140000_game_rules.sql` — pending
+5. `20260918160000_game_log.sql` — pending
+6. `20260919100000_auction_trade.sql` — pending
+7. `20260920100000_six_players.sql` — pending
 
-Migrations 3 and 4 both define `game_action`. The fourth replaces the third, so
-the order matters. If you already applied the first three, you only need the
-fourth.
+Migrations 3, 4, 6 and 7 each redefine `game_action` in full (`create or
+replace`); each one replaces the previous version, so the order matters and
+you cannot skip one and apply a later one on its own. `20260920100000` must go
+last — it widens the four- to six-seat constraints and upgrades every existing
+row's board shape to eight figure keys.
 
 Then check it landed:
 
@@ -50,6 +92,33 @@ select tablename from pg_publication_tables
 where pubname = 'supabase_realtime' and tablename = 'test';
 ```
 
+### 0.1.1 After the six-player migration lands, check these too
+
+```sql
+-- should return test_players_max_six and test_current_order_range,
+-- and NOT test_players_max_four
+select conname from pg_constraint
+where conrelid = 'public.test'::regclass
+  and conname in ('test_players_max_four', 'test_players_max_six',
+                  'test_current_order_range');
+```
+
+```sql
+-- should return 0: every cell on every room's board has all eight fig0..fig7
+-- keys, both as a token flag and inside `bought`
+select count(*)
+from public.test t, jsonb_each(t.position) e
+where jsonb_typeof(e.value) = 'object'
+  and (not (e.value ? 'fig7')
+       or jsonb_typeof(e.value->'bought') <> 'object'
+       or not (e.value->'bought' ? 'fig7'));
+```
+
+```sql
+-- should mention six_players
+select obj_description('public.game_action(text,text,jsonb)'::regprocedure);
+```
+
 ### 0.2 Reset any old room
 
 Rooms created before this migration hold players with no jail or bankruptcy
@@ -61,9 +130,11 @@ Or just host a fresh room, which is cleaner.
 
 ### 0.3 Devices
 
-Minimum: one laptop or TV for the board, two phones. Better: four phones, since
-turn order, the `current_order` constraint and the leave-and-renumber logic were
-only exercised with two and three players.
+Minimum: one laptop or TV for the board, two phones. Better: up to six phones
+— the room now holds six players (`MAX_PLAYERS` in `src/Hooks/rules.js`) and
+turn order, the `current_order` constraint (now 0-5) and the leave-and-renumber
+logic all involve the seat count. Six real phones on one Wi-Fi has never been
+tried; that is exactly what tomorrow is for.
 
 - Board: `http://<host>:3000/?room=<code>` or press **Host New Game**.
 - Phones: `http://<host>:3000/Login?room=<code>`, pick a name and a figure.
@@ -83,18 +154,14 @@ Both are intentional. Do not report them as bugs.
 
 Do not spend time on these. They are already on the list in `LAUNCH_STATUS.md`.
 
-- **Font Awesome icons are missing.** The house, wallet, cards and footer icons
-  render as nothing, because the Pro kit is not loaded. The Lordicon animations
-  on the cards and popups are a different system and should work.
-- **Footer "Home / Auction / Players" does nothing.** No screens behind it.
-- **The "Cards" tab on the right edge opens nothing.** It only shows a count of
-  Get Out Of Jail Free cards.
-- **Login errors appear as a browser `alert()`**, not an inline message.
 - **Cards are drawn at random with replacement.** There is no discard pile, so
   the same Chance card can come up twice in a row.
 - **If you edit the database by hand** (section 6), the phones will not show the
   change until the next real action. That is the duplicate-event guard doing its
   job, not a sync bug.
+- **The debug `move` action ignores jail.** Jumping a jailed player with the
+  `?debug` cell picker does not clear or respect their jail state — see the
+  runbook above. Use it on non-jailed players only.
 
 ---
 
@@ -262,11 +329,11 @@ This is the part no automated test could cover. Take it slowly.
       below. Check whether it is still in sync, and if not, whether a refresh
       fixes it.
 - [ ] **T52** Turn the Wi-Fi off on one phone for ten seconds and back on.
-- [ ] **T53** Join a fourth player. Turn order still cycles correctly through all
-      four.
-- [ ] **T54** Try to join a fifth. Rejected with "Room is full".
+- [ ] **T53** Join a sixth player. Turn order still cycles correctly through
+      all six.
+- [ ] **T54** Try to join a seventh. Rejected with "Room is full".
 - [ ] **T55** Try to take a figure somebody already has, and try an unknown room
-      code. Both rejected, both as a browser alert.
+      code. Both rejected inline, above the button (no browser alert any more).
 
 ## 9. Play a real game
 
@@ -287,6 +354,95 @@ Watch for:
 
 ---
 
+## 10. Six players, figures, doubles and jail
+
+New today, none of it ever run against a hosted room or a real phone.
+
+- [ ] **T86** On the Login screen, pick each of the four new figures in turn
+      (Bat = fig4, Mummy = fig5, Octo = fig6, Slime = fig7). Each shows its own
+      art, name and colour, and joins the room as the right `figN`. The picker
+      is a 4-across, 2-row grid of all eight figures (`src/Login/FigurePicker.jsx`).
+- [ ] **T87** Seat all six players. Turn order cycles 1st through 6th and back
+      to the 1st correctly, including after a **Leave** mid-game (the remaining
+      players keep their relative order, per T46).
+- [ ] **T88** With six players joined, the TV shows six tokens standing on
+      Start, all readable at once (density steps kick in for 5-6 players).
+- [ ] **T89** Doubles beats escalate correctly on both the phone and the TV:
+      1st double plays the "doubles" cue (short bright rise) with a light
+      heat pip; 2nd double plays "doublesHot" (tenser, higher, wobble) with a
+      hotter pip; 3rd double plays "busted" (descending thud + clank) and
+      shows the BUSTED banner, sending the player straight to jail without
+      resolving whatever cell the roll would have landed on.
+- [ ] **T90** Leave jail by paying $50: the fine is taken, they are freed, and
+      they still get to roll that turn.
+- [ ] **T91** Leave jail by rolling doubles: they are freed and move by the
+      roll, but do **not** get an extra roll for the doubles (jail doubles pay
+      for the exit only).
+- [ ] **T92** Leave jail with a Get Out Of Jail Free card: the card count drops
+      by one and they are freed with their roll still available.
+- [ ] **T93** Fail three rolls in jail: the $50 fine is taken automatically on
+      the third failure and they move by that roll. If it bankrupts them
+      (T37-T39), it goes to whichever creditor is owed, or the bank.
+- [ ] **T94** Draw a Get Out Of Jail Free card from either deck, and confirm it
+      shows on the drawing player's phone **Deeds** sheet and on their TV
+      player card. It is never offered as tradeable in the Trade sheet. A
+      jailed player can still collect rent, bid in an auction and answer a
+      trade while in jail.
+- [ ] **T95** Run an auction with all six players in the rotation (start it
+      with six seated and nobody bankrupt). The bidding order still starts
+      with the player after whoever started it and wraps correctly through
+      all six.
+- [ ] **T96** Trade a property between two of the six seated players; the rest
+      of the room is unaffected and turn order is undisturbed once it resolves
+      (T74-T85 cover the mechanics in detail).
+
+---
+
+## 11. Reconnect
+
+`src/Hooks/connection.js` drives a watchdog + backoff reconnect, resyncing the
+room on the tab becoming visible, `pageshow` (iOS bfcache), `online`, focus, a
+resubscribe, and a 20s heartbeat refetch while visible — on top of the
+`game.seq` guard that drops a stale row and the post-action echo probe that
+notices a socket which claims to be live but never delivered our own write.
+There is deliberately **no automatic retry of an action itself** — only of the
+connection and the refetch. None of this has been tried against the hosted
+project or a real phone before tomorrow.
+
+Run these with two phones before guests arrive (see the runbook), and again
+with more phones once people are in the room:
+
+1. **Lock phone A for 60 seconds** while phone B plays 3-4 turns. Unlock A: it
+   should show the current game state within about 1 second of unlocking, with
+   no manual action needed.
+2. **Lock phone A**, then have B end their turn so it becomes A's turn while A
+   is still asleep. Unlock A after 60 seconds: it should show "your turn" with
+   a live, pressable roll button — not a stale "Not Your Turn".
+3. **Airplane mode on one phone for 30 seconds**, then back on. The connection
+   badge should read "Offline — check Wi-Fi" while it is off, then heal itself
+   with no button press once Wi-Fi is back.
+4. **Press Roll and immediately kill the phone's Wi-Fi.** It should show
+   "Connection problem — try again" (or similar), never a raw fetch error in
+   the console leaking to the screen. Do not re-tap Roll if the action actually
+   landed on the server — check the Board/other phones before retrying.
+5. **App-switch away for 20 seconds and back** (not a full lock). Same
+   expectation as check 1: it should already be current, no refresh needed.
+6. **Six phones, lock three of them for a minute, then wake all three at
+   about the same time.** All three should resync independently without
+   stepping on each other or on the two still-awake phones.
+
+**Reading `__conn()`:** in a `npm run dev` build (never in the production
+build — it is compiled out, see `connection.js`'s header), open the browser
+console on any phone or the TV and call `window.__conn()`. It returns an array
+(one entry per live room connection) with `status` (`connecting` / `live` /
+`reconnecting` / `offline`), `since`, `attempt` (how far into the backoff it
+is), `resyncs` and `lastResync` (what triggered the last refetch), and a
+`reconnect()` you can call directly from the console — the same thing the
+badge's **Reconnect** button and the Game sheet's **Reconnect / refresh state**
+row call.
+
+---
+
 ## Most likely to break
 
 My honest list, in order. These are the places I would look first.
@@ -294,20 +450,21 @@ My honest list, in order. These are the places I would look first.
 1. **Realtime not carrying the new `game` column.** Every popup, the dice and
    the turn state travel in it. If phones show nothing after a roll but the
    Board updates on refresh, this is it.
-2. **A sleeping phone missing the turn change.** Each update carries the whole
-   room, so any later action repairs a phone that fell behind. But if a phone
-   sleeps through the moment it became its turn and then nothing else happens,
-   it can sit on "Not Your Turn" forever, because there is no periodic refetch.
-   A refresh fixes it. T51 is the test. If this bites in real play, the fix is
-   a poll every few seconds.
+2. **A sleeping phone missing the turn change.** `src/Hooks/connection.js` now
+   resyncs on wake, focus, `online`, `pageshow` and a 20s heartbeat while
+   visible, but none of that has run against the hosted project or a real
+   phone yet — section 11 (Reconnect) is the test. If a phone still sits on
+   "Not Your Turn" after unlocking, this is the first place to look, and the
+   room-code + `__conn()` output is the most useful thing to capture.
 3. **Popup layout on small or short phones.** The card is a fixed 20em by 30em
    and the rent table now has eight rows. It fit a 390 by 844 screen in testing.
    Anything smaller is unverified.
 4. **iOS Safari.** Every browser test ran in Chrome. The 3D dice, the backdrop
    blur behind popups and the `100dvh` layout are the likely trouble spots.
-5. **Four players.** Only two and three were ever tested together. Turn order,
-   the 0-to-3 database constraint on whose turn it is, and leaving mid-game all
-   involve the player count.
+5. **Six players.** Only ever tested against an in-process Postgres and headless
+   Chrome, never six real phones on one Wi-Fi. Turn order, the 0-to-5
+   `current_order` constraint, the auction rotation and leaving mid-game all
+   involve the seat count.
 6. **Old rooms.** See 0.2. If a pre-migration room behaves strangely, press New
    Game before investigating further.
 
@@ -651,12 +808,16 @@ npm run test:sql
 ```
 
 It spins up an in-process Postgres, applies **every** migration in
-`supabase/migrations` in filename order, joins four players into a fresh room
-and then scripts the auction and trading rules, finishing with a few hundred
-random actions that check money conservation, single ownership per cell and
-the auction invariants. It prints a `PASS` / `FAIL` line per test and exits
-non-zero on any failure. `SEED=<n> npm run test:sql` replays the random walk
-with a different seed.
+`supabase/migrations` in filename order, and scripts the full rule set: auction
+and trading, a six-player group (5th/6th/7th join, all-six turn order and
+auction rotation, the `current_order` clamp, the board upgrade to eight figure
+keys), a jail-and-doubles group with dice forced via Postgres's `setseed` (all
+three jail exits, the forced fine, doubles counting 1/2/3, Get Out Of Jail Free
+in both decks), and a six-player random smoke test of a few hundred actions
+that checks money conservation, single ownership per cell and the auction
+invariants. As of today that is **81 tests**, all passing. It prints a `PASS` /
+`FAIL` line per test and exits non-zero on any failure. `SEED=<n> npm run
+test:sql` replays the random walk with a different seed.
 
 The only thing the loader adds is the `anon` / `authenticated` / `service_role`
 roles, which a hosted Supabase project has and a bare Postgres does not. The
@@ -680,7 +841,7 @@ Old rooms need nothing: a room written by the previous function simply has no
 `auction` / `trade` key, and the phone's `game?.auction ?? null` reads that as
 null too. The first action in the room fills both keys in.
 
-### Manual checklist (needs three or four phones)
+### Manual checklist (needs three to six phones)
 
 Auction:
 

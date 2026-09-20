@@ -106,13 +106,28 @@ function sentence(a, players, board) {
   return `${who(t.from)} pays ${who(t.to)} ${amount}${reason}${tail}`;
 }
 
-function Side({ fig, players, everyone }) {
+// The "…and everyone else" end of a group announcement, as an overlapped row of
+// faces. Who that actually is comes from the TRANSFERS, not from the player
+// list: "Koli pays everyone 50$" is five payments in a six-player room, and the
+// old `players.slice(0, 4)` both cut two of them off and put the payer himself
+// in the crowd he is paying. The room holds six, so five faces is the worst
+// case; anything beyond that still gets a "+N" rather than a wider banner.
+const CROWD_MAX = 5;
+
+function Side({ fig, players, everyone, others }) {
   if (everyone) {
+    const list = others.length > 0 ? others : players;
+    const shown = list.slice(0, CROWD_MAX);
+    const more = list.length - shown.length;
+    // Four faces keep the size they have always had; five close up a little so
+    // the row stays inside the slot a single 64px token would have taken.
+    const size = shown.length > 4 ? 34 : 40;
     return (
-      <span className={s.everyone} aria-hidden="true">
-        {players.slice(0, 4).map((p) => (
-          <Tok key={p.figure} player={p} size={40} />
+      <span className={s.everyone} data-tight={size < 40 ? "" : undefined} aria-hidden="true">
+        {shown.map((p) => (
+          <Tok key={p.figure ?? p.name} player={p} size={size} />
         ))}
+        {more > 0 && <span className={s.everyoneMore}>+{more}</span>}
       </span>
     );
   }
@@ -261,6 +276,23 @@ export default function TvPayFx({
   useEffect(() => () => clearTimeout(outTimer.current), []);
 
   const text = current ? sentence(current, players, board) : "";
+  // Everybody on the OTHER side of a group announcement, in seating order: the
+  // payees of a "pays everyone", the payers of a "collects from everyone". Read
+  // off the transfers themselves, so it is exactly who moved money and never
+  // the whole room minus nobody.
+  const crowd = useMemo(() => {
+    if (!current?.group) return [];
+    const side = current.group.kind === "each-out" ? "to" : "from";
+    const seen = new Set();
+    const out = [];
+    for (const t of current.members) {
+      const f = t[side];
+      if (!has(f) || f === current.group.who || seen.has(f)) continue;
+      seen.add(f);
+      out.push(playerByFig(players, f) ?? { figure: f, name: f });
+    }
+    return out;
+  }, [current, players]);
   const centre = anchors.__centre;
   // A purchase or a house is the quiet end of the scale: the coins and the cash
   // still move, but the board centre does not stop to announce it.
@@ -337,6 +369,7 @@ export default function TvPayFx({
               <Side
                 fig={current.lead.from}
                 players={players}
+                others={crowd}
                 everyone={current.group?.kind === "each-in"}
               />
             </span>
@@ -348,6 +381,7 @@ export default function TvPayFx({
               <Side
                 fig={current.lead.to}
                 players={players}
+                others={crowd}
                 everyone={current.group?.kind === "each-out"}
               />
             </span>

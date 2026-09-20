@@ -1,0 +1,178 @@
+/* Connection badge. Colours come from the [data-client] block in
+ * styles/tokens.css (both the TV root and the phone root carry
+ * `data-client=""`), plus --warn / --tap from :root, which every element
+ * inherits. Nothing here is hard-coded except the two alpha overlays, which
+ * have to be translucent to sit on top of whatever is behind them.
+ *
+ * The component itself is unpositioned on purpose -- it is a block of content,
+ * and the screen that mounts it decides where it goes. Pass `className` to
+ * place it. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
+  box-sizing: border-box;
+  font-family: var(--f-body, var(--font));
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  box-shadow: 0 6px 24px var(--shadow, #0006);
+  /* Above the board and the bottom sheets, below a modal card. */
+  z-index: 60;
+}
+
+/* ---- tone ---------------------------------------------------------------- */
+
+/* Still trying: amber, because it is probably about to fix itself. */
+.working {
+  border-color: color-mix(in srgb, var(--warn) 60%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+}
+.working .dot {
+  background: var(--warn);
+}
+
+/* Given up until the network comes back: the screen's own negative colour. */
+.offline {
+  border-color: color-mix(in srgb, var(--neg) 60%, transparent);
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+.offline .dot {
+  background: var(--neg);
+}
+
+/* ---- the dot ------------------------------------------------------------- */
+
+.dot {
+  flex: none;
+  border-radius: 50%;
+}
+
+.working .dot {
+  animation: pulse 1.4s var(--ease, ease-in-out) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+
+/* An animation that says "still working" is exactly the kind that makes some
+ * people ill. The colour already carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+  .working .dot {
+    animation: none;
+  }
+  .btn {
+    transition: none;
+  }
+}
+
+/* ---- the label and the button -------------------------------------------- */
+
+.label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.btn {
+  flex: none;
+  font: inherit;
+  font-weight: 800;
+  /* --surface, NOT --on-tint. The fill is --ink, which is near-BLACK in light
+   * mode and near-WHITE in dark mode; --on-tint is whatever reads on the
+   * screen's current tile tint and has nothing to do with this button. In dark
+   * mode both landed light and the label went white-on-white on the TV.
+   * --surface is the exact opposite of --ink in both themes by construction,
+   * so it is always the readable one. */
+  color: var(--surface);
+  background: var(--ink);
+  border: 0;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: opacity 140ms var(--ease, ease);
+  /* iOS: keep the tap from selecting the label next to it. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.btn:active {
+  opacity: 0.7;
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--focus, currentColor);
+  outline-offset: 2px;
+}
+
+.offline .btn {
+  background: var(--neg);
+  /* Same reasoning: --neg is #b42323 in light and #ff6b6b in dark, and white
+   * on #ff6b6b is about 2.6:1. --surface flips with the theme and clears AA on
+   * both. */
+  color: var(--surface);
+}
+
+/* ---- phone: a pill that fits next to the top chrome ---------------------- */
+
+.phone {
+  padding: var(--s2) var(--s2) var(--s2) var(--s4);
+  font-size: var(--t-sm, 13px);
+  max-width: calc(100vw - 2 * var(--s4));
+}
+
+.phone .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone .dot {
+  width: 9px;
+  height: 9px;
+}
+
+/* The whole point of the badge is that it is pressed by a thumb, in a hurry,
+ * on a phone somebody has just unlocked. --tap is 44px. */
+.phone .btn {
+  min-height: var(--tap, 44px);
+  min-width: var(--tap, 44px);
+  padding: 0 var(--s4);
+  font-size: var(--t-sm, 13px);
+}
+
+/* ---- tv: readable from the sofa ------------------------------------------ */
+
+.tv {
+  gap: var(--s5);
+  padding: var(--s4) var(--s4) var(--s4) var(--s6);
+  font-size: 34px;
+  letter-spacing: 0.01em;
+  border-width: 2px;
+  box-shadow: 0 12px 48px var(--shadow, #0009);
+}
+
+.tv .dot {
+  width: 20px;
+  height: 20px;
+}
+
+.tv .label {
+  font-family: var(--f-display, var(--font-display));
+  font-weight: 600;
+}
+
+.tv .btn {
+  min-height: 64px;
+  padding: 0 var(--s5);
+  font-size: 26px;
+}

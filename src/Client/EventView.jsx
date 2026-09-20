@@ -13,7 +13,8 @@
 //
 // Badge rule from the design: money that moved for ME is signed and coloured;
 // money that moved for someone else is a plain neutral badge; a roll shows the
-// number; a build shows "2 houses" / "Hotel".
+// number; a build shows "2 houses" / "Hotel". The `card` case is the one
+// deliberate exception, and says there why.
 //
 // Event shapes come from game_action; see the migration header for the list.
 
@@ -145,14 +146,46 @@ export function describeEvent(ev, ctx) {
             ),
       };
 
-    case "card":
+    // A card draw is TWO events in the log, not one. `mono_land` pushes this
+    // `card`, then `mono_apply_card` pushes its OWN collect/pay right behind it
+    // with the SAME seq (reason `card` or `repairs`, and PLURAL for payEach /
+    // collectEach), and both of them describe perfectly well on their own. A
+    // list that draws every describable event therefore drew one card draw as
+    // two rows — a bare "Card · 10$" over the card's whole sentence — which the
+    // owner read, correctly, as two notifications for one thing that happened
+    // once (see handoff/tv-feed-and-notifications.md, report 1).
+    //
+    // So a caller is allowed to FOLD: sum the card's own money events, drop
+    // their rows, and hand the signed total back here on the event as
+    // `cardAmount`. Nothing on the wire carries that field — neither the
+    // migration nor the mock ever writes it — so a caller that has not folded
+    // anything (the phone's aura preview, the full log in GameSheet) gets
+    // exactly the badge-less card row it has always got, with no badge slot
+    // appearing out of nowhere under it.
+    //
+    // Signed and coloured whoever drew it, which is where this case departs
+    // from the badge rule at the top of the file. That rule can afford to be
+    // neutral about somebody else's money because the DIRECTION is still on
+    // screen — it is the up/down arrow and the in/out tone of the collect/pay
+    // row that moved it. Folding that row away takes the direction with it, and
+    // a deck's own icon cannot say whether $250 arrived or left. The sign is
+    // the only thing left to carry it, so it is always drawn.
+    case "card": {
+      const folded = Number(ev.cardAmount);
+      const signed = Number.isFinite(folded) && folded !== 0 ? folded : 0;
       return {
         icon: ev.deck === "chance" ? Sparkles : Gift,
         actorFig: ev.figure,
         deck: { kind: ev.deck === "chance" ? "Chance" : "Community Chest", text: fmtText(ev.text) },
         label: fmtText(ev.text),
-        text: `${Subject(ev.figure)} drew: ${fmtText(ev.text)}`,
+        badge: signed ? { text: fmtSigned(signed), tone: signed > 0 ? "pos" : "neg" } : undefined,
+        // The badge is aria-hidden, so a folded row would otherwise say the
+        // sentence and not a word about the money the fold swallowed.
+        text: `${Subject(ev.figure)} drew: ${fmtText(ev.text)}${
+          signed ? ` · ${fmtSigned(signed)}` : ""
+        }`,
       };
+    }
 
     case "buy":
       return {

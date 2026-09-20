@@ -15,9 +15,11 @@ import { Trophy } from "lucide-react";
 
 import { useGameRoom } from "../Hooks/useGameRoom";
 import { useSound } from "../Hooks/useSound";
+import ConnectionBadge from "../Components/ConnectionBadge";
 import {
   accentFor,
   canBuild,
+  cellKind,
   isProperty,
   nameOfFig,
   ownedBy,
@@ -39,7 +41,7 @@ import AuctionPanel from "./AuctionPanel";
 import BottomNav from "./BottomNav";
 import CardOverlay from "./CardOverlay";
 import OfferOverlay from "./OfferOverlay";
-import { fmt } from "./format";
+import { fmt, jailLine } from "./format";
 import { describeEvent } from "./EventView";
 import MineSheet from "./sheets/MineSheet";
 import PlayersSheet from "./sheets/PlayersSheet";
@@ -62,6 +64,41 @@ function readPlayerInfo() {
 // One sound per batch of events so a turn does not become a chord: the dice
 // rattle at once, the consequence when the dice have landed.
 const CUE_ORDER = ["win", "bankrupt", "jail", "buy", "build", "card", "moneyOut", "moneyIn", "land"];
+
+// ---- the doubles run, as a beat -------------------------------------------
+//
+// Four kinds, escalating: "d1" the first double, "d2" the second, "d3" the
+// third (which is a jailing), and "jail" for the two OTHER ways to end up
+// inside — the Go To Jail cell and a card. "jail" is deliberately the quietest
+// of the four: a busted run has to feel different from simply landing on a bad
+// square, and the only way to buy that is to keep the ordinary one ordinary.
+//
+// How the stage is read. `game.doubles` is the server's own counter and it goes
+// 0 -> 1 -> 2, but it NEVER reads 3: the batch that jails you for three doubles
+// resets it to 0 in the same transaction, and its events are exactly
+// ['roll','move','jail'] with reason 'doubles'. So the third is detected from
+// that jail event, not from the counter — which is also why a phone that
+// refetches mid-run cannot mistake a stale 2 for a bust.
+//
+// Every value here is under the 1.5s ceiling, and none of them gates a button:
+// the primary is live again the moment the dice are down, whatever is still
+// fading out on the tray.
+const DICE_FX_MS = { d1: 900, d2: 1200, d3: 1500, jail: 1000 };
+
+// Android only — iOS Safari has never implemented navigator.vibrate — and
+// silenced along with the sound, because a phone buzzing in a pocket during a
+// muted game is the same intrusion the mute was asked for.
+const DICE_FX_VIBE = {
+  d1: [16],
+  d2: [26, 50, 26],
+  d3: [60, 45, 60, 45, 180],
+  jail: [30, 60, 30],
+};
+
+// Cue names handed to useSound. Unknown names are a documented no-op there, so
+// these are safe to ship before the cues exist; see the report for the three I
+// would like added.
+const DICE_FX_CUE = { d1: "doubles", d2: "doublesHot", d3: "busted", jail: null };
 
 // Browser chrome, for as long as the controller is on screen.
 //
@@ -148,7 +185,20 @@ export function Client() {
   const sound = useSound();
 
   const room = useGameRoom(uuid, playerId);
-  const { loading, fetchError, busy, error, feed, run } = room;
+  const { loading, fetchError, busy, error, feed, run, conn, refetch } = room;
+
+  // Only the two states that mean "your taps will not reach the server right
+  // now" gate the UI — not "connecting" (the badge itself already swallows
+  // that for the first 1.5s, and disabling every button the instant the page
+  // loads would read as broken, not careful) and not a `conn` that is simply
+  // undefined (older/mock room hooks that do not return one yet — the screen
+  // must keep working exactly as it always did until they do).
+  const disconnected = conn?.status === "reconnecting" || conn?.status === "offline";
+  // Passed to every child that already takes `busy` to disable its own
+  // buttons (the auction panel, the trade sheet, my-deeds' build button, the
+  // game sheet's Leave) — reusing that existing wiring rather than teaching
+  // each of them a second "disabled" reason.
+  const busyOrDisconnected = busy || disconnected;
 
   // ---- the reveal buffer -------------------------------------------------
   // Everything below reads the game through `reveal.view`, which is the live
@@ -198,12 +248,25 @@ export function Client() {
   // A short-lived line in the aura for something that happened rather than
   // something that went wrong: an offer that no longer added up.
   const [notice, setNotice] = useState(null);
+  // The one-shot beat on the dice tray: { id, kind }. See DICE_FX below.
+  const [diceFx, setDiceFx] = useState(null);
+  // The `<seq>#<n>` row the game sheet should open expanded, set by tapping a
+  // row in the aura's preview. Null = open collapsed, which is every other way
+  // in (the "Full log" button, the bottom nav).
+  const [logFocus, setLogFocus] = useState(null);
 
   const seenFeed = useRef(0);
   const prevTurn = useRef(null);
   const cueTimer = useRef(null);
   const deckTimer = useRef(null);
   const noticeTimer = useRef(null);
+  const fxSeq = useRef(0);
+  const fxTimer = useRef(null);
+  // The doubles counter as of the batch being reacted to. A ref, because the
+  // effect that reads it is keyed on `reveal.feed` and must see the value from
+  // the render that released that feed, not from whenever it last ran.
+  const doublesRef = useRef(0);
+  doublesRef.current = Number(game?.doubles) || 0;
   const rootRef = useRef(null);
   const stageRef = useRef(null);
 
@@ -295,11 +358,69 @@ export function Client() {
       // to the one who was asked). Only show it to `from`; `to` just learns
       // the offer is gone.
       const iAmFrom = stale.figure === me?.figure;
-      setNotice(
-        iAmFrom && stale.reason
-          ? `That offer is no longer valid — ${stale.reason}`
-          : "That offer is no longer valid",
-      );
+      setNotice({
+        tone: "info",
+        text:
+          iAmFrom && stale.reason
+            ? `That offer is no longer valid — ${stale.reason}`
+            : "That offer is no longer valid",
+      });
+      clearTimeout(noticeTimer.current);
+      noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+    }
+
+    // Being sent to jail always says why — by cell, by card, or by three
+    // doubles in a row — as a banner on the main screen, not only as a line
+    // in "Latest" that the next event can push out. `reason` values are the
+    // server's own: "gtj" | "card" | "doubles" (see game_action's jail
+    // event). The existing "jail" sound/haptic cue (cuesFor below) already
+    // fires for all three; this is the words that go with it.
+    const myJailing = events.find((e) => e.type === "jail" && e.figure === me?.figure);
+
+    // ---- the doubles beat ------------------------------------------------
+    // Fired here and nowhere else, which is what keeps it honest: `reveal.feed`
+    // only ever carries LIVE batches (useGameRoom does not emit one for a first
+    // load or a refetch), and `seenFeed` above already guarantees one pass per
+    // seq. So a resync applies silently, a reload plays nothing, and a beat can
+    // never be replayed for an event that already happened.
+    //
+    // Mine only. The copy is second-person ("roll again", "one more and it's
+    // Jail") and the haptic is a tap on MY phone; somebody else's run is
+    // reported by the heat pips and the log, which is the right volume for it.
+    if (me?.figure) {
+      const myRoll = roll && roll.figure === me.figure ? roll : null;
+      let kind = null;
+      if (myJailing?.reason === "doubles") kind = "d3";
+      else if (myRoll?.doubles) kind = doublesRef.current >= 2 ? "d2" : "d1";
+      else if (myJailing) kind = "jail";
+
+      if (kind) {
+        const id = (fxSeq.current += 1);
+        setDiceFx({ id, kind });
+        clearTimeout(fxTimer.current);
+        fxTimer.current = setTimeout(() => setDiceFx(null), DICE_FX_MS[kind]);
+        if (!sound.muted) {
+          try {
+            navigator.vibrate?.(DICE_FX_VIBE[kind]);
+          } catch {
+            /* a browser that declares vibrate and then refuses it */
+          }
+        }
+        const cue = DICE_FX_CUE[kind];
+        if (cue) sound.play(cue);
+      }
+    }
+
+    if (myJailing) {
+      const JAIL_SENT_TEXT = {
+        gtj: "Sent to Jail",
+        card: "A card sent you to Jail",
+        doubles: "Busted — three doubles, go to Jail",
+      };
+      setNotice({
+        tone: myJailing.reason === "doubles" ? "warn" : "info",
+        text: JAIL_SENT_TEXT[myJailing.reason] || "Sent to Jail",
+      });
       clearTimeout(noticeTimer.current);
       noticeTimer.current = setTimeout(() => setNotice(null), 5000);
     }
@@ -330,6 +451,7 @@ export function Client() {
   useEffect(
     () => () => {
       clearTimeout(cueTimer.current);
+      clearTimeout(fxTimer.current);
       clearTimeout(deckTimer.current);
       clearTimeout(noticeTimer.current);
     },
@@ -409,22 +531,69 @@ export function Client() {
   const cell = (auctionOn ? (board?.[auction.cell] ?? null) : null) || standCell;
   const accent = accentFor(cell);
   const onAccent = readableOn(accent);
+
+  // The tile tint also fills the primary button, and for three cell kinds
+  // accentFor() answers the same neutral slate (#5f6b7a): Jail, Go To Jail and
+  // Free Parking. So on those spaces a live "ROLL FOR DOUBLES" — the player's
+  // own turn, the one thing on the screen to press — was painted grey, which is
+  // the universal sign for "you cannot press this". It looked broken because
+  // every other affordance on the phone says grey means off.
+  //
+  // The tile-tint idea survives; it just is not allowed to land on a neutral.
+  // A neutral space borrows the deck indigo, which is a real colour, is nobody
+  // else's group, and reads as ACTIVE. Everything paints from --cta now, and
+  // --tint is left alone for the aura, the glow and the ticket, which are
+  // descriptions of the space rather than invitations to press it.
+  //
+  // The other half of this is that a DISABLED button must not be able to look
+  // like an active one: `.primary:disabled` is a flat --sunk plate with an
+  // outline and no shadow, which no tint can produce.
+  const CTA_NEUTRAL = "#5b55d6";
+  const neutralTile = ["jail", "gtj", "parking"].includes(cellKind(cell));
+  const cta = neutralTile ? CTA_NEUTRAL : accent;
+  const onCta = readableOn(cta);
   const myProperty = useMemo(() => (me ? ownedBy(board, me.figure) : []), [board, me]);
   const ctx = useMemo(() => ({ players, board, meFig: me?.figure }), [players, board, me?.figure]);
 
-  // The Build pill is about owning a full set, not about affording the house —
-  // the deeds sheet is where affordability gets decided.
-  const canBuildAny = useMemo(
-    () => !!me && myProperty.some((c) => canBuild(board, me.figure, c.id, Infinity).ok),
-    [board, me, myProperty],
-  );
+  // May the Build pill on the ticket be pressed, for THE SPACE THE TICKET IS
+  // SHOWING?
+  //
+  // This used to ask `canBuildAny` — do I own a finished colour set ANYWHERE —
+  // which is why a Build button turned up on Free Parking, on Jail, and on a
+  // street whose owner was "Free". The pill is attached to a space; it has to
+  // mean something about that space. So: it must be a street, I must own it, I
+  // must hold its whole colour set, and it must be this street's turn to take
+  // the next house (canBuild enforces the even-build rule). Money is left out
+  // on purpose — `Infinity` — because the pill opens the deeds sheet and that
+  // is where affordability is decided and explained; being 20$ short is not a
+  // reason to make the button vanish.
+  //
+  // Every other cell kind falls out of this for free: parking, jail, gtj, tax,
+  // chance, chest, start, railroads and utilities are not streets, so they can
+  // never show it. During an auction the ticket is showing the space being
+  // sold, not mine, and the caller suppresses it there too.
+  const buildHere = useMemo(() => {
+    if (!me || !cell || cellKind(cell) !== "street") return false;
+    if (ownerOf(cell) !== me.figure) return false;
+    return canBuild(board, me.figure, cell.id, Infinity).ok;
+  }, [board, me, cell]);
 
   // The three newest describable events, newest first. `key` is the index in
   // the log, which only ever grows, so it doubles as "how new is this".
+  //
+  // `logKey` is a different thing and is NOT interchangeable with it: it is the
+  // `<seq>#<n>` identity GameSheet gives the same event, so tapping a preview
+  // row can open the full log already expanded on it. It has to be built the
+  // same way there and here — the action's seq plus the event's index within
+  // that action — which is why `n` counts back to the start of the seq run
+  // rather than using the position in the log.
   const recent = useMemo(() => {
     const out = [];
     for (let i = log.length - 1; i >= 0 && out.length < 3; i--) {
-      if (describeEvent(log[i], ctx)) out.push({ ev: log[i], key: i });
+      if (!describeEvent(log[i], ctx)) continue;
+      let n = 0;
+      for (let j = i - 1; j >= 0 && log[j].seq === log[i].seq; j--) n++;
+      out.push({ ev: log[i], key: i, logKey: `${log[i].seq ?? "e"}#${n}` });
     }
     return out;
   }, [log, ctx]);
@@ -457,13 +626,67 @@ export function Client() {
     return null;
   }, [log]);
 
+  // The idle dice — shown resting whenever nobody's roll is in the air —
+  // used to fall back to a hard-coded [1, 1] whenever `game.dice` itself was
+  // empty. That reads as a real roll of double ones on a phone that was not
+  // there for the last actual roll (a fresh load, a phone that just woke up),
+  // while the TV in the same room — which keeps whatever it last drew from
+  // the log — correctly still showed the true last roll. The log is the same
+  // ground truth `describeEvent`'s "roll" case already reads, so the phone
+  // can fall back to it too before ever reaching for a fake default.
+  const lastRolledDice = useMemo(() => {
+    for (let i = log.length - 1; i >= 0; i--) {
+      const e = log[i];
+      if (e.type === "roll") return [e.d1, e.d2];
+    }
+    return null;
+  }, [log]);
+
   // The buy / build decision is about the space I am STANDING on, so it reads
   // standCell — `cell` is the auctioned space while an auction runs, and an
   // auction offers no choice of its own anyway.
+  //
+  // WHAT "I JUST LANDED HERE" IS ALLOWED TO BE READ FROM. This used to be
+  // `landedAt` and nothing else — a piece of React state set from the live
+  // `land` event and from no other source. Live events are exactly what a
+  // phone does not get back after a reload: useGameRoom emits a feed only for
+  // updates that arrive over the socket, never for the first fetch or a
+  // resync (see `apply(..., { silent: true })` there). So a phone that was
+  // reloaded — locked and discarded by iOS, tab restored, the room link
+  // opened again, a crash — came back with `landedAt` null, and a player
+  // standing mid-turn on a free space was shown "End turn" and nothing else.
+  // The space could not be bought at all that turn, and the phone gave no
+  // reason. That is the "I cannot buy this" report.
+  //
+  // The durable fact is in the row itself: phase "act" means this player has
+  // rolled this turn and is standing where the roll left them — nothing moves
+  // a token during "act". So that is the condition, and the server agrees
+  // with it (game_action's `buy` takes any cell you stand on and nobody
+  // owns). `landedAt` stays as the second way in, for the debug jump, which
+  // resolves a landing without changing the phase.
+  const landedHere = landedAt != null && me?.position === landedAt;
+
+  // "I already declined this space" has to survive the same reload, or the
+  // offer would come BACK after an auction that found no bidder — the one
+  // case `passed` exists for. `passed` answers it inside a session; the log
+  // answers it across a reload. Scan back from the newest entry: an
+  // `auction_none` for the space I am standing on, with no later landing of
+  // mine on it, means the offer is spent. (An auction somebody WON needs no
+  // entry here — the space has an owner now, and ownerOf sees that.)
+  const declinedHere = useMemo(() => {
+    if (!me || me.position == null) return false;
+    for (let i = log.length - 1; i >= 0; i--) {
+      const e = log[i];
+      if (e.type === "land" && e.figure === me.figure && e.cell === me.position) return false;
+      if (e.type === "auction_none" && e.cell === me.position) return true;
+    }
+    return false;
+  }, [log, me]);
+
   const choice = (() => {
     if (auctionOn) return null;
-    if (!myTurn || passed || !standCell || !me) return null;
-    if (landedAt == null || me.position !== landedAt) return null;
+    if (!myTurn || passed || declinedHere || !standCell || !me) return null;
+    if (phase !== "act" && !landedHere) return null;
     if (!isProperty(standCell)) return null;
     const owner = ownerOf(standCell);
     if (!owner) return { kind: "buy", price: priceOf(standCell) };
@@ -626,9 +849,13 @@ export function Client() {
         key: "pay_jail",
         verb: "Pay",
         amount: fmt(JAIL_FINE),
+        // Same "say why, don't just grey it out" rule Buy already follows.
+        hint: me.money < JAIL_FINE ? "Not enough cash" : undefined,
         onClick: () => run("pay_jail"),
         disabled: busy || rolling || me.money < JAIL_FINE,
       },
+      // Only offered when there is one to use — a disabled "Use jail card"
+      // nobody can ever press would just be a dead button forever.
       ...(me.jailCards > 0
         ? [
             {
@@ -700,18 +927,42 @@ export function Client() {
     ];
   }
 
+  // A button that still LOOKS pressable while the socket is down is worse
+  // than one that is honestly greyed out — every action above is a server
+  // call, and none of them can go anywhere right now. `over`/no-`me` states
+  // build their own already-disabled `primary` and are left alone: "The game
+  // is over" outranks "Reconnecting…" as an explanation.
+  if (disconnected && me && !over) {
+    if (primary && !primary.disabled) {
+      primary = { ...primary, disabled: true, hint: "Reconnecting…" };
+    }
+    secondary = secondary.map((b) =>
+      b.disabled ? b : { ...b, disabled: true, hint: b.hint || "Reconnecting…" },
+    );
+  }
+
   // ---- banner ------------------------------------------------------------
   let banner = null;
   if (me && !over) {
     if (me.bankrupt) banner = { text: "You are bankrupt. Watching the rest play out." };
-    else if (myTurn && phase === "roll" && me.inJail)
-      banner = {
-        text: `In jail · roll ${(me.jailTurns || 0) + 1} of ${JAIL_MAX_TURNS}, or pay ${fmt(JAIL_FINE)}`,
-      };
+    else if (myTurn && phase === "roll" && me.inJail) {
+      // jailTurns is 0..2 failed rolls already served, so the attempt about
+      // to be made is jailTurns + 1 of JAIL_MAX_TURNS (3) — and the LAST of
+      // those (jailTurns already 2) is the one where a non-double takes the
+      // fine and moves you regardless, which is worth saying plainly rather
+      // than leaving "3 of 3" to speak for itself.
+      banner = { text: jailLine(me, { full: true, fine: JAIL_FINE, max: JAIL_MAX_TURNS }) };
+    }
     // "You roll again" is true but not yet: during an auction the roll is on
     // the other side of it, and the panel below is the only thing to answer.
-    else if (myTurn && !auctionOn && game.doubles > 0)
-      banner = { accent: true, text: "Doubles! You roll again" };
+    // Progressive by the server's own `game.doubles` counter: the first
+    // double is a light "you again"; the second gets the warning colour
+    // because one more roll like this is a trip to Jail (see the "doubles"
+    // reason on the `jail` event, and the busted notice below it).
+    else if (myTurn && !auctionOn && game.doubles === 1)
+      banner = { accent: true, text: "Doubles — roll again" };
+    else if (myTurn && !auctionOn && game.doubles >= 2)
+      banner = { warn: true, text: "Doubles again — one more and it's Jail" };
   }
 
   const banners = [];
@@ -721,9 +972,15 @@ export function Client() {
       tone: "err",
       text: error || `Could not reach the game: ${fetchError}`,
     });
-  if (banner) banners.push({ key: banner.text, tone: banner.accent ? "good" : "info", text: banner.text });
-  // Neutral, not an error: nothing failed, the offer simply stopped adding up.
-  if (notice) banners.push({ key: "notice", tone: "info", text: notice });
+  if (banner)
+    banners.push({
+      key: banner.text,
+      tone: banner.warn ? "warn" : banner.accent ? "good" : "info",
+      text: banner.text,
+    });
+  // Neutral by default — nothing failed, an offer simply stopped adding up —
+  // except a busted-by-doubles jailing, which sets its own "warn" tone above.
+  if (notice) banners.push({ key: "notice", tone: notice.tone || "info", text: notice.text });
   // My own offer is the one thing that can sit on the table with nothing on my
   // screen to press, so it says so — and carries the one move it leaves me.
   if (outgoingOffer)
@@ -929,10 +1186,17 @@ export function Client() {
       ref={rootRef}
       className={s.screen}
       data-client=""
-      style={{ "--tint": accent, "--on-tint": onAccent }}
+      style={{ "--tint": accent, "--on-tint": onAccent, "--cta": cta, "--on-cta": onCta }}
       onPointerDown={sound.unlock}
     >
       <div className={s.app} data-state={state} data-mine={myTurn ? "" : undefined}>
+        {/* Floats over the top-right corner of the WHOLE screen, outside the
+            aura's own `overflow: hidden` — a sibling of .stage, not a child,
+            so it is never made `inert` along with the rest of the screen and
+            never fights the aura's clipping. Positioned well clear of the
+            panel/roll button at the floor of the screen. Renders nothing
+            while the connection is fine (see the component itself). */}
+        <ConnectionBadge conn={conn} variant="phone" className={s.connBadge} />
         {/* Everything readable and pressable, in one block that can be made
             inert. The overlay and the sheets are siblings of it, not children,
             so they stay reachable while it is switched off. */}
@@ -948,7 +1212,10 @@ export function Client() {
             banners={banners}
             events={recent.map((r) => ({ ...r, fresh: r.key > freshAfter }))}
             ctx={ctx}
-            onOpenLog={() => setSheet("game")}
+            onOpenLog={(logKey) => {
+              setLogFocus(typeof logKey === "string" ? logKey : null);
+              setSheet("game");
+            }}
             cashDelay={cashDelay}
             payFx={
               <PayFx
@@ -994,7 +1261,7 @@ export function Client() {
                   board={board}
                   players={players}
                   me={me}
-                  canBuild={canBuildAny && !auctionOn}
+                  canBuild={buildHere && !auctionOn}
                   onBuild={() => openHand(cell && ownerOf(cell) === me?.figure ? cell.id : null)}
                   lastCard={lastCardText}
                   label={auctionOn ? "Up for auction" : undefined}
@@ -1052,16 +1319,18 @@ export function Client() {
                 board={board}
                 players={players}
                 me={me}
-                busy={busy}
+                busy={busyOrDisconnected}
                 onBid={(amount) => run("auction_bid", { amount })}
                 onDrop={() => run("auction_drop")}
               />
             ) : (
               (actPrimary || actPass) && (
                 <ActRow
-                  dice={game.dice ?? [1, 1]}
+                  dice={game.dice ?? lastRolledDice ?? [1, 1]}
                   roll={reveal.roll}
-                  diceSize={decideMode ? 34 : 44}
+                  fx={diceFx}
+                  doubles={game.doubles || 0}
+                  diceSize={decideMode ? 30 : 36}
                   diceLabel={caption?.text}
                   primary={actPrimary}
                   pass={actPass}
@@ -1094,7 +1363,7 @@ export function Client() {
             board={board}
             players={players}
             me={me}
-            busy={busy}
+            busy={busyOrDisconnected}
             onAccept={() => run("trade_accept")}
             onDecline={() => run("trade_decline")}
             onCounter={counterOffer}
@@ -1110,7 +1379,7 @@ export function Client() {
           focus={focusCard}
           /* No building while an auction runs: the server rejects it, so the
              button must not be live either. */
-          busy={busy || auctionOn}
+          busy={busyOrDisconnected || auctionOn}
           onBuild={(id) => run("build", { cell: id })}
         />
         <PlayersSheet
@@ -1136,22 +1405,28 @@ export function Client() {
           whyNot={whyNot}
           draft={tradeDraft}
           counterOf={counterOf}
-          busy={busy}
+          busy={busyOrDisconnected}
           onSend={sendTrade}
           onCounter={sendCounter}
         />
         <GameSheet
           open={sheet === "game"}
           onClose={() => setSheet(null)}
+          focusKey={logFocus}
           log={log}
           ctx={ctx}
           roomId={uuid}
           muted={sound.muted}
           onToggleSound={() => sound.setMuted((v) => !v)}
           onLeave={leave}
+          // `conn.reconnect()` tears the channel down and rebuilds it (then
+          // refetches) — the real fix for a socket that only LOOKS alive.
+          // `refetch` alone is the fallback for wherever `conn` is not there
+          // yet (an older room hook, the mock harness).
+          onRefresh={() => (conn?.reconnect ? conn.reconnect() : refetch())}
           debug={DEBUG}
           board={board}
-          busy={busy}
+          busy={busyOrDisconnected}
           onJump={(id) => run("move", { to: id })}
         />
       </div>

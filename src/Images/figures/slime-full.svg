@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" role="img" aria-labelledby="t"><title id="t">Slime — extra figure</title>
+  <ellipse cx="80" cy="188" rx="50" ry="7" fill="#0E1116" opacity=".12"/>
+  <path d="M68 92 L60 56 M92 92 L100 56" stroke="#4C9A1E" stroke-width="8" stroke-linecap="round"/>
+  <path d="M34 176 C28 150 34 110 56 92 C66 84 94 84 104 92 C126 110 132 150 126 176 Q118 170 112 178 Q104 186 96 176 Q88 170 80 180 Q72 188 64 178 Q56 170 48 180 Q40 184 34 176 Z" fill="#4C9A1E"/>
+  <path d="M48 120 C52 106 60 98 70 96" fill="none" stroke="#A7E07A" stroke-width="4" stroke-linecap="round" opacity=".7"/>
+  <circle cx="48" cy="152" r="4" fill="#A7E07A"/>
+  <circle cx="110" cy="122" r="3" fill="#A7E07A"/>
+  <circle cx="104" cy="158" r="5" fill="#A7E07A"/>
+  <circle cx="60" cy="50" r="13" fill="#FFFFFF"/>
+  <circle cx="100" cy="50" r="13" fill="#FFFFFF"/>
+  <circle cx="63" cy="52" r="6" fill="#0E1116"/>
+  <circle cx="97" cy="52" r="6" fill="#0E1116"/>
+  <circle cx="65" cy="49.5" r="1.8" fill="#FFFFFF"/>
+  <circle cx="99" cy="49.5" r="1.8" fill="#FFFFFF"/>
+  <path d="M58 130 Q80 156 102 130 Z" fill="#0E1116"/>
+  <ellipse cx="80" cy="143" rx="9" ry="4" fill="#A7E07A"/>
+</svg>

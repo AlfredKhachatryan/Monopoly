@@ -10,12 +10,29 @@ export const HOUSE_RENT_MULT = [1, 5, 15, 45, 60, 75]; // 0-4 houses, hotel
 export const RAILROAD_RENT = [25, 50, 100, 200]; // 1-4 railroads owned
 export const UTILITY_MULT = [4, 10]; // one / both utilities owned
 
-export const FIGS = ["fig0", "fig1", "fig2", "fig3"];
+// Room cap is 6 players; 8 figures are selectable so a full room always has
+// two spares to pick from.
+export const MAX_PLAYERS = 6;
+
+export const FIGS = [
+  "fig0",
+  "fig1",
+  "fig2",
+  "fig3",
+  "fig4",
+  "fig5",
+  "fig6",
+  "fig7",
+];
 export const FIG_COLORS = {
   fig0: "#E0284C",
   fig1: "#0B7A7A",
   fig2: "#7A4FE0",
   fig3: "#A86400",
+  fig4: "#C2358A",
+  fig5: "#56606E",
+  fig6: "#1E63C8",
+  fig7: "#4C9A1E",
 };
 
 export function cellKind(cell) {
