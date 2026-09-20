@@ -12,13 +12,35 @@
 // What changed is the skin and where a piece comes to rest. Per the figure
 // manual (design-reference/figures-manual.html) a board space carries the
 // player's ROUND TOKEN, not the full-body figure — full figures are for hero
-// moments, the discs are what reads at 105px across a room. So the piece is
+// moments, the discs are what reads at 112px across a room. So the piece is
 // `Tok`: 24px as the manual says, 28px when only one or two stand on a roomy
 // tile (the rows and the corners), with a 2px --surface ring around it so two
 // touching discs stay separate. They sit side by side with a 2px gap in the
 // tile's `.tt-here` slot, bottom-left everywhere except the top row, where the
 // prototype's top-left slot is back: the band is at the bottom there, and a
 // small disc tucked under the mark leaves the name and price completely clear.
+//
+// SIX PIECES ON ONE TILE (2026-09-20). A room holds up to six players and every
+// game opens with all of them standing on Start, so the crowded tile is the
+// first thing the room ever sees, not an edge case. `layoutFor` below is the
+// one place that decides the shape of a group, and it is written so that one,
+// two, three and four pieces come out EXACTLY where they came out before —
+// four-player games must look untouched. From five up it is allowed to change
+// its mind:
+//
+//   · it steps the disc down 24 → 22 → 20 (Tok's art floor: under 20 the token
+//     falls back to a letter) rather than let the overlap eat more than a third
+//     of every disc. A corner is 158px wide, so Start at six players keeps the
+//     manual's 24px and the same 1/3 overlap four players have today; a 112px
+//     row tile drops to 20px;
+//   · a tile too narrow for any of that — the left and right columns, where the
+//     pieces must stop at the name — lays the group out in LINES instead,
+//     growing inwards from the board's edge (upwards on the bottom row and the
+//     columns, downwards on the top row), two per line rather than a six-disc
+//     smear four pixels wide.
+//
+// The piece whose turn it is is drawn last and wears a ring, so "everyone is on
+// Start, and it is Koli's go" is one glance rather than two.
 //
 // COORDINATES. The whole TV is one element with `transform: scale(s)` on it, so
 // getBoundingClientRect() here returns SCALED pixels, while the tokens are
@@ -28,7 +50,7 @@
 // every window size, and nothing here has to know what the current scale is.
 //
 // It also means no dimension of the board is written down here. The board is
-// NOT square (reference §0: ~1282 x 1024, 150px corners), and the arc's centre
+// NOT square (~1364 x 1048, 158 x 144 corners), and the arc's centre
 // of gravity is read from the wrapper's own offset size.
 
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -40,15 +62,86 @@ import s from "./tv.module.css";
 
 const TOK = 24; // the manual's board-space size
 const TOK_BIG = 28; // 1-2 players on a roomy tile (the rows and the corners)
+const TOK_MIN = 20; // Tok draws the art down to 20px and a bare letter below it
+const SIZES = [TOK, 22, TOK_MIN]; // the steps a crowded tile may take
 const GAP = 2; // between two discs standing side by side
-const STACK = 16; // three or four overlap like an avatar stack instead
-const EDGE = 6; // the anchor's inset from the tile's edges (.here)
+// The anchor's inset from the tile's edges (.here in tv.module.css — the two
+// numbers must stay equal). NINE, not the six it was: a tile has a 10px corner
+// radius, and a disc whose ring reached within 2px of both edges sat in the
+// notch the radius cuts away, so on a corner tile it read as hanging off the
+// board. The owner caught exactly that on a real TV. At 9 the disc's outermost
+// ring is 5px from each edge, which is inside a 10px radius with room to spare.
+const EDGE = 9;
+const CROWD = 5; // from here up the group may change shape
 const LEAN_DEG = 12;
 const MIN_HOP_HEIGHT = 22;
 const MAX_HOP_HEIGHT = 140;
 const MIN_HOP_S = 0.35;
 const MAX_HOP_S = 1.1;
 const STEP_HOP_S = (STEP_MS / 1000) * 0.85; // cap when walking cell by cell
+
+// The pitch an overlapping avatar stack uses: two thirds of every disc still
+// showing. At 24px that is the 16px this board has always used.
+const stackPitch = (size) => Math.round((size * 2) / 3);
+
+// Keeps a rest position inside its tile whatever the arithmetic above wanted.
+const clamp = (v, lo, hi) => (hi < lo ? lo : v < lo ? lo : v > hi ? hi : v);
+
+// `want`, but never wider than the lane: the last disc's left edge may sit at
+// most `usable - size` from the first one's.
+function squeeze(want, usable, size, crowd) {
+  if (crowd <= 1) return want;
+  return Math.min(want, Math.max(0, usable - size) / (crowd - 1));
+}
+
+// How `crowd` pieces share one tile's piece lane.
+//
+//   size      the disc's diameter
+//   pitch     the step between two discs in a line
+//   cols      how many go in a line
+//   lineStep  the step between two lines, 0 when there is only one
+//
+// One to four is frozen: those three branches reproduce the old
+// `crowd <= 2 ? TOK_BIG : TOK` / `STACK` arithmetic value for value, so a
+// four-player board is pixel-identical to the one before six players existed.
+function layoutFor(crowd, slot) {
+  const usable = Math.max(slot.limit - EDGE, TOK_MIN); // lane width from the anchor
+
+  if (crowd <= 2) {
+    const size = slot.roomy ? TOK_BIG : TOK;
+    return { size, pitch: squeeze(size + GAP, usable, size, crowd), cols: crowd, lineStep: 0 };
+  }
+  if (crowd < CROWD) {
+    const pitch = squeeze(stackPitch(TOK), usable, TOK, crowd);
+    return { size: TOK, pitch, cols: crowd, lineStep: 0 };
+  }
+
+  // Five or six. Keep one line for as long as every disc still shows two
+  // thirds of itself; give up the diameter before giving up the overlap.
+  for (const size of SIZES) {
+    const pitch = stackPitch(size);
+    if (size + (crowd - 1) * pitch <= usable) {
+      return { size, pitch, cols: crowd, lineStep: 0 };
+    }
+  }
+
+  // Still too narrow (the left and right columns): lines instead of a smear.
+  const size = TOK_MIN;
+  const step = size + GAP;
+  const fitCols = Math.max(1, Math.floor((usable - size) / step) + 1);
+  const room = Math.max(size, slot.tall - 2 * EDGE); // how tall the block may be
+  const maxLines = Math.max(1, Math.floor((room - size) / step) + 1);
+  const lines = Math.min(maxLines, Math.ceil(crowd / fitCols));
+  const cols = Math.ceil(crowd / lines); // balanced lines: 3 + 3, never 5 + 1
+  return {
+    size,
+    // `cols` may have been pushed past what the width wants in order to keep
+    // the block inside the tile; then, and only then, a line overlaps again.
+    pitch: squeeze(step, usable, size, cols),
+    cols,
+    lineStep: step,
+  };
+}
 
 // Flight time and arc height for a move of `dist` pixels.
 function hopFor(dist) {
@@ -119,8 +212,9 @@ function offsetIn(el, root) {
 // Every `.here` anchor, in unscaled board coordinates: `x` is where the left
 // edge of the first disc goes, `y`/`h` are the anchor box the discs align
 // inside (bottom-aligned, or top-aligned on the top row), `limit` how far right
-// the row may run before it closes up, and `roomy` whether this tile can carry
-// the larger disc.
+// the row may run before it closes up, `tall` how much height the tile could
+// lend a second line of pieces, and `roomy` whether this tile can carry the
+// larger disc.
 function measureSlots(wrap) {
   const slots = {};
   for (const el of wrap.querySelectorAll("[data-here]")) {
@@ -134,13 +228,24 @@ function measureSlots(wrap) {
     // There it stops at the text column; everywhere else the text is above or
     // below the discs and the whole tile is fair game.
     const txt = flank ? tile?.querySelector("[data-txt]") : null;
+    // Where the TILE itself is, so no arithmetic below can put a disc outside
+    // it. The owner caught exactly that on a real TV: a piece on the bottom row
+    // drawn under its tile, hanging over the edge of the canvas. Whatever the
+    // cause, a rest position that leaves the tile is wrong by definition, so it
+    // is clamped at the source rather than trusted.
+    const box = tile ? offsetIn(tile, wrap) : { x: 0, y: 0 };
     slots[Number(el.dataset.here)] = {
       x,
       y,
       h: el.offsetHeight,
       top: side === "t", // the top row's slot hangs from the top edge
       limit: txt ? txt.offsetLeft : tileW - EDGE,
+      tall: tile ? tile.offsetHeight : 0,
       roomy: !flank,
+      bx: box.x,
+      by: box.y,
+      bw: tileW,
+      bh: tile ? tile.offsetHeight : 0,
     };
   }
   return {
@@ -150,7 +255,7 @@ function measureSlots(wrap) {
   };
 }
 
-const Token = memo(function Token({ fig, name, x, y, w, h, z, cx, cy }) {
+const Token = memo(function Token({ fig, name, now, jailed, snap, x, y, w, h, z, cx, cy }) {
   // Where this token was drawn last time, so the arc can start from there.
   const prev = useRef(null);
   const from = prev.current;
@@ -160,7 +265,12 @@ const Token = memo(function Token({ fig, name, x, y, w, h, z, cx, cy }) {
 
   const moved = from && (from.x !== x || from.y !== y);
   let target;
-  if (moved && Math.hypot(x - from.x, y - from.y) < w * 2) {
+  if (snap) {
+    // The board was just repaired after a reconnect. Nobody in the room saw
+    // these pieces move, so they are simply THERE — an arc here would be the
+    // screen performing a journey that happened while it was not watching.
+    target = { x, y, rotate: 0, scaleX: 1, scaleY: 1, transition: { duration: 0 } };
+  } else if (moved && Math.hypot(x - from.x, y - from.y) < w * 2) {
     // shuffling sideways inside the same tile: just slide, no hop
     target = {
       x,
@@ -205,6 +315,8 @@ const Token = memo(function Token({ fig, name, x, y, w, h, z, cx, cy }) {
     <m.div
       className={s.token}
       data-fig={fig}
+      data-now={now ? "" : undefined}
+      data-jailed={jailed ? "" : undefined}
       style={{ width: w, height: h, zIndex: z }}
       initial={{ x, y, rotate: 0, scaleX: 0, scaleY: 0 }}
       animate={target}
@@ -216,9 +328,24 @@ const Token = memo(function Token({ fig, name, x, y, w, h, z, cx, cy }) {
 });
 
 // Must be rendered as a child of .boardWrap, beside the grid. `shown` is the
-// displayed cell per figure from useWalkingTokens.
-export default function TvTokens({ shown, players }) {
+// displayed cell per figure from useWalkingTokens; `currentFig` is whose turn
+// it is, so that piece can be drawn on top of whatever it shares a tile with.
+export default function TvTokens({
+  shown,
+  players,
+  currentFig = null,
+  jailedFigs = null,
+  // Bumped by the shell when the board was repaired after a drop. Compared
+  // during render rather than in an effect, so the very commit that carries the
+  // caught-up positions is the one that skips the flight.
+  snapKey = 0,
+}) {
   const layerRef = useRef(null);
+  const seenSnap = useRef(snapKey);
+  const snap = seenSnap.current !== snapKey;
+  useEffect(() => {
+    seenSnap.current = snapKey;
+  }, [snapKey]);
   const [{ slots, cx, cy }, setGeom] = useState({ slots: {}, cx: 0, cy: 0 });
 
   // Measured from our own element's parent, which is the wrapper the grid also
@@ -266,25 +393,37 @@ export default function TvTokens({ shown, players }) {
     const crowd = list.length;
     // One or two stand side by side at the larger size where there is room for
     // it; three or four close into an overlapping avatar stack at the manual's
-    // 24px, later arrivals on top. Either way `room` keeps the whole group
-    // inside the piece lane, well clear of the middle of the tile.
-    const size = crowd <= 2 && slot.roomy ? TOK_BIG : TOK;
-    const room = Math.max(0, slot.limit - EDGE - size);
-    const step = crowd <= 2 ? size + GAP : STACK;
-    const pitch = crowd > 1 ? Math.min(step, room / (crowd - 1)) : step;
+    // 24px; five or six step the disc down, and only a tile too narrow for even
+    // that breaks the group into lines. See layoutFor.
+    const { size, pitch, cols, lineStep } = layoutFor(crowd, slot);
+    const col = i % cols;
+    const line = Math.floor(i / cols);
     tokens.push({
       fig: f,
       // A string, not the player object: Token is memoised, and a piece whose
       // player has left the room would otherwise get a fresh fallback object
       // on every render.
       name: playerByFig(players, f)?.name || "",
-      x: slot.x + i * pitch,
+      now: f === currentFig,
+      // Jailed pieces standing on the Jail corner wear a --neg ring, so the
+      // difference between doing time and passing through is visible on the
+      // board and not only on the player card.
+      jailed: !!jailedFigs?.has?.(f),
+      x: clamp(slot.x + col * pitch, slot.bx, slot.bx + slot.bw - size),
       // Discs share one edge of the anchor box whatever their size, so a tile
-      // going from two players to three does not make them jump.
-      y: slot.top ? slot.y : slot.y + slot.h - size,
+      // going from two players to three does not make them jump. Extra lines
+      // grow away from that edge, i.e. into the tile.
+      y: clamp(
+        slot.top ? slot.y + line * lineStep : slot.y + slot.h - size - line * lineStep,
+        slot.by,
+        slot.by + slot.bh - size,
+      ),
       w: size,
       h: size,
-      z: i + 1,
+      // Later in the line covers earlier, and the player whose turn it is
+      // covers everyone: on a tile holding the whole room, which piece is
+      // about to move has to be the one you can actually see.
+      z: f === currentFig ? crowd + 1 : i + 1,
     });
   }
 
@@ -296,6 +435,9 @@ export default function TvTokens({ shown, players }) {
             key={t.fig}
             fig={t.fig}
             name={t.name}
+            now={t.now}
+            jailed={t.jailed}
+            snap={snap}
             x={t.x}
             y={t.y}
             w={t.w}

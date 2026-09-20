@@ -106,7 +106,14 @@ export default function TvAuction({ auction, board, players }) {
             </div>
           </div>
 
-          <div className={c.bidders}>
+          {/* Up to four bidders keep one line each, exactly as they did; five
+              or six go onto two lines of three rather than shrink a chip below
+              what a face and a number need. The number of columns is decided
+              here, in one place, and the CSS follows it. */}
+          <div
+            className={c.bidders}
+            style={{ "--bidder-cols": order.length > 4 ? 3 : Math.max(1, order.length) }}
+          >
             {order.map((fig) => {
               const p = playerByFig(players, fig);
               const out = !stillIn.includes(fig);
