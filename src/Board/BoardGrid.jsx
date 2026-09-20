@@ -24,10 +24,16 @@ export default function BoardGrid({
   current,
   focusCellId,
   shown,
+  // Bumped when the board was repaired after a reconnect: the pieces are put
+  // where they are rather than flown there. Passed straight to TvTokens.
+  snapKey = 0,
   // Passed straight through to the centre: the dice are the one thing that
   // must move while the rest of the screen is still holding its breath.
   roll,
   roller,
+  // Passed straight through to the centre: a resync's own useTvFeed call
+  // needs to know this row is not news either. See BoardScreen.jsx.
+  silent = false,
 }) {
   // Name widths are measured in the real font (fitName.js). Before Manrope
   // arrives those measurements are in the fallback face and wrong, so the first
@@ -72,6 +78,15 @@ export default function BoardGrid({
     return out;
   }, [board, players, fitVersion]);
 
+  // Who is doing time. Passed to the token layer so a piece serving a sentence
+  // on the Jail corner is told apart from one that is merely visiting — the two
+  // stand on the same tile and mean opposite things.
+  const jailedFigs = useMemo(() => {
+    const out = new Set();
+    for (const p of players || []) if (p?.inJail && !p?.bankrupt && p.figure) out.add(p.figure);
+    return out;
+  }, [players]);
+
   return (
     <div className={s.boardWrap}>
       <div className={s.board}>
@@ -95,9 +110,16 @@ export default function BoardGrid({
           focusCellId={focusCellId}
           roll={roll}
           roller={roller}
+          silent={silent}
         />
       </div>
-      <TvTokens shown={shown} players={players} />
+      <TvTokens
+        shown={shown}
+        players={players}
+        currentFig={current?.figure ?? null}
+        jailedFigs={jailedFigs}
+        snapKey={snapKey}
+      />
     </div>
   );
 }
