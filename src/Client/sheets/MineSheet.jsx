@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { LockOpen } from "lucide-react";
 import Sheet from "../Sheet";
 import Mark from "../Mark";
 import { fmt } from "../format";
@@ -37,8 +38,29 @@ export default function MineSheet({ open, onClose, board, me, focus, onBuild, bu
     return () => clearTimeout(t);
   }, [open, focus]);
 
+  const jailCards = me?.jailCards || 0;
+
   return (
     <Sheet open={open} title="My properties" onClose={onClose}>
+      {/* A Get Out of Jail Free card is a thing you own, same as a deed — it
+          just isn't a board cell, so it lives here rather than in the groups
+          below. Shown regardless of whether any deeds exist, and it never
+          appears in TradeSheet: `tradableOwnedBy` only ever looks at board
+          cells, so there is nothing more to guard there. */}
+      {jailCards > 0 && (
+        <div className={sh.jailCard} role="img" aria-label={`${jailCards} Get Out of Jail Free card${jailCards === 1 ? "" : "s"}, not tradable`}>
+          <span className={sh.jailCardIcon} aria-hidden="true">
+            <LockOpen size={20} />
+          </span>
+          <div className={sh.jailCardBody}>
+            <strong>Get Out of Jail Free</strong>
+            <span>
+              {jailCards} card{jailCards === 1 ? "" : "s"} · not tradable
+            </span>
+          </div>
+        </div>
+      )}
+
       {mine.length === 0 ? (
         <p className={sh.empty}>
           Nothing here yet.

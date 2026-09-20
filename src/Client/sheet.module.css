@@ -256,6 +256,49 @@
 
 /* ------------------------------------------------------------------ my hand */
 
+/* The Get Out of Jail Free card, styled as the thing it is — a ticket, in the
+ * same visual family as Ticket.jsx's stub (a rounded card, an icon chip, a
+ * title + subtitle) rather than a plain list row, because it is not a deed
+ * and should not read as one. */
+.jailCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--sunk);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+.jailCardIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.jailCardBody {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.jailCardBody strong {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.jailCardBody span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .sum {
   margin: 0;
   padding-bottom: 8px;
@@ -298,12 +341,54 @@
 
 /* --------------------------------------------------------------- game sheet */
 
+/* The log's own header, pinned to the top of the scroller. `.body` is the
+ * scroll container (it has the 20px side padding), so the negative margins pull
+ * this bar out to the sheet's full width and the background covers the rows
+ * sliding under it. */
+.logBar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -20px 8px;
+  padding: 10px 20px 8px;
+  background: var(--surface);
+}
+
+.logBarLab {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.logToggle {
+  flex: none;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .log {
   list-style: none;
   margin: 0 0 8px;
   padding: 0;
   display: grid;
   gap: 6px;
+  /* New rows arrive at the TOP of a newest-first list, which would otherwise
+   * push whatever is being read downwards. Scroll anchoring is what stops
+   * that, and it is only worth saying out loud because `overflow-anchor: none`
+   * is a common copy-paste and would break it. */
+  overflow-anchor: auto;
 }
 
 .section {
