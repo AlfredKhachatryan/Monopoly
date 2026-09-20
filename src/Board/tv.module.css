@@ -85,20 +85,32 @@
   width: 1920px;
   height: 1080px;
   display: grid;
-  /* OWNER OVERRIDE (reference §0): the board takes ~70% of the width, the right
-   * column ~30%. 1920 − 2×28 padding − 32 gap = 1832, split 7:3 → board 1282,
-   * side 550. A square board could never pass 53% on 16:9, so the board is a
-   * wide rectangle that fills the full 1024px height instead. */
-  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
-  gap: 32px;
-  padding: 28px;
+  /* OWNER OVERRIDE (reference §0) — the board takes the width, the right column
+   * takes what it needs and not a pixel more. Re-balanced 2026-09-20 after the
+   * owner looked at a real TV and found the board small and the column half
+   * empty:
+   *
+   *   padding 28 → 16 and gap 32 → 24    the letterbox outside the canvas is
+   *                                      already dead space, so the canvas's own
+   *                                      margin is dead space twice over
+   *   side column 550 → 500 (a fixed     550 was sized for a 7:3 ratio, not for
+   *   track, not a share of the ratio)   anything in it; 500 still holds a
+   *                                      48px token, a name, five-digit money
+   *                                      and ten colour-group slots (TvSide)
+   *
+   * 1920 − 32 padding − 24 gap = 1864 → board 1364 × 1048, up from 1282 × 1024.
+   * Height is what limits the board, so the tiles gain ~7% of width and the type
+   * on them goes up a step with it (.name / .price below). */
+  grid-template-columns: minmax(0, 1fr) 500px;
+  gap: 24px;
+  padding: 16px;
   background: var(--ground);
   color: var(--ink);
   transition: background-color var(--t-fast) ease-out;
 }
 
 /* --------------------------------------------------------------------------
- * Board: 11 x 11, 140px corners, 4px gaps. The token overlay is a sibling of
+ * Board: 11 x 11, 158x144 corners, 4px gaps. The token overlay is a sibling of
  * the grid inside .boardWrap, not a child of it — an absolutely positioned
  * child of a grid container is laid out against its grid area, which would put
  * every token in the wrong place.
@@ -108,20 +120,21 @@
   position: relative;
   width: 100%;
   min-width: 0;
-  height: 1024px;
+  height: 1048px;
 }
 
-/* ~1282 x 1024: corners 150 x 140, top/bottom tiles ~105 x 140, left/right
- * tiles 150 x ~78, centre ~974 x 744. Nothing downstream may assume the board
- * is square or 1024 wide — TvTokens measures it. */
+/* ~1364 x 1048: corners 158 x 144, top/bottom tiles ~112 x 144, left/right
+ * tiles 158 x 80, centre ~1040 x 752. Nothing downstream may assume the board
+ * is square or any particular width — TvTokens measures it, and fitName.js
+ * carries the only copy of these numbers it needs (its AVAIL table). */
 .board {
   position: relative;
   display: grid;
-  grid-template-columns: 150px repeat(9, minmax(0, 1fr)) 150px;
-  grid-template-rows: 140px repeat(9, minmax(0, 1fr)) 140px;
+  grid-template-columns: 158px repeat(9, minmax(0, 1fr)) 158px;
+  grid-template-rows: 144px repeat(9, minmax(0, 1fr)) 144px;
   gap: 4px;
   width: 100%;
-  height: 1024px;
+  height: 1048px;
 }
 
 /* The board centre. TvCenter lives in another CSS module and leaves its
@@ -155,9 +168,47 @@
 }
 
 /* An outer ring in the page colour, so two touching discs — and a disc over a
- * tile's mark — stay separate. */
+ * tile's mark — stay separate, plus a hairline of the page's INK outside it.
+ *
+ * The hairline is there for the two new figures: mummy slate (#56606E) is only
+ * 2.7:1 against --surface in the dark theme and octopus blue (#1E63C8) exactly
+ * 3.0:1, so on a dark tile those two discs stop reading as discs at all. One
+ * ink hairline at 30% is enough to give every token an edge in both themes
+ * without turning the board into a page of outlines — and it costs the four
+ * original figures nothing they can see. */
 .token .tokRing {
-  box-shadow: 0 0 0 2px var(--surface);
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3px color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+/* Whose turn it is. On a tile holding the whole room the discs overlap, so the
+ * piece that is about to move is drawn last (TvTokens sets the z-index) and
+ * wears the same ink ring the focus tile does. */
+.token[data-now] .tokRing {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--ink);
+  /* Lifted out of the row by three pixels as well as ringed. On the Start tile
+   * at the top of a six-player game the discs overlap by a third, and "which
+   * one is up" has to survive being read from a sofa. The transform is on the
+   * token itself, never on the wrapper — that one belongs to the flight. */
+  transform: translateY(-3px);
+}
+
+/* Doing time. The Jail corner holds inmates and passers-by in the same lane and
+ * the two mean opposite things, so the ones serving a sentence are ringed in
+ * --neg and drained of a little colour. It outranks the turn ring above, which
+ * is the right way round: a jailed player whose turn it is is still jailed. */
+.token[data-jailed] .tokRing,
+.token[data-jailed][data-now] .tokRing {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--neg);
+}
+
+.token[data-jailed] {
+  filter: saturate(0.55);
 }
 
 /* --------------------------------------------------------------------------
@@ -177,9 +228,9 @@
    * whether or not anyone is standing there, and the mark/name/price block
    * centres in what is left. That is the whole point — a tile's content must
    * never move because a piece arrived or left, so the room is made
-   * structurally, once, for all of them. 36px covers the tallest disc (28px)
-   * plus its 6px inset with a little air. */
-  padding: 16px 4px 36px;
+   * structurally, once, for all of them. 38px covers the tallest disc (28px)
+   * plus its 9px inset with a little air. */
+  padding: 12px 4px 38px;
   border-radius: 10px;
   background: var(--surface);
   transition: box-shadow var(--t-fast) ease-out;
@@ -229,7 +280,7 @@
 /* The top row's lane is along its top edge, where its pieces stand — its colour
  * band is the one along the bottom. */
 .tile[data-side="t"] {
-  padding: 36px 4px 16px;
+  padding: 38px 4px 12px;
 }
 
 /* The side columns read as a row: mark, then the name beside it. They are
@@ -293,7 +344,12 @@
 /* A property name never breaks inside a word: "Minecraf / t" is not a name.
  * It wraps at spaces only, over at most two lines; if a single word still does
  * not fit, fitName.js steps the type down (data-tight) rather than cutting it,
- * and an ellipsis is the last resort — on a whole word, never inside one. */
+ * and an ellipsis is the last resort — on a whole word, never inside one.
+ *
+ * Every size here went up one step with the wider board (2026-09-20): a 114px
+ * tile can carry 15px where a 105px tile could only carry 14, and the owner's
+ * note was that tile text must GROW with the board rather than sit in the
+ * middle of it. fitName.js's BASE table is the same ladder and moved with it. */
 .tile .name {
   max-width: 100%;
   display: -webkit-box;
@@ -304,7 +360,7 @@
   overflow-wrap: normal;
   word-break: normal;
   hyphens: manual;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1.2;
   color: var(--ink);
@@ -313,29 +369,29 @@
 /* The two steps down. Each side has its own base size, so each has its own
  * pair; the two-attribute selectors outrank the plain ones whatever the order. */
 .tile[data-tight="1"] .name {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .tile[data-tight="2"] .name {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .tile[data-side="l"][data-tight="1"] .name,
 .tile[data-side="r"][data-tight="1"] .name {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .tile[data-side="l"][data-tight="2"] .name,
 .tile[data-side="r"][data-tight="2"] .name {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .tile[data-side="c"][data-tight="1"] .name {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .tile[data-side="c"][data-tight="2"] .name {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .tile[data-side="b"] .name,
@@ -345,19 +401,19 @@
   text-align: center;
 }
 
-/* "Ереван Молл", "Rainbox 6 Siege", "Community": on a 150px-wide side tile
- * these need two lines, and at 13px/1.15 two lines plus the price line still
- * clear the ~78px height with the 4px paddings. */
+/* "Ереван Молл", "Rainbox 6 Siege", "Community": on a 158px-wide side tile
+ * these need two lines, and at 14px/1.15 two lines plus the price line still
+ * clear the 80px height with the 4px paddings. */
 .tile[data-side="l"] .name,
 .tile[data-side="r"] .name {
   -webkit-line-clamp: 2;
   line-clamp: 2;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.15;
 }
 
 .tile .price {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--muted);
 }
@@ -367,7 +423,7 @@
 }
 
 .tile[data-side="c"] .name {
-  font-size: 16px;
+  font-size: 17px;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   text-align: center;
@@ -379,8 +435,8 @@
  * box's leading above the token, which pushed it 8px down into the mark. */
 .own {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  right: 8px;
   display: grid;
   line-height: 0;
 }
@@ -392,7 +448,12 @@
 
 .own .ownTok {
   font-size: 0;
-  box-shadow: 0 0 0 2px var(--surface);
+  /* Same hairline the pieces wear (.tokRing above) and for the same reason: an
+   * 18px dot in mummy slate or octopus blue on a dark tile is under 3:1 against
+   * --surface, so it needs an edge of its own or it simply is not there. */
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3px color-mix(in srgb, var(--ink) 30%, transparent);
 }
 
 /* Where the players standing on this tile come to rest. Always empty: the
@@ -405,10 +466,14 @@
  * The top row keeps the prototype's top-left slot: its colour band is along the
  * bottom edge, and a small disc tucked up beside the mark leaves the name and
  * price underneath completely clear. */
+/* 9px, not 6: the tile's corner radius is 10px, and a disc tucked 6px into the
+ * corner has its ring outside the shape the tile actually paints — which is
+ * what made a piece on the bottom row look like it was hanging under its tile.
+ * TvTokens' EDGE is the same number and says the same thing. */
 .here {
   position: absolute;
-  left: 6px;
-  bottom: 6px;
+  left: 9px;
+  bottom: 9px;
   width: 0;
   height: 28px;
   pointer-events: none;
@@ -416,7 +481,7 @@
 
 .tile[data-side="t"] .here {
   bottom: auto;
-  top: 6px;
+  top: 9px;
 }
 
 /* The tile in focus: the current player's, or the one being auctioned. */
@@ -476,11 +541,23 @@
   cursor: default;
 }
 
-/* Destructive: outlined, never a solid block of red on a 55" screen. */
-.controls .danger {
+/* The one button anybody presses DURING a game (Skip Turn). It is the only
+ * filled one in the row, so the hand goes to it without reading. */
+.controls .primary {
+  flex: 1 1 auto;
+  background: var(--ink);
+  color: var(--surface);
+}
+
+/* New Game and Host New Game: both restart something, neither is wanted
+ * mid-evening, so they read as outlines in --muted rather than competing with
+ * the button beside them. New Game used to be a red outline — the loudest
+ * thing in the header, one slip away from wiping the table. */
+.controls .quiet {
+  flex: 0 1 auto;
   background: transparent;
-  box-shadow: inset 0 0 0 2px var(--neg);
-  color: var(--neg);
+  box-shadow: inset 0 0 0 2px var(--line);
+  color: var(--muted);
 }
 
 /* Bootstrap's reboot has `button:focus { outline: 5px auto ... }` at (0,1,1),
@@ -511,8 +588,14 @@
     background: var(--neu-bg);
   }
 
-  .controls .danger:hover:not(:disabled) {
-    background: var(--neg-bg);
+  .controls .primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ink) 86%, var(--surface));
+    color: var(--surface);
+  }
+
+  .controls .quiet:hover:not(:disabled) {
+    background: var(--neu-bg);
+    color: var(--ink);
   }
 }
 
