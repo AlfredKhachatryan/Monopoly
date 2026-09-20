@@ -23,7 +23,7 @@ import { useNavigate } from "react-router-dom";
 import ShortUniqueId from "short-unique-id";
 
 import { gameAction, useFetch, useRealtimeUpdates } from "../Hooks/supabase";
-import { FIG_COLORS, readableOn } from "../Hooks/rules";
+import { FIG_COLORS, MAX_PLAYERS, readableOn } from "../Hooks/rules";
 import Figure from "../Client/Figure";
 import Tok from "../Client/Tok";
 import { m, AnimatePresence } from "../Components/Motion";
@@ -38,7 +38,11 @@ import s from "./login.module.css";
 // slate, the colour it uses for a space with no colour of its own.
 const NEUTRAL_TINT = "#5F6B7A";
 
-const MAX_PLAYERS = 4; // the server's own limit — "Room is full" past this
+// MAX_PLAYERS now comes from Hooks/rules.js (the server's own limit —
+// "Room is full" past this) rather than being restated here, exactly like
+// FIG_COLORS above: the room cap grew from 4 to 6 alongside the figure swap,
+// and this screen must never fall out of step with the number the server
+// actually enforces.
 
 function readStoredPlayer() {
   try {
@@ -62,7 +66,7 @@ export function Login() {
       "",
   })); //input state
 
-  const { data, error, loading } = useFetch(inp.uuid); //data from db
+  const { data, error, loading, refetch } = useFetch(inp.uuid); //data from db
 
   const [players, SetPlayers] = useState(data ? data.Players : null); //if there is data  from db then on init its equal to data.Players
 
@@ -87,7 +91,16 @@ export function Login() {
     getLogged(payload.new?.Players);
   };
 
-  useRealtimeUpdates(inp.uuid, handleInserts);
+  // `refetch` as the third argument: without it this screen only ever caught
+  // up on a figure someone else took via the live UPDATE stream, and a phone
+  // that was asleep, backgrounded, or briefly off Wi-Fi while someone else
+  // joined would keep showing that figure as free until the next Realtime
+  // event happened to arrive — which, in the one-person-picking-a-name
+  // window before a game starts, might be never. `useRealtimeConnection`
+  // (behind useRealtimeUpdates) already calls this on every resubscribe,
+  // tab-visible, online and heartbeat trigger; this is only the one line that
+  // wires it up.
+  useRealtimeUpdates(inp.uuid, handleInserts, refetch);
 
   useEffect(() => {
     SetPlayers(data?.Players);
@@ -192,21 +205,36 @@ export function Login() {
   // half by the panel on a short screen or behind the keyboard.
   const column = Math.min(vw, 440);
   const heroH = Math.min(200, Math.floor(heroBox));
-  // Four across the aura, dimmed, before a pick. They stand shoulder to
-  // shoulder with a slight overlap (a line-up, not four thumbnails), which is
-  // what lets them be half again as tall in the same width as four separated
-  // figures would be: 4w − 3·OVERLAP·w has to fit the column.
+  // All eight, dimmed, before a pick. They stand shoulder to shoulder with a
+  // slight overlap (a line-up, not eight thumbnails), which is what lets them
+  // be taller in the same width than eight separated figures would allow:
+  // N·w − (N−1)·OVERLAP·w has to fit the column. Driven by FIGS.length rather
+  // than a literal 4 — this used to assume exactly four figures and silently
+  // overflowed the column for the other four once the roster grew to eight
+  // (see the note on `.heroRow > * + *` in login.module.css about what an
+  // overflow here costs).
   const LINEUP_OVERLAP = 0.18;
+  const n = FIGS.length;
   const rowH = Math.min(
     heroH,
-    Math.floor((column - 40) / (4 - 3 * LINEUP_OVERLAP) / FIGURE_ASPECT),
+    Math.floor((column - 40) / (n - (n - 1) * LINEUP_OVERLAP) / FIGURE_ASPECT),
   );
   const rowGap = -Math.round(rowH * FIGURE_ASPECT * LINEUP_OVERLAP);
-  // Four cards across the panel. They give up height first on a short screen,
-  // because the fields and the button below them may not.
+  // Eight cards across the panel, four to a row, two rows — a rail would hide
+  // half the cast behind a swipe exactly when six people are racing to grab a
+  // figure before somebody else does, and everyone needs to see the whole
+  // roster at once. The per-card height is still the width one of four
+  // columns gets, run through the art's own aspect ratio (unchanged); the CAP
+  // that keeps a card from growing to that full aspect-driven height is
+  // roughly what a single row used to get, split between the two rows now
+  // spending it — a short phone gives up the SECOND row's excess before it
+  // gives up the fields or the button below.
+  const PICK_COLS = 4;
+  const pickCapOneRow = vh < 700 ? 62 : 72;
+  const pickCap = Math.round(pickCapOneRow * 0.6);
   const pickH = Math.max(
-    48,
-    Math.min(vh < 700 ? 62 : 72, Math.floor((column - 72) / 4 / FIGURE_ASPECT)),
+    40,
+    Math.min(pickCap, Math.floor((column - 72) / PICK_COLS / FIGURE_ASPECT)),
   );
 
   // Below this the hero is a sliver rather than a character; the wordmark

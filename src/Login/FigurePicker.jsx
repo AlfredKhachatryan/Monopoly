@@ -1,4 +1,7 @@
-// The four characters, as a real radiogroup.
+// The eight characters, as a real radiogroup, laid out four to a row over two
+// rows (login.module.css's `.picker`) so the whole roster is visible without
+// a swipe — six people racing to grab a figure need to see who else just took
+// one, not hunt for it off-screen.
 //
 // One card per figure, in the treatment the figure manual reserves for them:
 // the full figure on a stage washed with 14% of its own colour, its name

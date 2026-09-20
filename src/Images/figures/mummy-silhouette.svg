@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200" fill="currentColor" role="img" aria-labelledby="t"><title id="t">Mummy silhouette</title>
+  <rect x="60" y="148" width="16" height="32" rx="6"/><rect x="84" y="148" width="16" height="32" rx="6"/>
+  <ellipse cx="66" cy="182" rx="12" ry="5.5"/><ellipse cx="94" cy="182" rx="12" ry="5.5"/>
+  <path d="M52 108 L22 118 L24 132 L52 124 Z M108 108 L138 118 L136 132 L108 124 Z"/>
+  <circle cx="22" cy="125" r="7"/><circle cx="138" cy="125" r="7"/>
+  <path d="M50 104 C50 92 110 92 110 104 L108 156 L52 156 Z"/>
+  <path d="M104 50 C116 44 124 50 130 40" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="80" cy="66" r="30"/>
+</svg>
