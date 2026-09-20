@@ -23,15 +23,29 @@ function label(b) {
   return [b?.verb, b?.amount].filter(Boolean).join(" ");
 }
 
+// The doubles run, on the tray itself. One element per beat, all of them
+// `pointer-events: none` overlays that are SIBLINGS of the dice — never
+// ancestors — so nothing they do (a clip for the jail bars, an opacity for the
+// tint) can reach into the cube's 3D context and flatten it.
+const FX_TONE = { d1: "good", d2: "warn", d3: "bad", jail: "info" };
+
 export default function ActRow({
   dice,
   roll,
+  fx = null,
+  doubles = 0,
   diceLabel,
   primary,
   pass,
   alts = [],
-  diceSize = 44,
+  diceSize = 36,
 }) {
+  // 0-3 segments, shown for as long as the run is alive. The third only ever
+  // lights during the busted beat itself: the server resets the counter to 0 in
+  // the same batch as the jail event, so `fx.kind === "d3"` is what says "three"
+  // — the counter never gets there.
+  const heat = fx?.kind === "d3" ? 3 : Math.max(0, Math.min(3, doubles));
+
   return (
     <>
       {alts.length > 0 && (
@@ -44,22 +58,81 @@ export default function ActRow({
               onClick={b.onClick}
               disabled={b.disabled}
               aria-disabled={b.disabled || undefined}
+              // A disabled button that only shrugs ("Pay 50$", greyed out) reads
+              // as a bug on a phone with no hover/title to explain it. Same rule
+              // the primary button's own `.ph` hint already follows — say why.
+              aria-label={b.hint ? `${label(b)} — ${b.hint}` : undefined}
             >
               {label(b)}
+              {b.hint && <span className={s.altHint}>{b.hint}</span>}
             </button>
           ))}
         </div>
       )}
 
       <div className={s.act}>
-        <div className={s.dicebox}>
+        <div className={s.dicebox} data-heat={heat > 0 ? heat : undefined}>
           <RollDice
             values={dice}
             roll={roll}
+            fx={fx}
             size={diceSize}
-            gap={diceSize >= 44 ? 8 : 6}
+            gap={diceSize >= 36 ? 8 : 6}
             label={diceLabel}
           />
+
+          {/* The warm / danger wash over the tray. Opacity only. */}
+          {fx && (
+            <span
+              key={`tint-${fx.id}`}
+              className={s.dfxTint}
+              data-kind={fx.kind}
+              aria-hidden="true"
+            />
+          )}
+
+          {/* The ring that snaps out of the tray on every double. */}
+          {fx && fx.kind !== "jail" && (
+            <span
+              key={`ring-${fx.id}`}
+              className={s.dfxRing}
+              data-tone={FX_TONE[fx.kind]}
+              aria-hidden="true"
+            />
+          )}
+
+          {/* Bars drop over the tray when the dice have actually jailed you.
+              Its own rounded clip, and it is a SIBLING of the dice, so the
+              overflow never touches the cube's 3D context. */}
+          {fx && (fx.kind === "d3" || fx.kind === "jail") && (
+            <span
+              key={`bars-${fx.id}`}
+              className={s.dfxBars}
+              data-kind={fx.kind}
+              aria-hidden="true"
+            >
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+          )}
+
+          {/* How hot the run is, for as long as it lasts. Persistent, not a
+              beat: it is the thing you can look at to know where you stand. */}
+          {heat > 0 && (
+            <span
+              className={s.heat}
+              data-n={heat}
+              role="img"
+              aria-label={`${heat} of 3 doubles`}
+            >
+              <i className={heat >= 1 ? s.heatOn : undefined} />
+              <i className={heat >= 2 ? s.heatOn : undefined} />
+              <i className={heat >= 3 ? s.heatOn : undefined} />
+            </span>
+          )}
         </div>
 
         {primary && (

@@ -160,6 +160,19 @@
   white-space: nowrap;
 }
 
+/* ConnectionBadge (src/Components/ConnectionBadge.jsx): unpositioned by
+ * design, so the screen that mounts it decides where. Top-right, clear of
+ * the wordless top-left identity block and nowhere near the panel/roll
+ * button pinned to the floor of the screen. `z-index` above the aura's own
+ * content but below a sheet or the card overlay (20+), so a reconnect during
+ * either does not fight to be seen over them. */
+.connBadge {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  right: 12px;
+  z-index: 15;
+}
+
 /* ------------------------------------------------------------------- aura */
 
 /* Two blocks, not three: everything that identifies you (banners, name, cash,
@@ -254,6 +267,16 @@
   background: var(--pos-bg);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos) 35%, transparent);
   color: var(--pos);
+}
+
+/* The second-and-later doubles roll: a real warning ("one more sends you to
+ * Jail") but not yet a failure, so it borrows `--neg`'s colour — the thing it
+ * warns about IS bad — without `role="alert"`, which `.bnErr` reserves for
+ * something that actually went wrong. */
+.bnWarn {
+  background: var(--neg-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neg) 35%, transparent);
+  color: var(--neg);
 }
 
 .dSplit {
@@ -418,10 +441,24 @@
   }
 }
 
+/* `flex-wrap` + `max-width: 100%` matter once a room holds more than four:
+ * `.dRight` stretches to its grid column (it is a grid item of `.dSplit`
+ * with `min-width: 0`), but `.order` itself is only aligned to that column's
+ * end (`justify-items: end` on `.dRight`), not stretched to its width — so
+ * without a width cap of its own it grew past the column at six players and
+ * overlapped the name/cash on the left. `.aura` has `overflow: hidden`
+ * (needed for the money-transfer layer), which would have clipped that
+ * overflow into invisible tokens rather than an obvious bug, exactly the
+ * "silently drops a player" failure mode this was built to avoid. Wrapping
+ * onto a second line costs nothing today (four still fit on one line) and
+ * keeps every token on screen at six. */
 .order {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 100%;
 }
 
 .order li {
@@ -570,8 +607,25 @@
   box-shadow: 0 0 0 2px #fff;
 }
 
+/* The wrapper the hop keyframes play on — and the reason your token used to sit
+ * off-centre in its ring.
+ *
+ * It was `display: block` around <Tok>, which is `display: inline-grid`. An
+ * inline-level box sits on its line's BASELINE, so this element was not 26px
+ * tall like the token inside it: it was 32.19px, the token plus the line box's
+ * descender space underneath. `.pdCur` then centred THAT, which put the token's
+ * own centre 3.10px above the ring's — measured, at both 360 and 390 — and the
+ * cell-colour disc behind it showed as a crescent along the bottom edge only.
+ * Three things that have to be concentric (ink ring, colour disc, token) were
+ * not, which is exactly what the owner saw on a real phone.
+ *
+ * Grid + `line-height: 0` fixes it twice over: the token is blockified into a
+ * grid item so no baseline is involved at all, and there is no line box left to
+ * leave a descender even if one were. */
 .hop {
-  display: block;
+  display: grid;
+  place-items: center;
+  line-height: 0;
   animation: hop 300ms ease-out;
 }
 
@@ -803,6 +857,19 @@
   text-transform: uppercase;
 }
 
+/* The reason a disabled alt (Pay, when short of cash) can't be pressed —
+ * same idea as `.ph` under the primary button's verb, one size down since
+ * two of these sit side by side in a narrower column. */
+.altHint {
+  display: block;
+  margin-top: 1px;
+  font-family: var(--f-body);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* Muted but legible, matching .primary:disabled and the sheet's .rowBtn:disabled:
  * an explicit --muted text colour and a --line border, not a stacked opacity
  * that faded the label and its outline toward the same value. */
@@ -818,14 +885,241 @@
   min-width: 0;
 }
 
+/* The dice tray.
+ *
+ * Darker than the plain --sunk it used to be. The dice are near-white in both
+ * themes and --sunk in light mode is #f1f3f6, so a white cube on it was a white
+ * shape on an almost-white field held apart by one hairline; mixing a little
+ * --ink in gives the dice something to sit ON. It is also the surface the
+ * doubles run heats up, which needs somewhere to start from.
+ *
+ * `position: relative` because every doubles overlay below hangs off it —
+ * always as a SIBLING of the dice, never an ancestor, so no clip, opacity or
+ * filter of theirs is ever between the cube's `perspective` and its faces. */
 .dicebox {
+  position: relative;
   display: flex;
   align-items: center;
   flex: none;
   height: 72px;
   padding: 0 12px;
   border-radius: 24px;
-  background: var(--sunk);
+  background: color-mix(in srgb, var(--sunk) 86%, var(--ink));
+  transition: background-color 240ms ease-out;
+}
+
+/* ---- the doubles run ---------------------------------------------------
+ *
+ * Three beats, each one plainly more than the last, each keyed by `fx.id` in
+ * ActRow so it mounts fresh and plays exactly once per REAL event — a resync or
+ * a reload hands over the same id and nothing moves.
+ *
+ * Everything here animates transform and opacity only, everything is
+ * `pointer-events: none`, and everything is capped at 1.5s. None of it blocks:
+ * the button underneath is live the moment the dice are down. */
+
+.dfxTint,
+.dfxRing,
+.dfxBars,
+.heat {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* The wash. Warm on the second, red on the third. */
+.dfxTint {
+  inset: 0;
+  border-radius: 24px;
+  opacity: 0;
+}
+
+.dfxTint[data-kind="d1"] {
+  background: var(--pos);
+  animation: dfxWash 620ms ease-out both;
+}
+
+.dfxTint[data-kind="d2"] {
+  background: var(--warn);
+  animation: dfxWash 900ms ease-out both;
+}
+
+.dfxTint[data-kind="d3"] {
+  background: var(--neg);
+  animation: dfxWashHard 1200ms ease-out both;
+}
+
+.dfxTint[data-kind="jail"] {
+  background: var(--neutral);
+  animation: dfxWash 520ms ease-out both;
+}
+
+@keyframes dfxWash {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes dfxWashHard {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.42;
+  }
+  55% {
+    opacity: 0.26;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The ring. It starts just inside the tray and snaps outwards. */
+.dfxRing {
+  inset: 0;
+  border-radius: 24px;
+  border: 2px solid currentColor;
+  opacity: 0;
+  animation: dfxRing 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dfxRing[data-tone="good"] {
+  color: var(--pos);
+}
+
+.dfxRing[data-tone="warn"] {
+  color: var(--warn);
+  border-width: 2.5px;
+  animation-duration: 820ms;
+}
+
+.dfxRing[data-tone="bad"] {
+  color: var(--neg);
+  border-width: 3px;
+  animation-duration: 900ms;
+}
+
+@keyframes dfxRing {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.84);
+  }
+  70% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+/* Bars, dropping. Its own rounded clip — and because it is a sibling of the
+ * dice and not an ancestor, that clip cannot flatten the cubes. */
+.dfxBars {
+  inset: 0;
+  border-radius: 24px;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: stretch;
+  animation: dfxBarsOut 1300ms ease-in-out both;
+}
+
+.dfxBars[data-kind="jail"] {
+  animation-duration: 900ms;
+  opacity: 0.7;
+}
+
+.dfxBars i {
+  display: block;
+  width: 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 74%, transparent);
+  transform: translate3d(0, -110%, 0);
+  animation: dfxBarDrop 520ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+
+.dfxBars i:nth-child(2) {
+  animation-delay: 40ms;
+}
+.dfxBars i:nth-child(3) {
+  animation-delay: 80ms;
+}
+.dfxBars i:nth-child(4) {
+  animation-delay: 30ms;
+}
+.dfxBars i:nth-child(5) {
+  animation-delay: 70ms;
+}
+
+@keyframes dfxBarDrop {
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes dfxBarsOut {
+  0%,
+  68% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The heat indicator: how far into the run you are, for as long as it lasts.
+ * Not a beat — this one stays, so a player who looked away still knows that the
+ * next double is the one that costs them. */
+.heat {
+  left: 0;
+  right: 0;
+  bottom: 5px;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.heat i {
+  display: block;
+  width: 11px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 20%, transparent);
+  transition: background-color 200ms ease-out;
+}
+
+.heat[data-n="1"] .heatOn {
+  background: var(--pos);
+}
+
+.heat[data-n="2"] .heatOn {
+  background: var(--warn);
+}
+
+.heat[data-n="3"] .heatOn {
+  background: var(--neg);
+}
+
+/* Reduced motion: the information stays (the heat pips, the colour of the
+ * wash), the movement goes. */
+@media (prefers-reduced-motion: reduce) {
+  .dfxRing,
+  .dfxBars,
+  .dfxBars i {
+    animation: none;
+    opacity: 0;
+  }
+
+  .dfxTint {
+    animation-duration: 900ms;
+  }
 }
 
 /* The dice shrink when Buy + Pass both need room. The size itself is handed to
@@ -847,13 +1141,17 @@
   padding: 0 10px;
   border-radius: 24px;
   overflow: hidden;
-  background: var(--tint);
-  color: var(--on-tint);
+  /* --cta, not --tint. ClientScreen sets them to the same value everywhere
+   * except the three neutral-slate spaces (Jail, Go To Jail, Free Parking),
+   * where the tile colour is a grey that made a live button look disabled.
+   * See the note beside `cta` in ClientScreen.jsx. */
+  background: var(--cta, var(--tint));
+  color: var(--on-cta, var(--on-tint));
   font-family: var(--f-display);
   font-size: 26px;
   font-weight: 700;
   text-transform: uppercase;
-  box-shadow: 0 16px 28px -18px color-mix(in srgb, var(--tint) 80%, #000);
+  box-shadow: 0 16px 28px -18px color-mix(in srgb, var(--cta, var(--tint)) 80%, #000);
 }
 
 /* Verb and amount share a baseline while they fit, and the amount drops to a
@@ -908,9 +1206,9 @@
  * (it is not refusing anything — it is working), and `:disabled` above is what
  * actually stops a second tap. */
 .app[data-state="rolling"] .primary:disabled {
-  background: var(--tint);
-  color: var(--on-tint);
-  box-shadow: 0 16px 28px -18px color-mix(in srgb, var(--tint) 80%, #000);
+  background: var(--cta, var(--tint));
+  color: var(--on-cta, var(--on-tint));
+  box-shadow: 0 16px 28px -18px color-mix(in srgb, var(--cta, var(--tint)) 80%, #000);
 }
 
 .ell {
@@ -981,11 +1279,17 @@
 }
 
 /* A button you cannot press must not look pressable: an unaffordable
- * "BUY 320$" was still wearing the full tint. */
+ * "BUY 320$" was still wearing the full tint.
+ *
+ * The inset outline is the other half of the neutral-tint fix. An active
+ * primary is now always a SATURATED FILL with a drop shadow, and a refused one
+ * is always a flat plate with a line around it — two different objects, not two
+ * shades of the same one, so the difference survives any tile colour and any
+ * amount of colour blindness. */
 .primary:disabled {
   background: var(--sunk);
   color: var(--muted);
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1.5px var(--line);
 }
 
 .app[data-state="decide"] .primary {
@@ -1164,8 +1468,18 @@
   }
 }
 
+/* Four bidders (today's ceiling) share this row evenly with no wrap — `flex:
+ * 1 1 0` divides the width equally and `min-width: 0` lets each one shrink
+ * below its content instead of overflowing. Six needed a floor: at `1 1 0`
+ * with no minimum, six chips compressed to ~50px each, which read as a row
+ * of bare tokens with an unreadable sliver of bid amount next to them. The
+ * `min-width: 64px` below stops that compression and, combined with
+ * `.bidders`'s `flex-wrap`, spills the 5th/6th chip onto a second line
+ * instead — the room a bid amount needs to actually read, not a smaller copy
+ * of an already-tight chip. Four still fit on one line unchanged. */
 .bidders {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
 }
@@ -1175,7 +1489,7 @@
   align-items: center;
   gap: 6px;
   flex: 1 1 0;
-  min-width: 0;
+  min-width: 64px;
   height: 32px;
   padding: 0 8px 0 4px;
   border-radius: 999px;
