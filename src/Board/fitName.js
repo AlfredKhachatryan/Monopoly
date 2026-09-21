@@ -19,13 +19,18 @@
 // row tiles ~112 × 144, flanks 158 × 80):
 //   rows    ~112px tile − 4px padding × 2
 //   corner   158px tile − 4px padding × 2
-//   flanks   158px tile − 12 − 8 padding − 36px mark − 6px gap − 20px kept
-//            free, always, for the owner dot in the corner above
+//   flanks   158px tile − 12 − 8 padding − 36px mark − 6px gap
+//
+// 76 → 96 on the flanks (2026-09-20): the 20px that used to be held free at the
+// end of the text column — first for the owner dot, then for the owner name tag
+// — is gone with the tag itself, because ownership is now the tile's colour
+// band and nothing is pinned into that strip any more. See the note where that
+// padding used to be, in tv.module.css.
 //
 // NOTHING here depends on who is standing on the tile or who owns it: a tile
 // must look identical whether or not there are pieces on it, so the fit is a
 // function of the name and the side of the board, and only of those.
-const AVAIL = { b: 104, t: 104, c: 150, l: 76, r: 76 };
+const AVAIL = { b: 104, t: 104, c: 150, l: 96, r: 96 };
 // The base font size per side, matching .name in tv.module.css.
 const BASE = { b: 15, t: 15, c: 17, l: 14, r: 14 };
 const STEPS = 2; // 15 → 14 → 13 (17 → 16 → 15 on a corner)

@@ -6,9 +6,11 @@ import { fmt } from "../format";
 import { groupByColor } from "../../Hooks/groupByColor";
 import { GROUP_NAMES, KIND_LABEL, Pips, hasCyrillic } from "../boardDisplay";
 import {
+  FARM_INCOME_STEP,
   HOTEL,
   canBuild,
   cellKind,
+  farmIncome,
   housePrice,
   ownedBy,
   ownsSet,
@@ -26,7 +28,14 @@ const SHORT_REASON = {
 
 // Your deeds, grouped by colour set. Opened by tapping a card in the hand;
 // `focus` is the card that was tapped, which gets a ring and scrolls into view.
-export default function MineSheet({ open, onClose, board, me, focus, onBuild, busy }) {
+//
+// `players` is not decoration: rentFor()'s third argument is the players array
+// (it used to be `diceSum`, which nothing needs any more), and a property whose
+// owner is currently in jail collects NOTHING — not for the owner, not for the
+// pot, not for the bank. Without the array this sheet promised its owner a rent
+// the server was never going to charge, which is the one number in here that
+// has to be true.
+export default function MineSheet({ open, onClose, board, me, players, focus, onBuild, busy }) {
   const mine = me ? ownedBy(board, me.figure) : [];
   const groups = groupByColor(mine);
   const totalPaid = mine.reduce((sum, c) => sum + (priceOf(c) || 0), 0);
@@ -65,7 +74,9 @@ export default function MineSheet({ open, onClose, board, me, focus, onBuild, bu
         <p className={sh.empty}>
           Nothing here yet.
           <br />
-          Land on a free street, railroad or utility and buy it.
+          {/* "utility" is gone with the two cells it named: 13 is the Casino
+              (nobody can own it) and 28 is the Weed Farm (anybody can). */}
+          Land on a free street, railroad or the farm and buy it.
         </p>
       ) : (
         <>
@@ -84,16 +95,21 @@ export default function MineSheet({ open, onClose, board, me, focus, onBuild, bu
                     <span>{fmt(housePrice(cells[0].id))} per house</span>
                   </div>
                 ) : (
-                  <div className={sh.groupLabel}>Railroads &amp; utilities</div>
+                  /* Everything ownable that carries no colour set. The
+                     utilities are gone; what shares this bucket with the four
+                     railroads now is the Weed Farm. */
+                  <div className={sh.groupLabel}>Railroads &amp; the farm</div>
                 )}
 
                 <ul className={sh.list}>
                   {cells.map((cell) => {
                     const kind = cellKind(cell);
                     const street = kind === "street";
+                    const farm = kind === "farm";
                     const houses = cell.houses || 0;
                     const build = street ? canBuild(board, me.figure, cell.id, me.money) : null;
-                    const rent = rentFor(board, cell.id);
+                    // `players`, not a dice sum: 0 whenever I am in jail.
+                    const rent = rentFor(board, cell.id, players);
 
                     let status = null;
                     if (street) {
@@ -123,8 +139,19 @@ export default function MineSheet({ open, onClose, board, me, focus, onBuild, bu
                     // where it used to get truncated. The reason exists so a
                     // phone user can read *why* the button is disabled, so
                     // line 2 wraps instead of ellipsising it.
+                    //
+                    // The Weed Farm is the one deed whose number is not a
+                    // rent: rentFor() answers 0 for it on purpose (a visitor
+                    // pays nothing), and the figure worth showing is the crop
+                    // waiting for its owner — the same word and the same
+                    // number the TV tile shows. So it prints the crop and
+                    // says, on line 2, the only two things that move it.
                     const line1 = street ? status : KIND_LABEL[kind] || kind;
-                    const line2 = preview ? `Rent ${preview}` : disabledReason || null;
+                    const line2 = farm
+                      ? `Crop · land on it yourself to harvest · +${fmt(FARM_INCOME_STEP)} per visitor`
+                      : preview
+                        ? `Rent ${preview}`
+                        : disabledReason || null;
 
                     const nextIsHotel = houses >= HOTEL || (build?.ok ? build.hotel : houses === HOTEL - 1);
                     const priceShown = build?.ok ? build.price : housePrice(cell.id);
@@ -156,7 +183,7 @@ export default function MineSheet({ open, onClose, board, me, focus, onBuild, bu
                           </button>
                         ) : (
                           <div className={sh.rowNum}>
-                            <strong>{fmt(rent)}</strong>
+                            <strong>{fmt(farm ? farmIncome(cell) : rent)}</strong>
                           </div>
                         )}
                       </li>

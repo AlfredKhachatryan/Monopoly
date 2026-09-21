@@ -19,21 +19,27 @@
 // actually did something while this screen was watching.
 //
 // ---------------------------------------------------------------------------
-// Overlay priority: game over > auction > card > trade
+// Overlay priority: game over > auction > diplomacy > card > trade
 // ---------------------------------------------------------------------------
 // One at a time, never two. A finished game outranks everything; a running
-// auction outranks a card because the auction is what the room is waiting on;
-// a card outranks a trade because it is the shorter of the two.
+// auction outranks everything else because the auction is what the room is
+// waiting on; a diplomacy moment (a war declared, a peace signed, an alliance
+// forming or breaking, a backstab) outranks a card because it is the rarer
+// and heavier of the two — and unlike a card it is never behind a roll (every
+// diplomacy verb is its own turn action, so there is no dice tumble to wait
+// out); a card outranks a trade because it is the shorter of the two.
 
 import { useEffect, useRef, useState } from "react";
-import { Dices, Gift, Sparkles, Trophy } from "lucide-react";
-import { JAIL_MAX_TURNS, accentFor, playerByFig, readableOn } from "../Hooks/rules";
+import { Dices, Gift, Handshake, Sparkles, Trophy } from "lucide-react";
+import { JAIL_MAX_TURNS, accentFor, nameOfFig, playerByFig, readableOn } from "../Hooks/rules";
+import { TRAITOR_ROUNDS, WAR_ROUNDS } from "../Hooks/diplomacy";
 import { fmt, fmtSigned, fmtText } from "../Client/format";
 import { hasCyrillic } from "../Client/boardDisplay";
 import Tok from "../Client/Tok";
 import RollDice from "../Client/RollDice";
 import { REVEAL } from "../Client/useReveal";
 import TvAuction from "./TvAuction";
+import TvDiplo from "./TvDiplo";
 import TvFigure from "./TvFigure";
 import TvTrade from "./TvTrade";
 import { useTvFeed, useTvReduce } from "./TvFeed";
@@ -42,6 +48,20 @@ import c from "./tvCenter.module.css";
 const CARD_MS = 4500;
 const TRADE_END_MS = 2800;
 const TRADE_DONE = ["accepted", "declined", "cancelled", "expired"];
+// Diplomacy moments carry two names (and, for a war, up to four), so they get
+// a beat longer than a card's 4.5s to actually be read from a sofa.
+const DIPLO_MS = 5500;
+
+// Why an alliance dissolved without anyone choosing it (spec §1's three
+// forced-dissolve reasons) — `ally break` (the voluntary kind) already says
+// who ended it, in a full sentence, at the point it fires.
+const DISSOLVE_REASON = {
+  upkeep: "could not pay the round's upkeep",
+  bankrupt: "a player went bankrupt",
+  left: "a player left the game",
+};
+// A war can also just run its 5 rounds out with nobody asking for peace.
+const WAR_END_REASON = { bankrupt: "a principal went bankrupt" };
 
 // ---------------------------------------------------------------------------
 // Doubles, and the wall at the end of them
@@ -133,8 +153,20 @@ function TvCard({ card, players }) {
   );
 }
 
+// Shared win (spec §1): the game is over when every non-bankrupt player is
+// one player or one allied PAIR, so `game.winners` may carry one figure or
+// two. `game.winner` — the existing single-winner field — stays populated
+// with the first of them for backward compatibility, so it is only the
+// fallback here, never the primary read.
+function winnersOf(game) {
+  if (Array.isArray(game?.winners) && game.winners.length > 0) return game.winners;
+  return game?.winner ? [game.winner] : [];
+}
+
 function TvOver({ players, game }) {
-  const winner = game?.winner ? playerByFig(players, game.winner) : null;
+  const winners = winnersOf(game);
+  const winnerPlayers = winners.map((fig) => playerByFig(players, fig)).filter(Boolean);
+  const shared = winnerPlayers.length >= 2;
   // Standings: everyone still in, richest first; the bankrupt sit below them in
   // the order they went out (their money is 0 and says nothing).
   const standings = [...(players || [])].sort(
@@ -147,24 +179,38 @@ function TvOver({ players, game }) {
   // Six standings rows at the full size do not fit the board centre; from five
   // up the panel tightens its rows and trims the figure. See .over[data-many].
   const many = standings.length >= 5;
+  const title = shared
+    ? `${winnerPlayers.map((p) => p.name).join(" & ")} win`
+    : winnerPlayers[0]
+      ? `${winnerPlayers[0].name} wins`
+      : "Nobody left";
 
   return (
     <div className={c.over} data-many={many ? "" : undefined}>
       <div className={c.overHead}>
-        {/* The one hero moment on this board, so the winner gets the full
+        {/* The one hero moment on this board, so a winner gets the full
             figure rather than a token — and keeps the art's own ground shadow,
             which is what makes it stand on the panel instead of float over
-            it. */}
-        {winner && (
-          <span className={c.overFig}>
-            <TvFigure player={winner} height={many ? 150 : 180} shadow />
+            it. A shared win is two figures at once, so each gives up some of
+            the single winner's height to still fit the 700px panel. */}
+        {shared ? (
+          <span className={c.overFigPair}>
+            <TvFigure player={winnerPlayers[0]} height={many ? 110 : 130} shadow />
+            <Handshake size={28} className={c.overFigLink} aria-hidden="true" />
+            <TvFigure player={winnerPlayers[1]} height={many ? 110 : 130} shadow />
           </span>
+        ) : (
+          winnerPlayers[0] && (
+            <span className={c.overFig}>
+              <TvFigure player={winnerPlayers[0]} height={many ? 150 : 180} shadow />
+            </span>
+          )
         )}
         <div className={c.overWho}>
           <span className={c.overCup}>
             <Trophy size={44} aria-hidden="true" />
           </span>
-          <strong className={c.overTitle}>{winner ? `${winner.name} wins` : "Nobody left"}</strong>
+          <strong className={c.overTitle}>{title}</strong>
         </div>
       </div>
       <span className={c.overSub}>Final standings</span>
@@ -173,7 +219,7 @@ function TvOver({ players, game }) {
           <li
             key={p.playerId ?? p.figure ?? i}
             className={`${c.overRow} ${p.bankrupt ? c.isOut : ""} ${
-              p.figure === game?.winner ? c.isWin : ""
+              winners.includes(p.figure) ? c.isWin : ""
             }`}
           >
             <span className={c.overRank}>{i + 1}</span>
@@ -213,9 +259,23 @@ export default function TvCenter({
   const [everRolled, setEverRolled] = useState(false);
   // { fig, reason } for as long as the going-to-jail beat owns the centre.
   const [bust, setBust] = useState(null);
+  // { kind, title, sub, chip, tone, left, right } for as long as a war/
+  // alliance/backstab moment owns the centre. See TvDiplo.jsx for the shape.
+  const [diplo, setDiplo] = useState(null);
   const cardTimer = useRef(null);
   const tradeTimer = useRef(null);
   const bustTimer = useRef(null);
+  const diploTimer = useRef(null);
+  // A war's declare event carries its own sides (sideA/sideB) straight from
+  // the spec, so the banner needs no lookup there — but the SPEC says the
+  // server deletes an ended war from `game.wars` in the same action that ends
+  // it (diplomacy.js's header comment), so by the time a `peace` or `expire`/
+  // `end` event arrives the war it is about is already gone from the state
+  // this component reads. Remembered here instead, keyed by the war's id, for
+  // exactly as long as the war is live in THIS session — a peace/expiry on a
+  // war declared before the TV loaded (or before a refresh) still shows the
+  // banner, just without the two sides, rather than reading a stale cache.
+  const warCache = useRef({});
 
   // One effect per batch. Whatever was transient is dropped first — "the next
   // action" is precisely what ends a card, and a stale "Deal accepted" sitting
@@ -226,9 +286,11 @@ export default function TvCenter({
     clearTimeout(cardTimer.current);
     clearTimeout(tradeTimer.current);
     clearTimeout(bustTimer.current);
+    clearTimeout(diploTimer.current);
     setCard(null);
     setTradeEnd(null);
     setBust(null);
+    setDiplo(null);
 
     const rolled = events.some((e) => e?.type === "roll");
     if (rolled) setEverRolled(true);
@@ -280,6 +342,115 @@ export default function TvCenter({
       });
       tradeTimer.current = setTimeout(() => setTradeEnd(null), TRADE_END_MS);
     }
+
+    // Diplomacy moments (spec §4 of the brief). None of these ever share a
+    // batch with a roll — every verb here is its own turn action ("own turn",
+    // "any time"), never bundled with `roll` the way a card is — so there is
+    // no dice tumble to wait out and the banner shows the instant the batch
+    // does, exactly like the jail beat above. At most one fires per batch in
+    // practice (one game_action, one set of events), so the order below is
+    // only a tie-break, picked rarest/heaviest first.
+    const warDeclare = events.find((e) => e?.type === "war" && e?.stage === "declare");
+    const warPeace = events.find((e) => e?.type === "war" && e?.stage === "peace");
+    const warEnd = events.find(
+      (e) => e?.type === "war" && (e?.stage === "expire" || e?.stage === "end"),
+    );
+    const allyForm = events.find((e) => e?.type === "ally" && e?.stage === "form");
+    const allyBreak = events.find((e) => e?.type === "ally" && e?.stage === "break");
+    const allyDissolve = events.find((e) => e?.type === "ally" && e?.stage === "dissolve");
+    const backstab = events.find((e) => e?.type === "backstab");
+
+    let payload = null;
+    if (warDeclare) {
+      // The event already carries both whole sides (dragged-in allies
+      // included), straight from the spec — no lookup needed. Cached anyway,
+      // keyed by the state's own war id, so a LATER peace/expiry on this same
+      // war can still show who was on it (see warCache above).
+      const rec = (game?.wars || []).find(
+        (w) => w?.declarer === warDeclare.declarer && w?.target === warDeclare.target,
+      );
+      if (rec?.id != null) {
+        warCache.current[rec.id] = { a: warDeclare.sideA, b: warDeclare.sideB };
+      }
+      payload = {
+        kind: "warDeclare",
+        title: "War declared",
+        sub: `${nameOfFig(players, warDeclare.declarer)} vs ${nameOfFig(players, warDeclare.target)}`,
+        chip: `Double rent · ${WAR_ROUNDS} rounds`,
+        tone: "neg",
+        left: warDeclare.sideA,
+        right: warDeclare.sideB,
+      };
+    } else if (warPeace) {
+      const cached = warCache.current[warPeace.warId];
+      delete warCache.current[warPeace.warId];
+      const amount = Number(warPeace.amount) || 0;
+      payload = {
+        kind: "peace",
+        title: "Peace signed",
+        sub: null,
+        chip: amount > 0 ? `${fmt(amount)} paid` : "No payment",
+        tone: "pos",
+        left: cached?.a ?? [],
+        right: cached?.b ?? [],
+      };
+    } else if (warEnd) {
+      const cached = warCache.current[warEnd.warId];
+      delete warCache.current[warEnd.warId];
+      payload = {
+        kind: "warEnd",
+        title: warEnd.reason === "bankrupt" ? "War ends" : "War expires",
+        sub: WAR_END_REASON[warEnd.reason] ?? null,
+        chip: null,
+        tone: null,
+        left: cached?.a ?? [],
+        right: cached?.b ?? [],
+      };
+    } else if (allyForm) {
+      payload = {
+        kind: "allyForm",
+        title: "Alliance formed",
+        sub: null,
+        chip: "No rent between allies",
+        tone: "pos",
+        left: [allyForm.a],
+        right: [allyForm.b],
+      };
+    } else if (allyBreak) {
+      payload = {
+        kind: "allyBreak",
+        title: "Alliance broken",
+        sub: `${nameOfFig(players, allyBreak.figure)} ended it`,
+        chip: null,
+        tone: null,
+        left: [allyBreak.figure],
+        right: [allyBreak.other],
+      };
+    } else if (allyDissolve) {
+      payload = {
+        kind: "allyDissolve",
+        title: "Alliance dissolved",
+        sub: DISSOLVE_REASON[allyDissolve.reason] ?? null,
+        chip: null,
+        tone: null,
+        left: [allyDissolve.a],
+        right: [allyDissolve.b],
+      };
+    } else if (backstab) {
+      payload = {
+        kind: "backstab",
+        title: "Backstab!",
+        sub: `${nameOfFig(players, backstab.figure)} is branded TRAITOR — +25% rent, ${TRAITOR_ROUNDS} rounds`,
+        chip: `${fmt(backstab.amount)} taken`,
+        tone: "neg",
+        left: [backstab.figure],
+        right: [backstab.victim],
+      };
+    }
+    if (payload) {
+      setDiplo(payload);
+      diploTimer.current = setTimeout(() => setDiplo(null), DIPLO_MS);
+    }
   }, [feed]);
 
   useEffect(
@@ -287,16 +458,24 @@ export default function TvCenter({
       clearTimeout(cardTimer.current);
       clearTimeout(tradeTimer.current);
       clearTimeout(bustTimer.current);
+      clearTimeout(diploTimer.current);
     },
     [],
   );
 
   const list = players || [];
   const empty = list.length === 0;
-  const over = game?.phase === "over" || !!game?.winner;
+  const winners = winnersOf(game);
+  const over = game?.phase === "over" || !!game?.winner || winners.length > 0;
   const auction = game?.auction || null;
   const trade = game?.trade || null;
+  // Kept for the single-winner sentences below (turn/sub text, the aria-live
+  // announcement): a shared win's own two-name sentence is built where it is
+  // used, from `winners`/TvOver, rather than forcing a plural in here too.
   const winner = game?.winner ? playerByFig(list, game.winner) : null;
+  const sharedWinNames = winners.length >= 2
+    ? winners.map((fig) => nameOfFig(list, fig)).join(" & ")
+    : null;
   const cellName = (id) => board?.[id]?.header ?? "the board";
   const doubles = Number(game?.doubles) || 0;
 
@@ -334,7 +513,7 @@ export default function TvCenter({
       subText = `${cellName(auction.cell)} is up for bids`;
     } else if (over) {
       turnText = "Game over";
-      subText = winner ? `${winner.name} wins` : "Nobody left";
+      subText = sharedWinNames ? `${sharedWinNames} win` : winner ? `${winner.name} wins` : "Nobody left";
     } else if (current) {
       turnText = `${current.name}’s turn`;
       subText = current.inJail
@@ -354,13 +533,20 @@ export default function TvCenter({
   let alt = "";
   if (over) {
     overlay = <TvOver players={list} game={game} />;
-    alt = winner ? `Game over. ${winner.name} wins.` : "Game over. Nobody left.";
+    alt = sharedWinNames
+      ? `Game over. ${sharedWinNames} win.`
+      : winner
+        ? `Game over. ${winner.name} wins.`
+        : "Game over. Nobody left.";
   } else if (auction) {
     overlay = <TvAuction auction={auction} board={board} players={list} />;
     const lead = auction.leader ? playerByFig(list, auction.leader) : null;
     alt = `Auction for ${cellName(auction.cell)}. ${
       lead ? `High bid ${fmt(auction.bid)} by ${lead.name}.` : "No bids yet."
     }`;
+  } else if (diplo) {
+    overlay = <TvDiplo diplo={diplo} players={list} />;
+    alt = [diplo.title, diplo.sub, diplo.chip].filter(Boolean).join(". ");
   } else if (card) {
     overlay = <TvCard card={card} players={list} />;
     const drew = playerByFig(list, card.figure);

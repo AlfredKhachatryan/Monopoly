@@ -33,6 +33,7 @@ import { accentFor, nameOfFig, readableOn } from "../Hooks/rules";
 import { useReveal, REVEAL } from "../Client/useReveal";
 import { announceBatch } from "../Client/transfers";
 import ConnectionBadge from "../Components/ConnectionBadge";
+import ThemeControl from "../Components/ThemeControl";
 import BoardGrid from "./BoardGrid";
 import RoomGate from "./RoomGate";
 import TvControls from "./TvControls";
@@ -333,6 +334,13 @@ function Main() {
       ref={rootRef}
       className={s.root}
       data-client=""
+      /* The board reads the [data-client] token vocabulary like the phone does,
+         but it is not the phone: it is a shared screen across a room, so it is
+         PINNED dark rather than following the operating system. Everything that
+         makes that true lives in the [data-tv] block in styles/tokens.css — the
+         palette, the color-scheme and the one selector that still lets the
+         ThemeControl below force light. This attribute is the whole hook. */
+      data-tv=""
       style={{ "--tint": tint, "--on-tint": readableOn(tint) }}
     >
       <div
@@ -391,6 +399,17 @@ function Main() {
           game={shownGame ?? {}}
         />
       </div>
+      {/* Light / Dark / System for the room (spec §10). A sibling of .screen,
+          not a child of it: the canvas is a fixed 1920x1080 box under a scale
+          transform, so anything inside it shrinks with the board on a small
+          window, and every square of it is already spoken for by the grid or
+          the right column. Out here it keeps its real size at any scale and
+          sits in the letterbox, faded back until somebody reaches for it.
+          It shares the store and the localStorage key with the phone's control
+          — the same browser, so a TV that is also somebody's phone agrees with
+          itself — but the TV and the phones are different browsers and each
+          answers this question for itself. */}
+      <ThemeControl variant="tv" label="Board theme" />
     </div>
   );
 }

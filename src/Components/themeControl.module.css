@@ -1,0 +1,125 @@
+/* The Light / Dark / System segmented control.
+ *
+ * SPECIFICITY, the same fight tv.module.css and sheet.module.css both document:
+ *   - styles/main.css        `* { padding:0; margin:0; color: var(--text) }`
+ *                            lands on every button DIRECTLY, so inheritance is
+ *                            no help. tokens.css undoes the colour inside
+ *                            [data-client] with `[data-client] *` (0,1,0).
+ *   - src/CDN/bootstrap.min.css   its own button reboot, plus `button:focus`
+ *                            at (0,1,1).
+ *   - src/Client/sheet.module.css   `.sheet :where(button)` — (0,1,0), because
+ *                            :where() contributes nothing — which strips
+ *                            background, border and padding off every button
+ *                            inside the sheet.
+ *
+ * Module load order between two CSS modules is the bundler's business, so an
+ * equal-specificity rule here would win or lose by accident. Every rule below
+ * is therefore written with TWO classes (`.seg .opt`, never `.opt`), which is
+ * (0,2,0) and beats all three of the above from any source order; the focus
+ * ring is (0,2,1) and beats bootstrap's `button:focus`.
+ *
+ * Every colour is a token, so the control themes itself along with everything
+ * else — including, pleasingly, while you are using it to change the theme.
+ */
+
+.seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--sunk);
+  border: 1px solid var(--line);
+}
+
+.seg .opt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background var(--t-fast) ease-out,
+    color var(--t-fast) ease-out;
+}
+
+/* The selected segment is a raised chip: it borrows --surface, the colour the
+ * sheet itself is painted, so it reads as "lifted off the track" in both
+ * themes without either of them needing a second accent. */
+.seg .opt[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+
+.seg .opt:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+ * The phone: one row of the Game sheet, so it matches .settingRow's 44px tap
+ * target, its 15px/800 type and its 14–16px radii.
+ * ------------------------------------------------------------------------ */
+
+.sheet {
+  width: 100%;
+}
+
+.sheet .opt {
+  min-height: 40px;
+  padding: 0 6px;
+  font-size: 14px;
+}
+
+.sheet .lab {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+ * The board: an icon trio in the top-right of the LETTERBOX, not of the
+ * 1920x1080 canvas — it is a sibling of .screen, so it keeps its real size at
+ * every scale instead of shrinking with the board on a small window, and it
+ * never has to fight the canvas grid for a place to stand.
+ *
+ * Held at a third of full strength and lit on hover or keyboard focus. A TV
+ * board is on a wall for hours at a time and this is the one thing on it that
+ * is not the game; it should be findable, not visible.
+ * ------------------------------------------------------------------------ */
+
+.tv {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+  grid-template-columns: repeat(3, auto);
+  background: var(--glass);
+  border-color: var(--glass-edge);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0.32;
+  transition: opacity var(--t-fast) ease-out;
+}
+
+.tv:hover,
+.tv:focus-within {
+  opacity: 1;
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.tv .opt {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}

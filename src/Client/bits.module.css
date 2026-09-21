@@ -94,24 +94,25 @@
 .pips {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  /* Every caller's size in one knob. The icons are lucide SVGs now (spec §9),
+   * and lucide writes width/height as ATTRIBUTES — a CSS rule beats a
+   * presentation attribute, so setting them here overrides the component's own
+   * default for every context at once and nothing has to pass a number down. */
+  --pip: 12px;
 }
 
-.pips i {
+.pips svg {
   display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: currentColor;
-}
-
-.pips b {
-  display: block;
-  width: 22px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--crim);
-  box-shadow: 0 0 0 1.5px var(--pips-ring, var(--surface));
+  flex: none;
+  width: var(--pip);
+  height: var(--pip);
+  /* --pip-ink is the owner's figure colour when the caller passed `fig`, and
+   * unset otherwise, in which case the glyphs simply take the colour of
+   * whatever they are sitting in (a slot chip's readable ink, a sheet row's
+   * text). A surface that needs to lift a dark figure off a dark background
+   * overrides this one declaration — see .tile .pips in tv.module.css. */
+  color: var(--pip-ink, inherit);
 }
 
 /* Visually hidden, still readable by assistive tech. */

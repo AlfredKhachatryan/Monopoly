@@ -52,6 +52,20 @@
 // high, which is what the group slots below are for.
 //
 // ---------------------------------------------------------------------------
+// Diplomacy (2026-09-21)
+// ---------------------------------------------------------------------------
+// Alliance/war/traitor chips (`.plDiplo`) and the standing strip at the top
+// (`.diploStrip`) are the one piece of this file's layout that is NOT part of
+// the fixed budget above — they cost real height, but only for a player (or a
+// room) that actually has something to report, and the MEASURED squeeze
+// already reacts to whatever the player cards end up costing: it reads
+// `latestRef`'s real height after layout, not a number written down here. So
+// a room with an alliance or a war simply gives up a Latest row or two to it,
+// exactly as it already does for a player holding a stake in every colour
+// group. Nothing above assumed a fixed player-card height to begin with — see
+// "one line, always" on `.props` — this is the same deal for one more row.
+//
+// ---------------------------------------------------------------------------
 // Neutral names
 // ---------------------------------------------------------------------------
 // Event rows are the shared EventRow with `meFig: null`, which is what makes
@@ -63,8 +77,17 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate } from "framer-motion";
-import { Crown, KeyRound, Lightbulb, Lock, TrainFront } from "lucide-react";
-import { JAIL_MAX_TURNS, cellKind, ownedBy, readableOn } from "../Hooks/rules";
+import { Cannabis, Crown, KeyRound, Link2, Lock, Skull, Swords, TrainFront } from "lucide-react";
+import {
+  JAIL_MAX_TURNS,
+  accentFor,
+  cellKind,
+  nameOfFig,
+  ownedBy,
+  playerByFig,
+  readableOn,
+} from "../Hooks/rules";
+import { allyOf, isTraitorNow, warSides, warsOf } from "../Hooks/diplomacy";
 import { Pips, hasCyrillic } from "../Client/boardDisplay";
 import { describeEvent } from "../Client/EventView";
 import EventRow from "../Client/EventRow";
@@ -120,7 +143,7 @@ const baseDens = (n) => (n >= 6 ? 1 : 0);
 // One slot per GROUP the player has a stake in, never one per deed. A late-game
 // player holds ten or more deeds and six of those players do not fit a 500px
 // column at any chip size; there are only ever TEN groups on this board (eight
-// colour sets, the railroads, the utilities), so a slot per group is both a
+// colour sets, the railroads, the Weed Farm), so a slot per group is both a
 // smaller worst case and a better answer to the question the room is actually
 // asking, which is "who is close to a set".
 //
@@ -128,11 +151,17 @@ const baseDens = (n) => (n >= 6 ? 1 : 0);
 //   the whole set   the bricks collapse into a solid chip of the group's colour
 //                   with a crown on it, and the buildings on the set as pips
 //
-// Railroads and utilities are groups too (x/4 and x/2) and carry the same train
-// and bulb glyphs the board does, because their accent colours are shared with
-// two of the street sets and colour alone would not tell them apart.
-const RAIL_ACCENT = "#de951f";
-const UTIL_ACCENT = "#1f8fff";
+// Railroads (x/4) and the Weed Farm (x/1) are groups too and carry the same
+// train and cannabis glyphs the board does, because after the palette rework
+// (spec §11) every special shares one neutral steel or a muted green — colour
+// alone no longer tells a railroad from a tax cell, and it never told the farm
+// from the Green street group.
+//
+// The group colours are taken straight from accentFor() rather than restated
+// here. They used to be two literals that quietly went stale the moment the
+// palette moved: RAIL_ACCENT was the old gold #de951f (railroads are polished steel
+// #c3d0de now) and UTIL_ACCENT the old azure #1f8fff, for two utilities that no
+// longer exist. One source, in rules.js, is the only way that stays true.
 
 // The widths below mirror tvSide.module.css exactly. They are only ever used to
 // decide WHERE TO STOP, so being a pixel or two pessimistic is free; being
@@ -143,19 +172,30 @@ const BRICK_W = 7;
 const BRICK_GAP = 2;
 const GLYPH_W = 14;
 const GLYPH_GAP = 3;
-const PIP_W = 5;
+// The building pips are lucide glyphs now (spec §9), one `Home` per house and a
+// single `Hotel` for the hotel, so a hotel is one icon wide rather than the old
+// 16px bar. --pip in tvSide.module.css is the same 11 and .pips's gap the same
+// 2; these three only exist so fitSlots() can decide where to stop.
+const PIP_W = 11;
 const PIP_GAP = 2;
-const HOTEL_W = 16;
+const HOTEL_W = 11;
 const MORE_W = 34; // the "+N" chip
 // A card is 500 wide less its padding; the layout effect below measures the
 // real number, and this is only what the very first paint assumes.
 const PROPS_W = 464;
 
+// Which group a cell belongs to, or null for "not ownable, so not a group".
+//
+// The Weed Farm is a group of ONE: it is bought at auction and traded like any
+// other deed, so a player holding it has a stake to show. The Casino is not
+// here on purpose and must never be — the bank is the house, nobody can own it,
+// and a "casino" chip on a player card would be a lie. It falls out through the
+// null below, exactly like Chance, Tax or Free Parking.
 const groupKeyOf = (cell) => {
   const kind = cellKind(cell);
   if (kind === "street") return cell.color;
   if (kind === "road") return "road";
-  if (kind === "communal") return "communal";
+  if (kind === "farm") return "farm";
   return null;
 };
 
@@ -175,13 +215,9 @@ function boardGroups(board) {
     let g = byKey.get(key);
     if (!g) {
       const kind = cellKind(cell);
-      g = {
-        key,
-        kind,
-        color:
-          kind === "road" ? RAIL_ACCENT : kind === "communal" ? UTIL_ACCENT : cell.color,
-        cells: [],
-      };
+      // accentFor() already answers "a street wears its own colour, everything
+      // else wears its kind's accent", so there is nothing to branch on here.
+      g = { key, kind, color: accentFor(cell), cells: [] };
       byKey.set(key, g);
       out.push(g);
     }
@@ -354,7 +390,7 @@ function neutral(ev) {
 // One group, one chip. `style` carries the group's colour and the ink that
 // stays readable on it; everything else is in tvSide.module.css.
 function Slot({ st }) {
-  const Glyph = st.kind === "road" ? TrainFront : st.kind === "communal" ? Lightbulb : Crown;
+  const Glyph = st.kind === "road" ? TrainFront : st.kind === "farm" ? Cannabis : Crown;
   const label = `${st.own} of ${st.total}${st.full ? ", complete set" : ""}`;
 
   if (st.full) {
@@ -407,7 +443,40 @@ export default function TvSide({
     () => [...(players || [])].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0)),
     [players],
   );
-  const over = game?.phase === "over" || !!game?.winner;
+  // Shared win (spec §1): `game.winners` may carry one figure or an allied
+  // pair; `game.winner` is kept populated with the first for backward
+  // compatibility, so it is only the fallback here. Mirrors the same small
+  // helper in TvCenter.jsx — not shared, on purpose: it is three lines and
+  // Hooks/** belongs to another agent, so there is nothing to import it from.
+  const winners = Array.isArray(game?.winners) && game.winners.length > 0
+    ? game.winners
+    : game?.winner
+      ? [game.winner]
+      : [];
+  const over = game?.phase === "over" || !!game?.winner || winners.length > 0;
+
+  // ---- the standing diplomacy strip (spec §3) ----------------------------
+  // Quiet, persistent, and costs nothing when there is nothing to say: no
+  // alliance and no war means the strip renders nothing at all, not even
+  // "Round 1" — a round counter nobody is spending on diplomacy is not
+  // information this screen owes the room. `round` itself only matters
+  // alongside a war's countdown, so it lives in the same gate.
+  const round = Number(game?.round) || 1;
+  const allyRows = (Array.isArray(game?.alliances) ? game.alliances : []).map((al) => ({
+    key: `${al.a}-${al.b}`,
+    text: `${nameOfFig(list, al.a)} + ${nameOfFig(list, al.b)}`,
+  }));
+  const warRows = (Array.isArray(game?.wars) ? game.wars : []).map((w) => {
+    const sides = warSides(game, w);
+    const left = Math.max(0, (Number(w.endsRound) || 0) - round);
+    return {
+      key: w.id ?? `${w.declarer}-${w.target}`,
+      text: `${sides.a.map((f) => nameOfFig(list, f)).join(" + ")} ⚔ ${sides.b
+        .map((f) => nameOfFig(list, f))
+        .join(" + ")} · ${left} round${left === 1 ? "" : "s"} left`,
+    };
+  });
+  const showDiplo = allyRows.length > 0 || warRows.length > 0;
 
   // One pass over the board per render, shared by the cards and the squeeze.
   const groups = useMemo(() => boardGroups(board), [board]);
@@ -569,6 +638,28 @@ export default function TvSide({
             {n} {n === 1 ? "player" : "players"}
           </span>
         </div>
+        {/* The standing diplomacy strip (spec §3): quiet, persistent, and gone
+            entirely — no row, no height — the moment there is nothing to
+            report. The loud version of the same news is TvCenter's banner,
+            which only holds the centre for a few seconds; this is where the
+            room checks back afterwards. */}
+        {showDiplo && (
+          <div className={s.diploStrip} aria-label="Diplomacy">
+            <span className={s.diploRound}>Round {round}</span>
+            {warRows.map((w) => (
+              <span key={w.key} className={s.diploWar}>
+                <Swords size={12} aria-hidden="true" />
+                {w.text}
+              </span>
+            ))}
+            {allyRows.map((a) => (
+              <span key={a.key} className={s.diploAlly}>
+                <Link2 size={12} aria-hidden="true" />
+                {a.text}
+              </span>
+            ))}
+          </div>
+        )}
         {/* A row of its own. The TV variant of the badge is deliberately big —
             it has to be read from a sofa — and in the room line it simply ate
             the room code. It draws nothing at all while the room is live, so
@@ -592,7 +683,7 @@ export default function TvSide({
             (current.playerId != null
               ? current.playerId === p.playerId
               : current.figure === p.figure);
-          const isWin = !!game?.winner && game.winner === p.figure;
+          const isWin = winners.includes(p.figure);
           const fit = fitSlots(stakes, propsW);
           const more = stakes.length - fit;
           const sub = p.bankrupt
@@ -604,6 +695,21 @@ export default function TvSide({
               ]
                 .filter(Boolean)
                 .join(" · ");
+
+          // ---- alliance / war / traitor, per player (spec §1) -------------
+          // A traitor can never ally again (the spec's own rule), so the ally
+          // and traitor chips never compete for the same player. War is the
+          // one that can sit beside either — a war rides along on an alliance
+          // via the dragged-in-ally rule, and a former traitor can be a war
+          // principal same as anyone.
+          const allyFig = p.bankrupt ? null : allyOf(game, p.figure);
+          const allyPl = allyFig ? playerByFig(list, allyFig) : null;
+          const myWar = p.bankrupt ? null : warsOf(game, p.figure)[0] ?? null;
+          const warLeft = myWar ? Math.max(0, (Number(myWar.endsRound) || 0) - round) : 0;
+          const traitorOn = !p.bankrupt && isTraitorNow(game, p);
+          const traitorLeft = traitorOn
+            ? Math.max(0, (Number(p.traitorUntil) || 0) - round)
+            : 0;
 
           return (
             <article
@@ -642,6 +748,55 @@ export default function TvSide({
                     {isWin && <span className={`${s.tag} ${s.tagWin}`}>Winner</span>}
                   </strong>
                   <span className={s.plSub}>{sub}</span>
+                  {/* Alliance / war / traitor (spec §1's "player list
+                      relationships"). A row of its own rather than more tags
+                      crammed into .plLine above: at six players and d2/d3
+                      density that line is already Now/Jail/Key/Winner deep,
+                      and the field is too narrow to add a name-bearing ally
+                      badge there without the player's own name losing every
+                      pixel to the ellipsis. This row costs height only for a
+                      player who actually has something to show — the column's
+                      measured squeeze (top of this file) already gives that
+                      height back from the Latest list, exactly like a longer
+                      property row does. */}
+                  {(allyPl || myWar || traitorOn) && (
+                    <div className={s.plDiplo}>
+                      {allyPl && (
+                        <span
+                          className={`${s.tag} ${s.tagAlly}`}
+                          title={`Allied with ${allyPl.name} · no rent between you, +25% rent to everyone else`}
+                        >
+                          <Link2 size={12} aria-hidden="true" />
+                          <Tok player={allyPl} size={16} />
+                          <span lang={hasCyrillic(allyPl.name) ? "ru" : undefined}>
+                            {allyPl.name}
+                          </span>
+                        </span>
+                      )}
+                      {myWar && (
+                        <span
+                          className={`${s.tag} ${s.tagWar}`}
+                          title={`At war · double rent · ${warLeft} round${
+                            warLeft === 1 ? "" : "s"
+                          } left`}
+                        >
+                          <Swords size={12} aria-hidden="true" />
+                          {warLeft}r left
+                        </span>
+                      )}
+                      {traitorOn && (
+                        <span
+                          className={`${s.tag} ${s.tagTraitor}`}
+                          title={`Branded traitor · +25% rent · ${traitorLeft} round${
+                            traitorLeft === 1 ? "" : "s"
+                          } left`}
+                        >
+                          <Skull size={12} aria-hidden="true" />
+                          Traitor · {traitorLeft}r
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <TvCash
                   value={p.money}

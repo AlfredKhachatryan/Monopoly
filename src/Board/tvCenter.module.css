@@ -794,6 +794,95 @@
   color: var(--neg);
 }
 
+/* ---- diplomacy ------------------------------------------------------------
+ * War declared, peace signed, an alliance forming or breaking, a backstab.
+ * One shape for all six kinds (see TvDiplo.jsx): a head line, two optional
+ * groups of figures either side of the same icon the head uses, an optional
+ * status chip (reuses .status/.pos/.neg from the trade panel above rather
+ * than inventing a second pill), and an optional sub-line. Same panel size as
+ * .trade/.auc so the centre never resizes between overlay kinds. */
+.dip {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  width: 760px;
+  padding: 28px;
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  animation: panelIn var(--t-enter) ease-out both;
+  text-align: center;
+}
+
+.dipHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dipHead svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.dipHead strong {
+  font-family: var(--f-display);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* War/peace show WHOLE SIDES — a dragged-in ally rides along beside the
+ * principal — so each half is a small stack of members, not one token. */
+.dipSides {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  max-width: 100%;
+}
+
+.dipVs {
+  flex: none;
+  color: var(--muted);
+}
+
+.dipGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.dipMember {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  max-width: 120px;
+}
+
+.dipMember span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.dipSub {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--muted);
+  max-width: 100%;
+}
+
 /* ---- game over ---------------------------------------------------------- */
 
 /* The winner and the final standings.
@@ -830,6 +919,23 @@
   flex: none;
   display: grid;
   place-items: end center;
+}
+
+/* Shared win (spec §1, "allies win together"): two figures rather than one,
+ * so each gives up height to fit the 700px panel — see TvOver's `many`-style
+ * sizing call in TvCenter.jsx. The link glyph between them is the same idea
+ * as a player card's ally badge (TvSide), just once, big, for the room. */
+.overFigPair {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.overFigLink {
+  flex: none;
+  margin-bottom: 20px;
+  color: var(--muted);
 }
 
 .overWho {
@@ -945,6 +1051,7 @@
   .gcard,
   .auc,
   .trade,
+  .dip,
   .over {
     animation: tvFadeIn 200ms ease-out both !important;
   }

@@ -1,0 +1,1766 @@
+/* The Casino (cell 13), on the phone.
+ *
+ * Three things are painted from this file:
+ *   .room   the casino floor — a full-screen felt frame (CasinoRoom.jsx). The
+ *           bettor's takeover and everybody's replay of the spin are both THIS
+ *           frame, with the same machine at the same size, so the two read as
+ *           one screen. Header, a stage for the machine, a foot.
+ *   the three machines that stand on it (CasinoMachines.jsx): the slot cabinet,
+ *           the roulette track and the prize wheel.
+ *   .cas    the small panel the five phones that are NOT betting get in the act
+ *           row while somebody else is at the tables.
+ *
+ * THE ROOM LIVES OUTSIDE `.app`, AND THAT HAS CONSEQUENCES. It is portalled to
+ * the `[data-client]` root so that it covers the whole phone and is never made
+ * `inert` along with ClientScreen's stage. Being outside `.app` means none of
+ * screen.module.css's element resets reach it — not `box-sizing`, not the
+ * button reset, not the focus ring, not the fix for Bootstrap's `button:focus`
+ * outline. So the room restates the ones it needs, below, inside :where() so
+ * they weigh (0,1,0); every component rule that has to beat them is written
+ * `.room .x`, (0,2,0), and source order never decides anything. (That is also
+ * what beats tokens.css's `[data-client] * { color: inherit }`.) The spectator
+ * panel IS inside `.app`, and keeps the `.cas .x` form for the same reason.
+ *
+ * COLOUR. The casino is a set-piece and owns its palette in BOTH phone themes:
+ * felt green #0d5c46 and brass #b8912f are what rules.js's accentFor() already
+ * answers for this cell on the board, and a green baize that turned white under
+ * a light OS would not be a casino any more. So nothing on the floor reads the
+ * themed surface tokens (--surface, --ink, --sunk …) — a frame that is felt in
+ * both themes with text that flipped between them would fail contrast in one
+ * of the two. Every colour here carries its own foreground instead: white (and
+ * white at no less than 70%) on the felt, which is 7:1 or better at every one
+ * of the greens used; near-black --brass-ink on brass (6.4:1); the refusal
+ * banner is a pale plate with dark red ink, as legible here as the app's own
+ * error banner is on the aura. The only tokens the room takes from the client
+ * are the two font stacks.
+ *
+ * The spectator panel is the opposite case: it sits on the ordinary screen, so
+ * its body reads the themed tokens and flips with everything around it, and
+ * only its header is felt.
+ */
+
+.cas,
+.room {
+  --felt: #0d5c46;
+  --felt-hi: #15795c;
+  --felt-lo: #083a2c;
+  --felt-2: #0a4a2e;
+  --pit: #06261c;
+  --brass: #b8912f;
+  --brass-hi: #f0d68a;
+  --brass-lo: #6b5113;
+  --brass-ink: #1a1405;
+  --ivory: #f8f3e3;
+  --on-felt: #ffffff;
+  --on-felt-2: rgba(255, 255, 255, 0.82);
+  --on-felt-3: rgba(255, 255, 255, 0.72);
+  --c-red: #b3202a;
+  --c-black: #15181b;
+  --c-green: #12924f;
+}
+
+/* ================================================================ the room */
+
+/* `position: fixed` against the viewport: nothing between the [data-client]
+ * root and the viewport carries a transform, a filter or `contain`, so there
+ * is no nearer containing block to be captured by. The height is 100dvh (what
+ * `.app` uses) where it exists, so the foot sits on the VISIBLE floor of the
+ * screen while a mobile browser's toolbar is showing; `inset: 0` is the
+ * fallback.
+ *
+ * z-index: above everything else the controller stacks (sheets 20/21, the
+ * offer overlay 24). While the house is waiting the server refuses every other
+ * verb, so there is nothing those layers could usefully do on top of this; the
+ * replay sits one higher than the takeover, because for the length of one
+ * request the two are up together (see CasinoRoom.jsx, "the bridge").
+ *
+ * The grid is auto / 1fr / auto: header and foot take what they need and the
+ * stage takes the rest. On a short phone that makes the MACHINE the thing that
+ * shrinks — it sizes itself from the stage, in container units — and the
+ * controls are never clipped. `overflow-y: auto` is the last resort for a
+ * viewport shorter than header + foot + the stage's 96px floor. */
+.room {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(96px, 1fr) auto;
+  grid-template-areas: "head" "stage" "foot";
+  row-gap: 6px;
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(18px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: radial-gradient(120% 78% at 50% 20%, var(--felt-hi) 0%, var(--felt) 44%, var(--felt-lo) 100%);
+  color: var(--on-felt);
+  font-family: var(--f-body, system-ui, sans-serif);
+  font-size: 16px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  outline: none;
+}
+
+.room[role="alertdialog"] {
+  z-index: 31;
+}
+
+/* The nap of the baize and a brass inlay round the edge. Decoration only, and
+ * static: nothing here animates, so it costs one paint. */
+.room::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.022) 0 2px, transparent 2px 5px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 5px);
+}
+
+.room::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--brass-hi) 38%, transparent);
+  border-radius: 20px;
+  transition: box-shadow 400ms ease-out;
+}
+
+.room[data-tone="jackpot"]::after {
+  box-shadow: inset 0 0 60px color-mix(in srgb, var(--brass-hi) 45%, transparent);
+}
+
+.room,
+.room *,
+.room *::before,
+.room *::after {
+  box-sizing: border-box;
+}
+
+/* The element resets `.app` would have given us. Inside :where(), so (0,1,0). */
+.room :where(button) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 120ms ease-out,
+    background-color 200ms ease-out,
+    color 200ms ease-out,
+    box-shadow 200ms ease-out,
+    opacity 200ms ease-out;
+}
+
+.room :where(button):active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.room :where(button):disabled {
+  cursor: default;
+}
+
+.room :where(p) {
+  margin: 0;
+  padding: 0;
+}
+
+/* The keyboard ring, white because the app's own --focus is near-black in the
+ * light theme and would vanish into the felt. */
+.room :focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 3px;
+}
+
+/* …and Bootstrap's reboot must not draw its own on a tap: `button:focus` is
+ * (0,1,1); this is (0,3,0). Same fix, same reason, as screen.module.css. */
+.room :where(button, input, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+.roomHead,
+.roomStage,
+.roomFoot {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 480px;
+  min-width: 0;
+  justify-self: center;
+}
+
+/* ---- header -------------------------------------------------------------- */
+
+.roomHead {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+}
+
+.roomMark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--brass-hi);
+  box-shadow: inset 0 0 0 2px var(--brass);
+}
+
+.roomTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.room .roomTitle strong {
+  display: block;
+  font-family: var(--f-display, inherit);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass-hi);
+}
+
+.room .roomTitle span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--on-felt-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The bettor's cash — ordinary app chrome, so it is plain white on the felt at
+ * the size the aura prints it, not brass-on-green decoration. */
+.roomAside {
+  flex: none;
+  max-width: 50%;
+  min-width: 0;
+  text-align: right;
+}
+
+.room .asideLab {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--on-felt-3);
+}
+
+.room .roomAside strong {
+  display: block;
+  font-family: var(--f-display, inherit);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room .roomAside .roomWho {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.room .roomAside .roomWho strong {
+  font-size: 18px;
+}
+
+/* ---- stage --------------------------------------------------------------- */
+
+/* A SIZE container. Every machine below measures itself in cqw / cqh — the
+ * stage's own width and height — so whatever height the header and the foot
+ * leave, the machine is as big as will fit in it and no bigger. That is the
+ * whole short-phone strategy: there is no breakpoint at which the wheel gets a
+ * new hard-coded size, it is simply always min(width, height) of this box. */
+.roomStage {
+  grid-area: stage;
+  container-type: size;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+
+/* ---- foot ---------------------------------------------------------------- */
+
+/* A column pinned to the floor: whatever is last in it (SPIN in the takeover,
+ * Continue in the replay) sits in the same place at the same size. The replay
+ * is handed the takeover's measured height as an inline min-height, which is
+ * what keeps the stage — and so the machine — exactly the size it was. */
+.roomFoot {
+  grid-area: foot;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---- arriving and leaving ------------------------------------------------- */
+
+/* Opacity on the frame, movement on its contents: the frame itself never
+ * carries a transform, so it is never anything's containing block. The bettor's
+ * replay has data-enter="none" — it is the same screen they were already on. */
+.room[data-enter="rise"] {
+  animation: casFade 240ms ease-out backwards;
+}
+
+.room[data-enter="rise"] .roomStage > * {
+  animation: casPop 420ms cubic-bezier(0.2, 0.8, 0.3, 1) 60ms backwards;
+}
+
+.room[data-enter="rise"] .roomFoot {
+  animation: casLift 380ms cubic-bezier(0.2, 0.8, 0.3, 1) 80ms backwards;
+}
+
+.room[data-enter="fade"] {
+  animation: casFade 260ms ease-out backwards;
+}
+
+.room[data-leaving="1"] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease-in;
+}
+
+@keyframes casFade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes casPop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes casLift {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
+/* ============================================================ the controls */
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.room .tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 6px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--on-felt-2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass-hi) 30%, transparent);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.room .tab svg {
+  flex: none;
+}
+
+.room .tab[aria-pressed="true"] {
+  background: linear-gradient(180deg, var(--brass-hi) 0%, var(--brass) 100%);
+  color: var(--brass-ink);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 0 var(--brass-lo);
+}
+
+.room .tab:disabled {
+  opacity: 0.62;
+}
+
+/* The real odds, in the same breath as the choice that uses them. A gambling
+ * UI that hides the multipliers is a gambling UI that is lying, so this line
+ * is never optional, never abbreviated past the point of meaning, and is the
+ * one thing in the foot that does NOT shrink on a short phone. */
+.room .odds {
+  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--on-felt-2);
+}
+
+.room .odds b {
+  color: var(--brass-hi);
+  font-weight: 800;
+}
+
+/* ---- the bet ------------------------------------------------------------- */
+
+/* Two rows: the amount and its two shortcuts share the top line. The shortcuts
+ * are Min and All in — the two numbers a player actually reaches for, and the
+ * two the slider is worst at hitting exactly. Everything between them is what
+ * the slider is for, so a third "Half" pill would cost a row it cannot earn. */
+.bet {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  padding: 8px 12px 0;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass-hi) 24%, transparent);
+}
+
+.betTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.betSum {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.room .betLab {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-felt-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room .betSum strong {
+  display: block;
+  font-family: var(--f-display, inherit);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Min and all-in, beside the amount. A slider alone is a fiddly way to hit an
+ * exact number on a phone, and these are the two ends it is worst at. Full
+ * 44px targets: they are the most-pressed things here after SPIN. */
+.jumps {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.room .jump {
+  flex: none;
+  min-width: 62px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--on-felt);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.room .jump[aria-pressed="true"] {
+  color: var(--brass-hi);
+  box-shadow: inset 0 0 0 2px var(--brass-hi);
+}
+
+.room .jump:disabled {
+  opacity: 0.55;
+}
+
+/* A native range input, restyled. Native because it is the only slider a phone
+ * already knows how to drag, and because it comes with the keyboard and the
+ * screen-reader semantics for free. The input is 44px tall at every viewport
+ * so the thumb has a full-size hit area; the visible track is 8px of it. */
+.room .slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.room .slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--brass-hi) 0 var(--fill, 0%),
+    rgba(255, 255, 255, 0.2) var(--fill, 0%) 100%
+  );
+}
+
+.room .slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.room .slider::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--brass-hi);
+}
+
+.room .slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: -11px;
+  border-radius: 50%;
+  background: var(--ivory);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 4px var(--brass);
+}
+
+.room .slider::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ivory);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 4px var(--brass);
+}
+
+.room .slider:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* The server's own words when it refuses the bet. App chrome, not decoration:
+ * a pale plate with dark red ink (8.6:1), the same in both themes because the
+ * felt under it is the same in both themes. */
+.room .refusal {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #fbe4e4;
+  color: #8f1c1c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+}
+
+/* ---- the one button ------------------------------------------------------- */
+
+/* Deliberately alone. There is no Decline, no Skip and no Later: landing on
+ * the casino is mandatory (spec §5), so offering a way out here would be an
+ * affordance the server refuses. The only other exits — skip_turn from the
+ * board and leaving the game — are not this screen's to offer. */
+.room .go,
+.room .vBtn {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0;
+  flex: none;
+  width: 100%;
+  min-height: 64px;
+  padding: 0 14px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #f6e2a0 0%, #d4ac45 46%, var(--brass) 100%);
+  color: var(--brass-ink);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 3px 0 var(--brass-lo),
+    0 12px 24px -12px rgba(0, 0, 0, 0.8);
+  font-family: var(--f-display, inherit);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.room .go:disabled,
+.room .vBtn:disabled {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--on-felt-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.goMain {
+  line-height: 1.1;
+}
+
+.goHint {
+  font-family: var(--f-body, inherit);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.82;
+}
+
+/* ============================================================== the verdict */
+
+/* Bet line at the top, the verdict in the middle, the button on the floor —
+ * where SPIN was. `flex: 1` so that when the foot is pinned to the takeover's
+ * height the three spread out to fill it rather than huddling at the bottom. */
+.verdict {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  justify-items: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.room .vBet {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--on-felt-3);
+}
+
+.room .vBet b {
+  color: var(--brass-hi);
+}
+
+.vOut {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  min-height: 92px;
+}
+
+.room .vMult {
+  padding: 2px 24px;
+  border-radius: 999px;
+  font-family: var(--f-display, inherit);
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.2;
+  animation: casPop 360ms cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards;
+}
+
+.room .vMult[data-tone="win"] {
+  background: #d9f5e5;
+  color: #0b5a33;
+}
+
+.room .vMult[data-tone="jackpot"] {
+  background: linear-gradient(180deg, #f6e2a0 0%, var(--brass) 100%);
+  color: var(--brass-ink);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--brass-hi) 70%, transparent);
+}
+
+.room .vMult[data-tone="lose"] {
+  background: rgba(0, 0, 0, 0.42);
+  color: #ffc9c9;
+  font-size: 30px;
+}
+
+.room .vSwing {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--on-felt-2);
+}
+
+.room .vSwing b {
+  font-weight: 800;
+}
+
+.room .vSwing b[data-tone="pos"] {
+  color: #8ff0b8;
+}
+
+.room .vSwing b[data-tone="neg"] {
+  color: #ffb3b3;
+}
+
+.room .vWait {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--on-felt-3);
+  animation: casBreathe 1.4s ease-in-out infinite;
+}
+
+/* The spectators' way out: always pressable, and quiet — it is not the point of
+ * the screen, the spin is, and the frame leaves by itself anyway. */
+.room .vBtn[data-quiet="1"] {
+  min-height: 52px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--on-felt);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+  font-size: 17px;
+}
+
+@keyframes casBreathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ================================================================ the lights */
+
+/* One set of bulbs for all three machines: a row of <i> on the two rectangular
+ * ones, a ring of <circle> on the wheel. `--d` is the bulb's phase in the chase
+ * (0, 1, 2, 0, 1, 2 …). Only opacity is animated, and the fast modes step
+ * rather than ease, so a lit marquee is a handful of repaints a second.
+ *
+ *   idle   every third bulb breathing in turn      spin   the chase
+ *   win    all of them flashing together           lose   lit, dim, still */
+.bulbs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.bulbs i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff3c4;
+  box-shadow: 0 0 6px 1px rgba(255, 214, 110, 0.75);
+}
+
+.rimBulbs circle {
+  fill: #fff3c4;
+}
+
+.bulbs[data-mode="idle"] i,
+.rimBulbs[data-mode="idle"] circle {
+  animation: casTwinkle 2.4s ease-in-out infinite;
+  animation-delay: calc(var(--d) * -0.8s);
+}
+
+.bulbs[data-mode="spin"] i,
+.rimBulbs[data-mode="spin"] circle {
+  animation: casChase 0.42s steps(1, end) infinite;
+  animation-delay: calc(var(--d) * -0.14s);
+}
+
+.bulbs[data-mode="win"] i,
+.rimBulbs[data-mode="win"] circle {
+  animation: casFlash 0.56s steps(1, end) infinite;
+}
+
+.bulbs[data-mode="lose"] i,
+.rimBulbs[data-mode="lose"] circle {
+  opacity: 0.4;
+}
+
+@keyframes casTwinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes casChase {
+  0% {
+    opacity: 1;
+  }
+  33.4%,
+  100% {
+    opacity: 0.2;
+  }
+}
+
+@keyframes casFlash {
+  0% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+/* ===================================================================== slots */
+
+/* A cabinet: marquee, glass, base. Everything is a multiple of --sym, the side
+ * of one symbol cell, and --sym is measured from the stage — 25% of its width
+ * or 28% of its height, whichever is smaller — so the cabinet (3.7 × 3.2 cells
+ * overall) always fits the box it is given. The vw/dvh pair is what a browser
+ * without container units gets. */
+.cab {
+  --sym: min(22vw, 11dvh);
+  display: grid;
+  gap: calc(var(--sym) * 0.1);
+  padding: calc(var(--sym) * 0.14);
+  border-radius: calc(var(--sym) * 0.26);
+  background: linear-gradient(180deg, #232b27 0%, #101513 100%);
+  box-shadow:
+    inset 0 0 0 2px var(--brass),
+    inset 0 0 0 4px rgba(0, 0, 0, 0.5),
+    0 18px 30px -16px rgba(0, 0, 0, 0.8);
+}
+
+.cabTop {
+  display: grid;
+  gap: calc(var(--sym) * 0.06);
+  padding: 0 calc(var(--sym) * 0.06);
+}
+
+.room .cabPlate {
+  display: block;
+  padding: calc(var(--sym) * 0.035) 0;
+  border-radius: calc(var(--sym) * 0.1);
+  background: linear-gradient(180deg, var(--brass-hi) 0%, var(--brass) 100%);
+  color: var(--brass-ink);
+  font-size: clamp(9px, calc(var(--sym) * 0.15), 15px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cabGlass {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, var(--sym));
+  gap: calc(var(--sym) * 0.1);
+  padding: calc(var(--sym) * 0.12);
+  border-radius: calc(var(--sym) * 0.18);
+  background: var(--pit);
+  box-shadow: inset 0 0 0 1.5px var(--brass-lo);
+}
+
+/* One window onto one drum: 1.8 symbols tall, so the neighbours show above and
+ * below the payline. The vertical gradient is the curve of the drum
+ * — lit across the middle, falling away to the edges. */
+.reel {
+  position: relative;
+  width: var(--sym);
+  height: calc(var(--sym) * 1.8);
+  overflow: hidden;
+  border-radius: calc(var(--sym) * 0.12);
+  background: linear-gradient(180deg, #a9a18b 0%, var(--ivory) 24%, var(--ivory) 76%, #a9a18b 100%);
+  transition:
+    box-shadow 240ms ease-out,
+    opacity 240ms ease-out;
+}
+
+/* The strip rests with cell `--at` centred on the payline: up by `--at` cells,
+ * then down by the 0.4 of a cell that centres a 1-cell symbol in a 1.8-cell
+ * window. `--at` is the ONLY thing that positions it, and it is either the idle
+ * cell or the cell the server's index maps to — see reelStopIndex(). */
+.reelStrip {
+  display: grid;
+  transform: translateY(calc((0.4 - var(--at)) * var(--sym)));
+}
+
+/* `--spin` is set per reel so the three stop left to right. The transition
+ * only exists once `data-run` is on, which is a frame after the result was
+ * attached, which is what turns a change of offset into a spin. */
+.reel[data-run="1"] .reelStrip {
+  transition: transform var(--spin, 2000ms) cubic-bezier(0.12, 0.68, 0.16, 1);
+  will-change: transform;
+}
+
+.sym {
+  display: grid;
+  place-items: center;
+  width: var(--sym);
+  height: var(--sym);
+  color: #1b1f1d;
+}
+
+.sym svg {
+  width: 64%;
+  height: 64%;
+}
+
+/* The drums' own paint — objects, like the dice faces, not themed surfaces. */
+.room .sym[data-sym="0"] {
+  color: #c8102e;
+}
+
+.room .sym[data-sym="1"] {
+  color: #0c7c78;
+}
+
+.room .sym[data-sym="2"] {
+  color: #8f6c12;
+}
+
+.room .sym[data-sym="3"] {
+  color: #b86a00;
+}
+
+.room .sym[data-sym="4"] {
+  color: #1b1f1d;
+}
+
+.room .sym[data-sym="5"] {
+  color: #2d5bd1;
+}
+
+.reel[data-hit="1"] {
+  box-shadow:
+    0 0 0 3px var(--brass-hi),
+    0 0 20px 2px color-mix(in srgb, var(--brass-hi) 70%, transparent);
+}
+
+.reel[data-miss="1"] {
+  opacity: 0.55;
+}
+
+.payline {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--sym) * 0.03);
+  right: calc(var(--sym) * 0.03);
+  height: 2px;
+  margin-top: -1px;
+  background: linear-gradient(90deg, #ff5a6e, rgba(255, 90, 110, 0.35) 12%, rgba(255, 90, 110, 0.35) 88%, #ff5a6e);
+  pointer-events: none;
+}
+
+.cabBase {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--sym) * 0.14);
+  height: calc(var(--sym) * 0.3);
+  border-radius: calc(var(--sym) * 0.1);
+  background: linear-gradient(180deg, var(--brass) 0%, var(--brass-lo) 100%);
+}
+
+.room .cabBase span {
+  color: var(--brass-ink);
+  font-family: var(--f-display, inherit);
+  font-size: clamp(9px, calc(var(--sym) * 0.17), 16px);
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.cabBase i {
+  width: calc(var(--sym) * 0.5);
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--brass-ink) 55%, transparent);
+}
+
+/* A custom property swallows any value at parse time, so "declare it twice and
+ * let the second one fail" does not work for --sym / --slot the way it does for
+ * `width`: the fallback has to be the base rule and the container units the
+ * upgrade. */
+@supports (width: 1cqw) {
+  .cab {
+    --sym: min(25cqw, 28cqh, 120px);
+  }
+
+  .table {
+    --slot: min(18.5cqw, 27cqh, 92px);
+  }
+}
+
+/* ================================================================== roulette */
+
+/* The track, and under it the layout the chip goes on. --slot is one pocket,
+ * measured from the stage like --sym is; the table is as wide as the stage and
+ * roughly 1.6 pockets + a 48px row tall, so it always has height to spare. */
+.table {
+  --slot: min(18vw, 10dvh);
+  display: grid;
+  gap: clamp(8px, 4cqh, 18px);
+  width: 100%;
+  min-width: 0;
+}
+
+.track {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px 10px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #232b27 0%, #101513 100%);
+  box-shadow:
+    inset 0 0 0 2px var(--brass),
+    inset 0 0 0 4px rgba(0, 0, 0, 0.5),
+    0 18px 30px -16px rgba(0, 0, 0, 0.8);
+}
+
+.track .bulbs {
+  padding: 0 8px;
+}
+
+.trackGlass {
+  position: relative;
+  height: calc(var(--slot) * 1.22);
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--pit);
+  box-shadow: inset 0 0 0 1.5px var(--brass-lo);
+}
+
+/* Cell 0's centre is on the pointer when the strip is untranslated; resting on
+ * cell `--at` is a shift of `--at` pockets to the left. As with the reels,
+ * `--at` is the only input, and it is the idle cell or rouletteStopIndex(). */
+.trackStrip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  margin: calc(var(--slot) / -2) 0 0 calc(var(--slot) / -2);
+  transform: translateX(calc(-1 * var(--at) * var(--slot)));
+}
+
+.trackGlass[data-run="1"] .trackStrip {
+  transition: transform 3600ms cubic-bezier(0.1, 0.62, 0.12, 1);
+  will-change: transform;
+}
+
+/* The track falls into shadow at both ends, so pockets arrive out of the dark
+ * rather than popping in at a hard edge. */
+.trackGlass::before,
+.trackGlass::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  pointer-events: none;
+}
+
+.trackGlass::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--pit), transparent);
+}
+
+.trackGlass::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--pit), transparent);
+}
+
+.pocket {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--slot);
+  height: var(--slot);
+}
+
+.room .pocket i {
+  display: grid;
+  place-items: center;
+  width: 88%;
+  height: 88%;
+  border-radius: 22%;
+  color: #ffffff;
+  font-family: var(--f-display, inherit);
+  font-size: calc(var(--slot) * 0.42);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.pocket[data-c="red"] i {
+  background: var(--c-red);
+}
+
+.pocket[data-c="black"] i {
+  background: var(--c-black);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.pocket[data-c="green"] i {
+  background: var(--c-green);
+}
+
+/* The pocket under the pointer, framed, so "where it stopped" is never
+ * ambiguous — and the ball sitting in it. */
+.trackMark {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: var(--slot);
+  height: calc(var(--slot) * 1.12);
+  margin: calc(var(--slot) * -0.56) 0 0 calc(var(--slot) / -2);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 0 2.5px var(--brass-hi),
+    0 0 14px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.ball {
+  position: absolute;
+  z-index: 3;
+  top: calc(var(--slot) * 0.02);
+  left: 50%;
+  width: calc(var(--slot) * 0.26);
+  height: calc(var(--slot) * 0.26);
+  margin-left: calc(var(--slot) * -0.13);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #d9d4c4 70%, #9c978a);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+/* The same ivory pointer the wheel has, standing on the top rail. */
+.trackPin {
+  position: absolute;
+  z-index: 4;
+  top: 2px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  margin-left: -9px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 16px solid var(--ivory);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+/* ---- the layout the chip goes on ----------------------------------------- */
+
+.spots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+/* A <button> in the takeover (this IS the colour picker) and a <span> in the
+ * replay; painted identically, so the chip the player placed is still sitting
+ * exactly where they put it when the ball starts to roll. The three pockets
+ * are the roulette's own colours, fixed like the felt is. */
+.room .spot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 4px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pocket) 62%, var(--felt-lo));
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--brass-hi) 45%, transparent);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    transform 120ms ease-out,
+    background-color 200ms ease-out,
+    box-shadow 200ms ease-out,
+    opacity 200ms ease-out;
+}
+
+.room .spot[data-c="red"] {
+  --pocket: var(--c-red);
+}
+
+.room .spot[data-c="black"] {
+  --pocket: var(--c-black);
+}
+
+.room .spot[data-c="green"] {
+  --pocket: var(--c-green);
+}
+
+.room .spot b {
+  font-weight: 800;
+}
+
+.room .spot em {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--brass-hi);
+}
+
+.chip {
+  display: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ivory);
+  box-shadow:
+    inset 0 0 0 3px var(--brass),
+    inset 0 0 0 4.5px var(--ivory),
+    0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.room .spot[aria-pressed="true"],
+.room .spot[data-on="1"] {
+  background: var(--pocket);
+  box-shadow: inset 0 0 0 2.5px var(--brass-hi);
+}
+
+.spot[aria-pressed="true"] .chip,
+.spot[data-on="1"] .chip {
+  display: block;
+}
+
+.room .spot:disabled {
+  opacity: 0.7;
+}
+
+/* The colour the ball came to rest on, lit once it has. */
+.room .spot[data-landed="1"] {
+  background: var(--pocket);
+  box-shadow:
+    inset 0 0 0 2.5px #ffffff,
+    0 0 22px 2px color-mix(in srgb, var(--brass-hi) 75%, transparent);
+  animation: casFlash 0.56s steps(1, end) 3;
+}
+
+/* ================================================================= the wheel */
+
+/* A square, as big as the stage allows: min(width, height) of the container,
+ * capped so a tablet does not get a dinner plate. Three stacked layers — rim,
+ * disc, top — and only the disc ever moves (see CasinoMachines.jsx). */
+.wheel {
+  position: relative;
+  width: min(84vw, 40dvh);
+  width: min(100cqw, 100cqh, 440px);
+  aspect-ratio: 1 / 1;
+}
+
+/* The wheel's shadow on the felt. A box-shadow on a static circle rather than a
+ * `filter: drop-shadow()` on the wheel, because a filter on the parent of a
+ * spinning layer has to be re-rasterised on every frame of the spin. */
+.wheel::before {
+  content: "";
+  position: absolute;
+  inset: 3%;
+  border-radius: 50%;
+  box-shadow: 0 16px 34px 2px rgba(0, 0, 0, 0.55);
+}
+
+.wheelRim,
+.wheelDisc,
+.wheelTop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.wheelTop {
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The one moving part. Rotated as a whole, by the spin loop, through its inline
+ * `transform` — a composited layer being turned, not twelve paths repainted. */
+.wheelDisc {
+  border-radius: 50%;
+  transform: rotate(0deg);
+  will-change: transform;
+}
+
+.wheelDisc svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Wedge paint, keyed on what the segment PAYS (wedgeTone() reads wheelMult()),
+ * never on where it sits: LOSE dark, ×1.5 teal, ×3 gold, ×10 crimson. The two
+ * shades of each are only there so neighbouring wedges of the same kind would
+ * still read as two wedges — with the dealt-out layout they never touch, but
+ * the paint should not depend on that. */
+.wedge path {
+  stroke: var(--brass-hi);
+  stroke-width: 0.7;
+  stroke-linejoin: round;
+  transition: opacity 320ms ease-out;
+}
+
+.wedge text {
+  font-family: var(--f-display, system-ui, sans-serif);
+  font-weight: 800;
+  transition: opacity 320ms ease-out;
+}
+
+.wedge[data-tone="lose"] path {
+  fill: #18211d;
+}
+
+.wedge[data-tone="lose"][data-alt="1"] path {
+  fill: #222d28;
+}
+
+.wedge[data-tone="lose"] text {
+  fill: #c3cec8;
+  font-size: 8.6px;
+  letter-spacing: 0.08em;
+}
+
+.wedge[data-tone="small"] path {
+  fill: #0e8c87;
+}
+
+.wedge[data-tone="small"][data-alt="1"] path {
+  fill: #0b7a76;
+}
+
+.wedge[data-tone="small"] text {
+  fill: #ffffff;
+  font-size: 11.5px;
+}
+
+.wedge[data-tone="big"] path {
+  fill: #e6b032;
+}
+
+.wedge[data-tone="big"][data-alt="1"] path {
+  fill: #d9a21f;
+}
+
+.wedge[data-tone="big"] text {
+  fill: #2a1d00;
+  font-size: 14px;
+}
+
+.wedge[data-tone="jackpot"] path {
+  fill: #c8102e;
+}
+
+.wedge[data-tone="jackpot"] text {
+  fill: #ffe9a8;
+  font-size: 14.5px;
+}
+
+.stud {
+  fill: var(--brass-hi);
+  opacity: 0.55;
+}
+
+.discEdge {
+  fill: none;
+  stroke: var(--brass-lo);
+  stroke-width: 1.6;
+}
+
+.peg {
+  fill: #f6e6ae;
+  stroke: var(--brass-lo);
+  stroke-width: 0.7;
+}
+
+/* Stopped: every wedge but the one under the pointer steps back. */
+.wheelDisc[data-reveal="1"] .wedge:not([data-win="1"]) path,
+.wheelDisc[data-reveal="1"] .wedge:not([data-win="1"]) text,
+.wheelDisc[data-reveal="1"] .wedge:not([data-win="1"]) .stud {
+  opacity: 0.34;
+}
+
+.wheelDisc[data-reveal="1"] .wedge[data-win="1"] path {
+  stroke: #ffffff;
+  stroke-width: 1.8;
+}
+
+/* The hub. Brass with the house's spade while the wheel is idle or turning;
+ * the result once it has stopped, and not a frame before. Pinned with explicit
+ * offsets so it is dead centre in every browser — a hub that drifts makes the
+ * wheel look like it stopped somewhere it did not. */
+.wheelHub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 30%;
+  height: 30%;
+  margin: -15% 0 0 -15%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #f9e9b0 0%, var(--brass) 56%, var(--brass-lo) 100%);
+  color: var(--brass-ink);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.28),
+    inset 0 0 0 5px var(--brass-lo);
+}
+
+.wheelHub svg {
+  width: 44%;
+  height: 44%;
+}
+
+.room .wheelHub b {
+  font-family: var(--f-display, inherit);
+  font-size: 22px;
+  font-size: min(8cqw, 8cqh, 34px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.wheelHub[data-reveal="1"] {
+  animation: casPop 380ms cubic-bezier(0.2, 0.9, 0.3, 1.3) backwards;
+}
+
+.wheel[data-tone="lose"] .wheelHub[data-reveal="1"] {
+  background: radial-gradient(circle at 36% 30%, #3a4640 0%, #18211d 70%);
+  color: #e3eae6;
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 3px var(--brass);
+}
+
+.room .wheel[data-tone="lose"] .wheelHub b {
+  font-size: 18px;
+  font-size: min(6.4cqw, 6.4cqh, 28px);
+  letter-spacing: 0.04em;
+}
+
+.wheel[data-tone="jackpot"] .wheelHub[data-reveal="1"] {
+  background: radial-gradient(circle at 36% 30%, #ff5a72 0%, #c8102e 60%, #7d0a1c 100%);
+  color: #ffe9a8;
+  box-shadow:
+    0 0 28px 4px color-mix(in srgb, var(--brass-hi) 70%, transparent),
+    inset 0 0 0 3px var(--brass-hi);
+}
+
+/* The pointer: ivory, hinged on a brass pin at the top of the rim, tip reaching
+ * in past the pegs. The spin loop writes its rotation as an SVG `transform`
+ * attribute about the hinge, so there is nothing here to keep in step. */
+.wheelPin path {
+  fill: var(--ivory);
+  stroke: var(--brass-lo);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.wheelPin circle {
+  fill: var(--brass);
+  stroke: var(--brass-lo);
+  stroke-width: 1;
+}
+
+/* ===================================================== the spectators' panel */
+
+/* The five phones that are not betting keep their ordinary screen and get this
+ * in the act row — a statement, not a refusal, the same rule the act row's
+ * waiting state and the auction panel's "Watching" follow. It is as tall as its
+ * content, nothing pinned and nothing absolute, so the bottom nav never moves.
+ * The header is the casino's felt; the body is the client's own themed surface
+ * and flips with the rest of the controller. */
+.cas {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.casTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 14px 6px 6px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--felt) 0%, var(--felt-2) 100%);
+  color: var(--on-felt);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--brass) 55%, transparent);
+}
+
+.casChip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brass) 30%, transparent);
+  color: var(--brass-hi);
+  box-shadow: inset 0 0 0 2px var(--brass);
+}
+
+.casHead {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.casHead span {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.casHead strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 10px 14px;
+  border-radius: 24px;
+  background: var(--sunk);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.watchBody {
+  min-width: 0;
+}
+
+.watchBody strong {
+  display: block;
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchBody span {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ============================================================== small phones */
+
+@media (max-width: 380px) {
+  .room .tab {
+    gap: 4px;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+  }
+
+  .room .jump {
+    min-width: 56px;
+    padding: 0 10px;
+  }
+
+  .room .spot {
+    gap: 4px;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+  }
+
+  .room .betSum strong {
+    font-size: 25px;
+  }
+}
+
+/* ============================================================ short viewports */
+
+/* The machine has already given up everything it can by this point — it is
+ * sized from whatever the stage has left — so these blocks take a few pixels
+ * back from the chrome as well. Nothing pressable goes under 44px, and the
+ * odds line does NOT shrink: it is the only sentence on this screen a player
+ * needs before they commit money, and a casino that hides its odds on a small
+ * phone is a casino that hides its odds. */
+@media (max-height: 700px) {
+  .room {
+    row-gap: 4px;
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(15px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .roomHead {
+    min-height: 40px;
+  }
+
+  .roomMark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .room .roomTitle strong,
+  .room .roomAside strong {
+    font-size: 19px;
+  }
+
+  .roomFoot {
+    gap: 6px;
+  }
+
+  .room .tab {
+    min-height: 44px;
+  }
+
+  .bet {
+    padding: 6px 12px 0;
+  }
+
+  .room .betSum strong {
+    font-size: 24px;
+  }
+
+  .room .go,
+  .room .vBtn {
+    min-height: 56px;
+    font-size: 21px;
+  }
+
+  .vOut {
+    min-height: 76px;
+  }
+
+  .room .vMult {
+    font-size: 34px;
+  }
+
+  .watch {
+    min-height: 64px;
+  }
+
+  .casChip {
+    width: 40px;
+    height: 40px;
+  }
+
+  .casHead strong {
+    font-size: 19px;
+  }
+}
+
+@media (max-height: 580px) {
+  .room .roomTitle span {
+    display: none;
+  }
+
+  .room .go,
+  .room .vBtn {
+    min-height: 50px;
+  }
+
+  .goHint {
+    font-size: 11px;
+  }
+}
+
+/* A landscape phone (844x390) has no height for machine-over-controls at all,
+ * so the floor turns sideways: the machine on the left at the full height of
+ * the screen, the controls in a column on the right — which may scroll, as the
+ * one case where there genuinely is not room for all of them at 44px. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .room {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "head foot" "stage foot";
+    column-gap: 18px;
+  }
+
+  .roomHead,
+  .roomStage,
+  .roomFoot {
+    max-width: none;
+  }
+
+  .roomFoot {
+    justify-content: center;
+    overflow-y: auto;
+    /* the takeover's measured height belongs to the portrait stack */
+    min-height: 0 !important;
+  }
+}
+
+/* ============================================================ reduced motion */
+
+/* The spin is the one thing here that is pure motion, and it is also the one
+ * thing that is not information: the RESULT is the information, and it is what
+ * positions every machine. So switching the journey off hides nothing — the
+ * reels and the track simply ARRIVE on the server's answer (no transition),
+ * the wheel is set straight to its stopping angle (CasinoMachines.jsx skips
+ * its loop), the bulbs are lit and still, and nothing pops or slides in.
+ * CasinoResult.jsx shortens its own timers to match. */
+@media (prefers-reduced-motion: reduce) {
+  .reel[data-run="1"] .reelStrip,
+  .trackGlass[data-run="1"] .trackStrip {
+    transition: none;
+  }
+
+  .bulbs i,
+  .rimBulbs circle,
+  .room .spot[data-landed="1"],
+  .room .vWait,
+  .room .vMult,
+  .wheelHub[data-reveal="1"],
+  .room[data-enter],
+  .room[data-enter] .roomStage > *,
+  .room[data-enter] .roomFoot {
+    animation: none !important;
+  }
+
+  .room[data-leaving="1"] {
+    transition: none;
+  }
+}

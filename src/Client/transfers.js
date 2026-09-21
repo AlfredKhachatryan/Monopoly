@@ -40,9 +40,28 @@ export const REASON_TEXT = {
   auction: "auction",
   passGo: "passing Start",
   trade: "trade",
+  // The three the rebalance added. All of them are the BANK moving money, so
+  // `from`/`to` is null on one side and the reason is the only thing that says
+  // what happened: the Free Parking pot handed over on cell 21, the Weed
+  // Farm's pile harvested by its owner, and either half of a casino play (the
+  // stake going in and the payout coming back are two separate transfers —
+  // never one net figure — so both wear the same word).
+  pot: "the Free Parking pot",
+  farm: "the farm",
+  casino: "the casino",
   // buy / build deliberately have no word of their own: the space they were
   // spent on is named right after the amount, and "Afo pays the bank 260$
   // purchase · Spotify" says the same thing twice.
+  // Diplomacy (SPEC-DIPLOMACY.md §1-3): the four money moves that are not
+  // already a plain `pay`/`collect`/`trade` (allyUpkeep, commission, backstab
+  // and debtShare all carry their OWN event type — see EventView.jsx and
+  // transfersFrom() below) get folded into the same toast/banner grammar
+  // everything else here already speaks, rather than staying silent just
+  // because they arrived on an event this file did not use to know about.
+  allyUpkeep: "alliance upkeep",
+  commission: "ally commission",
+  backstab: "a backstab",
+  debtShare: "a shared debt",
 };
 
 /** Every money movement in one batch of events, in the order they happened. */
@@ -83,6 +102,21 @@ export function transfersFrom(events) {
       const get = num(e.get?.cash);
       if (give) out.push({ id: `${id}g`, from: e.figure, to: e.to, amount: give, reason: "trade", cell: null });
       if (get) out.push({ id: `${id}r`, from: e.to, to: e.figure, amount: get, reason: "trade", cell: null });
+    } else if (e.type === "allyUpkeep" && amount) {
+      out.push({ id, from: e.figure ?? BANK, to: BANK, amount, reason: "allyUpkeep", cell: null });
+    } else if (e.type === "commission" && amount) {
+      // The bank PRINTS this (spec: "not taken from the rent itself"), so it
+      // has no player-side debit anywhere else in the batch — from is BANK.
+      out.push({ id, from: BANK, to: e.figure ?? BANK, amount, reason: "commission", cell: e.cell ?? null });
+    } else if (e.type === "backstab" && amount) {
+      out.push({ id, from: e.victim ?? BANK, to: e.figure ?? BANK, amount, reason: "backstab", cell: null });
+    } else if (e.type === "debtShare" && amount) {
+      // The event itself names no recipient for the shortfall — the charge it
+      // rescues can be rent, tax, a card fine, jail fee or repairs (§1), each
+      // with its own payee — so this shows the ally's side of the story: cash
+      // leaving them to keep the payer whole, which is the pairing worth a
+      // "who just helped whom" toast even though the payer forwards it on.
+      out.push({ id, from: e.ally ?? BANK, to: e.figure ?? BANK, amount, reason: "debtShare", cell: null });
     }
   }
   return out;

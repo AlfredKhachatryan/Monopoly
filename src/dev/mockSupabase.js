@@ -15,16 +15,105 @@
 //
 // It is not a rules engine: it reuses the exact rent/build math the client
 // already trusts from src/Hooks/rules.js, and copies event *shapes* from
-// supabase/migrations/20260918140000_game_rules.sql (mono_* helpers) and
-// 20260918160000_game_log.sql (the `game.log` field) so anything reading
-// `game.events` / `game.log` sees the same JSON it would from the real RPC.
+// supabase/migrations/20260918140000_game_rules.sql (mono_* helpers),
+// 20260918160000_game_log.sql (the `game.log` field) and
+// 20260920170000_casino_farm_rebalance.sql (the pot, the farm counter, the
+// casino and the jailed-landlord rule) so anything reading `game.events` /
+// `game.log` sees the same JSON it would from the real RPC.
 // Card decks are a small hand-picked subset (9 Chance, 6 Community), not the
 // full 15/16 from the SQL -- enough to exercise every card `kind` at least
 // once, `back` excepted (no scenario needs it yet).
+//
+// WHAT THE 2026-09-20 REBALANCE ADDED HERE, all of it mirroring that
+// migration rather than inventing anything:
+//   * `game.pot`      the Free Parking pot. Tax, Luxury Tax and every card
+//                     that fines you to the bank pile up on it; landing on
+//                     cell 21 takes the lot. A pot of 0 is silent. See potBox.
+//   * jail blocks rent  a landlord in jail collects NOTHING, and a `rentFree`
+//                     event says so rather than leaving a silent gap.
+//   * `board["28"].income`  the Weed Farm's counter. It lives on the CELL, so
+//                     it follows the deed through a trade or a bankruptcy.
+//   * `casino_play`   the one new verb, and the new phase 'casino' that makes
+//                     landing on cell 13 mandatory. THE RANDOMNESS IS HERE
+//                     (casinoSpin), never on the client -- the phone only
+//                     animates the result that comes back.
+//   * START_BONUS 150 and the retargeted Chance card (mc9), which used to be
+//                     "advance to the nearest utility" and is now "advance to
+//                     the Casino".
+//
+// WHAT SPEC-DIPLOMACY.md (scratchpad, 2026-09-21) ADDED HERE -- alliances,
+// war and the backstab gambit, mirroring that spec rather than inventing
+// anything of its own:
+//   * `game.round`    every game now counts rounds (starts 1), bumped ONCE at
+//                     the tail of applyAction() when the turn actually moved
+//                     during this action AND landed on the first still-active
+//                     player in turn order -- checked there rather than at
+//                     every nextTurn() call site (there are four) so a round
+//                     can never be double-counted or missed. That wrap is
+//                     also the "start of round" hook: ally upkeep, war
+//                     expiry and traitor-brand expiry all run there. See the
+//                     round-tick block in applyAction()/runStartOfRound().
+//   * `game.alliances`/`game.allyOffers`/`game.wars`/`game.winners`  the
+//                     diplomacy layer's own state, read/written through the
+//                     module-level `diplo` box below for the same reason
+//                     `potBox` exists: charge() is the one funnel for every
+//                     forced charge and is called a dozen places deep, and it
+//                     is the only place that can decide "does the payer have
+//                     an ally who can cover this" (the shared-debts rule).
+//   * `player.traitor`/`traitorUntil`/`backstabUsed`  live on each seat like
+//                     `inJail`/`bankrupt` already do.
+//   * `rentMods()` from src/Hooks/diplomacy.js is applied inside land()'s
+//                     rent branch: no rent between allies, double rent across
+//                     a war, +25% for the payer's own alliance tag, +25% for
+//                     a lingering traitor brand -- multiplied together and
+//                     floored once, mirroring rules.js's rentFor() exactly.
+//   * nine new verbs (ally_propose/accept/decline/cancel/break, war_declare,
+//                     peace_propose/accept/decline, backstab), all guarded
+//                     the same way every other verb in this file is: "own
+//                     turn" means your turn and phase roll/act, refused
+//                     during an auction or a casino bet -- except the four
+//                     "any time" verbs (ally_accept/decline/cancel,
+//                     peace_accept/decline), which are added to those two
+//                     phase allow-lists so an incoming offer can still be
+//                     answered while an unrelated auction or bet is live.
+//   * bots decline every alliance proposal and accept every peace offer put
+//                     to them, on the same "must never hang the room" timer
+//                     pattern as scheduleAuctionBotIfNeeded/
+//                     scheduleTradeBotIfNeeded -- see scheduleAllyBotIfNeeded/
+//                     schedulePeaceBotIfNeeded. A bot never declares war,
+//                     which needs no code: nothing in this file ever calls
+//                     war_declare on a bot's behalf.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtimeConnection } from "../Hooks/connection";
-import { ownerOf, cellKind, priceOf, rentFor, canBuild, FIGS, MAX_PLAYERS } from "../Hooks/rules";
+import {
+  ownerOf,
+  cellKind,
+  priceOf,
+  rentFor,
+  canBuild,
+  farmIncome,
+  FARM_INCOME_START,
+  FARM_INCOME_STEP,
+  FIGS,
+  JAIL_FINE,
+  MAX_PLAYERS,
+  START_BONUS,
+} from "../Hooks/rules";
+import {
+  allyOf,
+  areAllies,
+  warSides,
+  canAlly,
+  canDeclareWar,
+  rentMods,
+  WAR_FEE,
+  WAR_ROUNDS,
+  ALLY_UPKEEP,
+  COMMISSION,
+  BACKSTAB_CUT,
+  TRAITOR_ROUNDS,
+} from "../Hooks/diplomacy";
 import {
   SCENARIOS,
   SCENARIO_NAMES,
@@ -94,6 +183,16 @@ let autoplayToken = 0; // bumped on every loadScenario() to cancel a running bot
 // toolbar) can cancel the wait and invoke the same decision immediately.
 let pendingAuctionBotTimer = null;
 let pendingTradeBotTimer = null;
+// Same idea for a BOT that landed on the Casino: the bet is mandatory, so a
+// bot left standing there would hold the room in phase 'casino' forever.
+let pendingCasinoBotTimer = null;
+// Same idea again, this time for the two diplomacy offers a bot can be asked
+// to answer: an incoming alliance proposal (always declined) and an incoming
+// peace offer on a war it is a principal of (always accepted). See
+// scheduleAllyBotIfNeeded()/schedulePeaceBotIfNeeded() near the other bot
+// brains below.
+let pendingAllyBotTimer = null;
+let pendingPeaceBotTimer = null;
 // Each bot's private ceiling for the auction it is currently in, keyed by
 // "<cell>|<figure>" so it stays the same across that bot's repeated turns in
 // one auction but is free to differ next time. Cleared on scenario switch.
@@ -275,7 +374,11 @@ const CHANCE_DECK = [
   { id: "mc1", kind: "collect", amount: 50, text: "Bank pays you a dividend of $50." },
   { id: "mc2", kind: "pay", amount: 15, text: "Speeding fine. Pay $15." },
   { id: "mc3", kind: "jailCard", text: "Get Out Of Jail Free. Keep this card until you need it." },
-  { id: "mc4", kind: "moveTo", cell: 1, text: "Advance to Старт. Collect $200." },
+  // The Start bonus is 150 now (spec §1), and mono_deck rewrote every card
+  // text that promised 200 for the same reason this one is rewritten: the
+  // phones print the text verbatim, so a card that says $200 is the server
+  // lying to the table through the client.
+  { id: "mc4", kind: "moveTo", cell: 1, text: "Advance to Старт. Collect $150." },
   { id: "mc5", kind: "payEach", amount: 50, text: "You have been elected chairman of the board. Pay each player $50." },
   {
     id: "mc6",
@@ -304,10 +407,30 @@ const CHANCE_DECK = [
   // two landings, not the first -- which is exactly the class of mistake the
   // "I cannot buy the second Railroad" report turned out to be.
   //
-  // Note the SQL's `what` is a mono_cell_kind(), not a colour or a group name:
-  // 'road' for the four railroads, 'communal' for the two utilities.
+  // Note the SQL's `what` is a mono_cell_kind(), not a colour or a group name.
+  // After the rebalance 'road' is the ONLY kind `nearest` is still used for:
+  // the two utilities are gone, so there is nothing to be "nearest" to on the
+  // other side of that branch.
   { id: "mc8", kind: "nearest", what: "road", text: "Advance to the nearest railroad. If it is owned, pay double rent." },
-  { id: "mc9", kind: "nearest", what: "communal", text: "Advance to the nearest utility. If it is owned, pay 10 times your dice." },
+  // Was "advance to the nearest utility... pay 10 times your dice", which is
+  // now three impossible things in one card: there are no utilities, there is
+  // no utility rent branch, and `util_mult` does not exist. The SQL RETARGETED
+  // it rather than deleting it (mono_deck's c4), so the Chance deck keeps its
+  // fifteen cards and its odds — and so does this one, at the same index 8,
+  // because the harness scripts and both handoff documents address Chance
+  // cards by numeric index (`__forceCard: { deck:'chance', index:5 }` is the
+  // repairs card and has to stay the repairs card).
+  //
+  // `what` rather than a hard-coded 13: mono_deck resolves the target with
+  // mono_cell_of_kind(board,'casino') so a re-laid board still works, and the
+  // moveTo branch below does the same. Landing there opens the mandatory bet
+  // exactly as a rolled landing does — which is the whole point of the card.
+  {
+    id: "mc9",
+    kind: "moveTo",
+    what: "casino",
+    text: "The house misses you. Advance to the Casino and place a bet.",
+  },
 ];
 
 const COMMUNITY_DECK = [
@@ -331,6 +454,178 @@ function drawCard(deck, forceIndex) {
 // place (plain JS objects freshly cloned per action) instead of threading an
 // immutable jsonb value through -- same result, much less ceremony.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// The Free Parking pot, and why it is a module-level box.
+//
+// mono_charge() adds a fine to `game.pot` by reaching into the same immutable
+// `st` value it is already threading (`jsonb_set(st, '{game,pot}', …)`). The
+// mock's helpers mutate plain objects instead and none of them is handed the
+// game block — charge() takes players/board/events and nothing else, and it is
+// called from a dozen places, several of them two calls deep inside
+// applyCard(). Threading a new argument through all of them to carry ONE
+// integer would be a much bigger edit than the rule deserves.
+//
+// So the running total lives here, reset at the top of every applyAction() and
+// read back by finalize(). That is safe for exactly the reason it would not be
+// on the server: applyAction is synchronous from end to end and there is one
+// room, so no two actions can ever be inside it at the same time.
+//
+// WHICH MONEY LANDS HERE is the same three reasons the SQL lists, and for the
+// same reason they live in one place rather than at the call sites: a charge
+// with a creditor is somebody's income, and a charge to the bank for a jail
+// fine, a deed, a house or a losing bet is a price, not a penalty. Only a FINE
+// goes to Free Parking.
+const POT_REASONS = ["tax", "card", "repairs"];
+let potBox = { value: 0 };
+
+// ---------------------------------------------------------------------------
+// Diplomacy: alliances, wars, backstab (SPEC-DIPLOMACY.md), and why THIS is
+// a module-level box too.
+//
+// `diplo.alliances`/`allyOffers`/`wars`/`round` are exactly the shape
+// src/Hooks/diplomacy.js's helpers expect as their `game` argument, so
+// `diplo` itself is passed straight into allyOf()/areAllies()/warBetween()/
+// rentMods()/canAlly()/canDeclareWar() wherever this file needs an answer.
+//
+// It exists as a box for the identical reason potBox does, immediately
+// above: charge() is the one funnel for every FORCED charge (rent, tax, card
+// fine, jail fee, repairs) and is called a dozen places deep, several of
+// them two calls inside applyCard() -- and it is the only place that can
+// decide "does the payer have an ally who can cover the shortfall" (the
+// shared-debts rule). Threading `game.alliances` through every one of those
+// call sites would be a much bigger edit than the rule deserves.
+//
+// Reset at the top of every applyAction() from the previous row, mutated in
+// place by the verbs and by charge()/bankrupt()/land(), and read back by
+// finalize() -- safe for the same reason potBox is safe: applyAction is
+// synchronous end to end and there is one room.
+let diplo = { alliances: [], allyOffers: [], wars: [], round: 1, winners: null };
+
+// Removes `fig`'s alliance (if any) and reports it with the dissolve reason
+// the spec's state shape enumerates ('upkeep' | 'bankrupt' | 'left'). A
+// voluntary ally_break fires its own `ally, stage:'break'` event instead --
+// this is only for the three ways an alliance ends WITHOUT either side
+// choosing to. Mirrors mono_ally_dissolve(st, fig, reason).
+function dissolveAllianceOf(fig, reason, events) {
+  const idx = diplo.alliances.findIndex((al) => al.a === fig || al.b === fig);
+  if (idx < 0) return;
+  const al = diplo.alliances[idx];
+  diplo.alliances.splice(idx, 1);
+  events.push({ type: "ally", stage: "dissolve", a: al.a, b: al.b, reason });
+}
+
+// Drops every pending offer that touches `fig`, silently (the caller's own
+// event -- form, backstab, leave -- already explains why). Mirrors
+// mono_ally_offers_purge(st, fig): called after an alliance forms (both new
+// members' other conversations are dead), after a backstab (the brand makes
+// every proposal impossible) and on leave.
+function purgeAllyOffersOf(fig) {
+  diplo.allyOffers = diplo.allyOffers.filter((o) => o.from !== fig && o.to !== fig);
+}
+
+// Ends every war `fig` is a PRINCIPAL in (declarer or target) -- an ally
+// merely dropping off a side ends nothing, the war is between the two who
+// declared it; warSides() already reads alliances live so a dropped ally
+// stops taking double rent on their own. Mirrors mono_wars_end_for(st, fig,
+// reason).
+function endWarsOf(fig, reason, events) {
+  const toEnd = diplo.wars.filter((w) => w.declarer === fig || w.target === fig);
+  for (const w of toEnd) {
+    diplo.wars = diplo.wars.filter((x) => x.id !== w.id);
+    events.push({ type: "war", stage: "end", warId: w.id, reason });
+  }
+}
+
+// Post-action diplomacy reconciliation (mirrors the SQL's own comment
+// verbatim): "A bankruptcy can happen anywhere inside a landing -- a card
+// that charges every player, a rent that an ally could not cover -- so this
+// is swept up here rather than at each of those call sites." Called once,
+// at the tail of applyAction()/simulateActorStep(), after every other branch
+// of the action has already run -- NOT inline inside bankrupt() itself,
+// because a mid-action dissolve there would (incorrectly) stop a LATER charge
+// in the same action from still reaching that ally for a share of a
+// different debt. A bankrupt player's alliance dissolves, every war they
+// were a PRINCIPAL in ends, and their pending proposals go with them.
+function reconcileDiplomacyBankruptcies(players, events) {
+  for (const p of players) {
+    if (!p.bankrupt) continue;
+    dissolveAllianceOf(p.figure, "bankrupt", events);
+    endWarsOf(p.figure, "bankrupt", events);
+    purgeAllyOffersOf(p.figure);
+  }
+}
+
+// Start-of-round ally upkeep (spec §1, and mono_round_tick's step 1 in the
+// SQL): every allied player owes $50 to the pot. Billed in SEAT ORDER, one
+// at a time, NOT simultaneously -- if the first member cannot pay (or is
+// already bankrupt), the alliance dissolves and the second is never billed
+// at all; if the first pays and the SECOND cannot, the alliance still
+// dissolves but the first's $50 is NOT refunded ("the bill was for the round
+// the alliance was alive at the start of," verbatim from the SQL comment).
+// This is deliberately NOT routed through charge(): upkeep must never
+// bankrupt anyone or pull a shared debt from the other member's own pocket,
+// it dissolves the pair instead the moment either one comes up short.
+function collectAllyUpkeep(players, events) {
+  const survivors = [];
+  for (const al of diplo.alliances) {
+    let a = players.find((p) => p.figure === al.a);
+    let b = players.find((p) => p.figure === al.b);
+    if (!a || !b) {
+      events.push({ type: "ally", stage: "dissolve", a: al.a, b: al.b, reason: "left" });
+      continue;
+    }
+    if (a.order > b.order) [a, b] = [b, a];
+    let dissolved = false;
+    for (const k of [a, b]) {
+      if (k.bankrupt) {
+        events.push({ type: "ally", stage: "dissolve", a: al.a, b: al.b, reason: "bankrupt" });
+        dissolved = true;
+        break;
+      }
+      if (k.money < ALLY_UPKEEP) {
+        events.push({ type: "ally", stage: "dissolve", a: al.a, b: al.b, reason: "upkeep" });
+        dissolved = true;
+        break;
+      }
+      k.money -= ALLY_UPKEEP;
+      potBox.value += ALLY_UPKEEP;
+      events.push({ type: "pay", figure: k.figure, to: null, amount: ALLY_UPKEEP, reason: "allyUpkeep", cell: null });
+      events.push({ type: "allyUpkeep", figure: k.figure, amount: ALLY_UPKEEP });
+    }
+    if (!dissolved) survivors.push(al);
+  }
+  diplo.alliances = survivors;
+}
+
+// The "start of a round" hook, in the SQL's own order: upkeep, then war
+// expiry, then traitor-brand expiry (mono_round_tick's three numbered
+// steps). Called once from the round-tick check at the tail of applyAction(),
+// never per turn-advance -- see that check for how "a round ends" is
+// detected (turn wrapped back to the first still-active seat).
+function runStartOfRound(players, events) {
+  collectAllyUpkeep(players, events);
+  const expired = diplo.wars.filter((w) => diplo.round >= w.endsRound);
+  for (const w of expired) {
+    diplo.wars = diplo.wars.filter((x) => x.id !== w.id);
+    events.push({ type: "war", stage: "expire", warId: w.id });
+  }
+  for (const p of players) {
+    const until = Number(p.traitorUntil) || 0;
+    if (until > 0 && diplo.round >= until) {
+      p.traitorUntil = 0;
+      events.push({ type: "traitor", stage: "expire", figure: p.figure });
+    }
+  }
+}
+
+// The seat order the round wraps back to: the smallest `order` among
+// still-active (non-bankrupt) players, or null with nobody seated. Mirrors
+// mono_first_active(players).
+function firstActiveOrder(players) {
+  const activeOrders = players.filter((p) => !p.bankrupt).map((p) => p.order);
+  return activeOrders.length > 0 ? Math.min(...activeOrders) : null;
+}
 
 function credit(players, idx, amount, reason, events) {
   if (idx == null || !amount || amount <= 0) return;
@@ -363,20 +658,81 @@ function bankrupt(players, board, idx, toIdx, reason, amount, events) {
   players[idx].jailTurns = 0;
   players[idx].jailCards = 0;
   events.push({ type: "bankrupt", figure: fig, to: toFig, reason, amount });
+  // NOT dissolving the alliance / ending the war here on purpose: the SQL's
+  // own comment explains why (see reconcileDiplomacyBankruptcies() above) --
+  // this runs once, for every bankrupt player, at the very end of the whole
+  // action, not inline at the moment any one charge tips them over. Doing it
+  // here would stop a LATER charge in the same action from still reaching
+  // this player's ally for an unrelated shared debt.
 }
 
-function charge(players, board, idx, amount, toIdx, reason, cellId, events) {
-  if (idx == null || !amount || amount <= 0 || players[idx].bankrupt) return;
-  const have = players[idx].money;
+// Reasons that can share a shortfall with an ally (spec §1's "anything that
+// today can bankrupt": rent, tax, a card fine, repairs, the jail fee).
+// Mirrors mono_charge's `forced` flag exactly. Voluntary spending -- buying,
+// building, a bid, a casino bet, the war fee, a peace payment, backstab's
+// cut -- never reaches this list, either because it never calls charge() at
+// all (buy/build/auction bid are direct money edits) or because its own call
+// site has already guaranteed affordability before charge() is ever called
+// (casino_play, war_declare), so the shared-debt branch below is structurally
+// unreachable for them regardless.
+const FORCED_CHARGE_REASONS = ["rent", "tax", "card", "repairs", "jailFee"];
+
+// `mods`, the 9th argument, is the diplomacy layer's `rentMods().mods` array.
+// land() always passes one for a rent charge (even `[]`, when no modifier
+// applies) and every other caller omits it -- mirrors mono_charge's `mods
+// jsonb default null`, where only mono_land ever supplies a real value.
+//
+// Returns the amount that actually reached `toIdx` (0 when there is no
+// creditor, e.g. a tax or a jail fee): land()'s rent commission needs to know
+// what was ACTUALLY paid, which is the full amount in the normal and
+// shared-debt cases but only whatever cash the payer had left in the
+// bankruptcy case -- bankrupt() moves that leftover to the creditor, never
+// the originally-requested amount.
+function charge(players, board, idx, amount, toIdx, reason, cellId, events, mods) {
+  if (idx == null || !amount || amount <= 0 || players[idx].bankrupt) return 0;
+  let have = players[idx].money;
   const fig = players[idx].figure;
   const toFig = toIdx != null ? players[toIdx].figure : null;
   if (have < amount) {
-    bankrupt(players, board, idx, toIdx, reason, amount, events);
-    return;
+    // Shared debts (spec §1): a FORCED charge that would bankrupt the payer
+    // first asks whether their CURRENT ally can cover the gap -- together,
+    // not the ally alone. The ally only ever pays the shortfall, the charge
+    // is then paid IN FULL, and a `debtShare` event says so (plus the
+    // ordinary `pay` event that money movement, ally -> payer, is what it
+    // is). If payer + ally together still cannot cover it, the ally is left
+    // completely untouched and the payer goes bankrupt exactly as before
+    // this feature existed.
+    const allyFig = FORCED_CHARGE_REASONS.includes(reason) ? allyOf(diplo, fig) : null;
+    const allyIdx = allyFig ? players.findIndex((p) => p.figure === allyFig) : -1;
+    const ally = allyIdx >= 0 ? players[allyIdx] : null;
+    const shortfall = amount - have;
+    if (ally && !ally.bankrupt && ally.money >= shortfall) {
+      ally.money -= shortfall;
+      // The gap is closed -- the payer's own balance actually receives the
+      // shortfall (mirrors mono_charge's `money + short` patch) so the
+      // ordinary deduction just below zeroes them out exactly, rather than
+      // going negative.
+      players[idx].money += shortfall;
+      have = amount;
+      events.push({ type: "pay", figure: allyFig, to: fig, amount: shortfall, reason: "debtShare", cell: cellId ?? null });
+      events.push({ type: "debtShare", figure: fig, ally: allyFig, amount: shortfall, reason });
+    } else {
+      const leftover = players[idx].money;
+      bankrupt(players, board, idx, toIdx, reason, amount, events);
+      return toIdx != null ? leftover : 0;
+    }
   }
   players[idx].money -= amount;
   if (toIdx != null) players[toIdx].money += amount;
-  events.push({ type: "pay", figure: fig, to: toFig, amount, reason, cell: cellId ?? null });
+  // A fine paid to the bank piles up on Free Parking; everything else does
+  // not. The bankruptcy path above returns before this line, exactly as
+  // mono_charge does — the pot never sees a bankruptcy, what little the player
+  // had goes to the creditor or to the bank.
+  else if (POT_REASONS.includes(reason)) potBox.value += amount;
+  const evt = { type: "pay", figure: fig, to: toFig, amount, reason, cell: cellId ?? null };
+  if (mods) evt.mods = mods;
+  events.push(evt);
+  return toIdx != null ? amount : 0;
 }
 
 function moveTo(board, players, idx, newPos, collectGo, events) {
@@ -386,7 +742,9 @@ function moveTo(board, players, idx, newPos, collectGo, events) {
   board[newPos][fig] = true;
   players[idx].position = newPos;
   events.push({ type: "move", figure: fig, from: oldPos, to: newPos });
-  if (collectGo && newPos <= oldPos) credit(players, idx, 200, "passGo", events);
+  // START_BONUS, not a literal 200: the rebalance cut it to 150 and this is
+  // the same constant mono_move_to now bakes in.
+  if (collectGo && newPos <= oldPos) credit(players, idx, START_BONUS, "passGo", events);
 }
 
 function findCellOfKind(board, kind) {
@@ -423,31 +781,84 @@ function nearestOfKind(board, pos, kind) {
   return forward ?? ids[0];
 }
 
-// Rent for a landing, with the two multiplier overrides mono_rent takes
-// (20260918140000_game_rules.sql lines 211-262). The client's own
-// rules.js `rentFor()` has no such parameters -- it is the phone's display
-// helper and it is not this file's to change -- so the overrides are applied
-// here, and ONLY in the shapes the SQL actually uses:
+// Rent for a landing, with the ONE multiplier override mono_rent still takes
+// (20260920170000_casino_farm_rebalance.sql re-created it without the other):
 //
-//   road:     (25 << greatest(cnt - 1, 0)) * coalesce(road_mult, 1)
-//             ... a plain multiplication on top of the normal 25/50/100/200,
+//   road:     RAILROAD_RENT[cnt - 1] * coalesce(road_mult, 1)
+//             ... a plain multiplication on top of the normal 35/70/140/280,
 //             so delegating to rentFor() and scaling the answer is exact.
-//   communal: coalesce(dice_sum, 7) * coalesce(util_mult, cnt >= 2 ? 10 : 4)
-//             ... note the COALESCE: util_mult REPLACES the 4x/10x choice, it
-//             does not multiply it. Passing 10 for a single-utility owner is
-//             therefore 10x dice, NOT 40x, and scaling rentFor()'s answer
-//             would have produced exactly that 40x bug. Computed from scratch
-//             instead, guarded by the same "nobody owns it, no rent" check
-//             mono_rent opens with.
-function rentWithMults(board, id, diceSum, roadMult, utilMult) {
+//
+// `util_mult` and the `communal` branch that read it are GONE with the two
+// utilities: cell 13 is the Casino (no owner, no rent — the bank is the house)
+// and cell 28 is the Weed Farm (owned, but it pays a counter to its owner
+// rather than charging a visitor). Neither of them ever reaches this function;
+// land() handles both before it gets here.
+//
+// `dice_sum` no longer enters into any rent either — it was only ever the
+// utilities' input — so rentFor() is called with the players array instead,
+// which is what its third argument means now. It is left out here because the
+// one caller has ALREADY handled the jailed-owner case and would otherwise ask
+// the same question twice, with the second answer silently overriding the
+// event the first one emitted.
+function rentWithMults(board, id, roadMult) {
   const cell = board?.[id];
-  const kind = cellKind(cell);
-  if (kind === "road") return rentFor(board, id, diceSum) * (roadMult ?? 1);
-  if (kind === "communal" && utilMult != null) {
-    if (!ownerOf(cell)) return 0;
-    return (diceSum ?? 7) * utilMult;
+  if (cellKind(cell) === "road") return rentFor(board, id) * (roadMult ?? 1);
+  return rentFor(board, id);
+}
+
+// ---------------------------------------------------------------------------
+// The casino. Mirrors public.mono_casino_spin() (20260920170000_casino_farm_
+// rebalance.sql) outcome for outcome.
+//
+// The randomness is HERE, in the "server", and nowhere else. That is the whole
+// point of the mechanic: the client only ever animates the object this returns,
+// so replaying the action cannot reroll a loss, and the harness has to behave
+// the same way or the dev loop would be testing a different game.
+//
+//   SLOTS     three independent reels of six symbols. The natural distribution
+//             of 6^3 = 216 outcomes already IS the spec: 6 triples = 2.78%,
+//             C(3,2) x 6 x 5 = 90 exact pairs = 41.67%, 120 all-different.
+//   ROULETTE  one slot 0..36. 0 is green, 1..18 red, 19..36 black, so
+//             18/37 - 18/37 - 1/37 exactly. Right colour x2, green x14.
+//   WHEEL     twelve equal segments: 1-5 lose, 6-9 x1.5, 10-11 x3, 12 x10.
+//
+// x1.5 on an odd bet is floored, because the board deals in whole dollars and
+// rounding the house's way is the convention every casino already uses.
+//
+// PAYOUT CONVENTION, same as the SQL: "x2" means the player ENDS HOLDING twice
+// their bet. The caller settles it as a `pay` of the bet and then a `collect`
+// of the payout, never as one net figure.
+const CASINO_GAMES = ["slots", "roulette", "wheel"];
+
+function casinoSpin(gameId, bet, pick) {
+  const rnd = (n) => Math.floor(Math.random() * n);
+  if (gameId === "slots") {
+    const reels = [rnd(6), rnd(6), rnd(6)];
+    const [a, b, c] = reels;
+    const mult = a === b && b === c ? 10 : a === b || b === c || a === c ? 2 : 0;
+    return { reels, game: gameId, bet, mult, payout: Math.floor(bet * mult) };
   }
-  return rentFor(board, id, diceSum);
+  if (gameId === "roulette") {
+    const slot = rnd(37);
+    const colour = slot === 0 ? "green" : slot <= 18 ? "red" : "black";
+    const mult = pick === colour ? (colour === "green" ? 14 : 2) : 0;
+    return { slot, colour, pick, game: gameId, bet, mult, payout: Math.floor(bet * mult) };
+  }
+  const segment = rnd(12) + 1;
+  const mult = segment <= 5 ? 0 : segment <= 9 ? 1.5 : segment <= 11 ? 3 : 10;
+  return { segment, game: gameId, bet, mult, payout: Math.floor(bet * mult) };
+}
+
+// The minimum bet: 15% of the player's cash, rounded UP to the nearest $10 so
+// the slider has round numbers to snap to, then clamped to the cash so a
+// nearly-broke player is never asked for more than they own. Mirrors
+// public.mono_casino_min_bet(integer) exactly, including the $10 floor — which
+// is what keeps a player with $12 from being asked for $2 and then told the
+// bet is too small.
+function casinoMinBet(cash) {
+  const n = Math.max(Math.floor(Number(cash) || 0), 0);
+  if (n <= 0) return 0;
+  return Math.min(Math.max(Math.ceil((n * 15) / 100 / 10) * 10, 10), n);
 }
 
 // ---------------------------------------------------------------------------
@@ -465,13 +876,14 @@ function localSetCells(board, color) {
 }
 
 // Mirrors rules.js's `tradable(board, cellId)`: an ownable cell someone owns,
-// with no building anywhere in its colour set (railroads/utilities always
-// tradable, they have no set).
+// with no building anywhere in its colour set (railroads and the Weed Farm are
+// always tradable, they have no set). The Casino is deliberately absent — the
+// bank is the house, so it is never bought, auctioned or traded.
 function isTradableCell(board, cellId) {
   const cell = board?.[cellId];
   if (!cell) return false;
   const kind = cellKind(cell);
-  if (kind !== "street" && kind !== "road" && kind !== "communal") return false;
+  if (kind !== "street" && kind !== "road" && kind !== "farm") return false;
   if (!ownerOf(cell)) return false;
   if (kind !== "street") return true;
   return !localSetCells(board, cell.color).some((c) => (c.houses || 0) > 0);
@@ -629,32 +1041,37 @@ function applyCard(board, players, idx, card, diceSum, events, out) {
     case "goJail":
       sendToJail(board, players, idx, "card", events);
       break;
-    case "moveTo":
-      moveTo(board, players, idx, card.cell, true, events);
-      land(board, players, idx, diceSum, events, out);
+    // `cell` when the card names one outright, `what` when it names a KIND —
+    // which is how mono_deck writes the three cards whose target is wherever
+    // that cell happens to be on this board (Start, the first railroad, and
+    // the Casino the retargeted c4 sends you to). A target that cannot be
+    // found on the board leaves the player where they are, exactly as the
+    // SQL's own `if target is not null` guard does.
+    case "moveTo": {
+      const target = card.cell ?? findCellOfKind(board, card.what);
+      if (target != null) {
+        moveTo(board, players, idx, target, true, events);
+        land(board, players, idx, diceSum, events, out);
+      }
       break;
+    }
     // "Advance to the nearest railroad / utility" -- mono_apply_card's
-    // `when 'nearest'`, lines 553-566. Four details, all of them load-bearing
+    // `when 'nearest'`, lines 553-566. Three details, all of them load-bearing
     // and all of them taken from the SQL rather than from the Monopoly
-    // rulebook, which disagrees with this server in two places:
+    // rulebook, which disagrees with this server:
     //
     // 1. `pos` is read BEFORE the move (the mock's `players[idx].position` at
     //    entry is the Chance cell the roll landed on), so the search starts
     //    from the Chance cell, not from wherever the roll began.
-    // 2. `collectGo` is TRUE. moveTo() pays $200 whenever `newPos <= oldPos`,
-    //    so wrapping from Chance 37 round to railroad 6 collects the Start
-    //    bonus -- and, per the real rulebook, should. From Chance 8 or 23 the
-    //    target is a higher cell and nothing is paid.
-    // 3. road_mult 2 and util_mult 10 are BOTH handed to land() regardless of
-    //    which kind was sought, exactly as the SQL does it; the one that does
-    //    not apply to the target's kind is simply never read. So a railroad
-    //    reached this way charges double the normal 25/50/100/200, and a
-    //    utility charges 10x dice even when its owner holds only one utility.
-    // 4. THE DICE ARE NOT RE-THROWN. The official rules say "throw the dice
-    //    again and pay ten times the amount thrown"; this server reuses the
-    //    ORIGINAL roll's `dice_sum` (it is simply the `dice_sum` argument
-    //    mono_apply_card was called with). Mirrored, deliberately -- matching
-    //    the server beats matching Hasbro.
+    // 2. `collectGo` is TRUE. moveTo() pays the Start bonus whenever
+    //    `newPos <= oldPos`, so wrapping from Chance 37 round to railroad 6
+    //    collects it -- and, per the real rulebook, should. From Chance 8 or
+    //    23 the target is a higher cell and nothing is paid.
+    // 3. road_mult 2 is handed to land(), exactly as the SQL does it, so a
+    //    railroad reached this way charges double the normal 35/70/140/280.
+    //    The util_mult 10 that used to travel beside it is GONE with the
+    //    utilities and with the rent branch that read it -- `road` is now the
+    //    only kind `nearest` is ever asked for (see the deck above).
     //
     // The `if target is not null` guard is kept too: a board with no cell of
     // the sought kind draws the card, announces it, and then does nothing at
@@ -664,7 +1081,7 @@ function applyCard(board, players, idx, card, diceSum, events, out) {
       const target = nearestOfKind(board, players[idx].position, card.what);
       if (target != null) {
         moveTo(board, players, idx, target, true, events);
-        land(board, players, idx, diceSum, events, out, undefined, 2, 10);
+        land(board, players, idx, diceSum, events, out, undefined, 2);
       }
       break;
     }
@@ -709,28 +1126,147 @@ function applyCard(board, players, idx, card, diceSum, events, out) {
 // Resolve the cell the player stands on. `forceCard` (dev-only) skips the
 // random draw so a scenario can guarantee which card shows up.
 //
-// `roadMult` / `utilMult` are mono_land's own two trailing default arguments
-// (`road_mult integer default 1, util_mult integer default null`, lines
-// 628-634 of the migration). Only the `nearest` card ever passes them -- every
-// other caller, here and there, takes the defaults and gets ordinary rent.
-function land(board, players, idx, diceSum, events, out, forceCard, roadMult = 1, utilMult = null) {
+// `roadMult` is mono_land's one remaining trailing default argument
+// (`road_mult integer default 1`); `util_mult` went with the utilities. Only
+// the `nearest` card ever passes it -- every other caller, here and there,
+// takes the default and gets ordinary rent.
+//
+// Four branches are new, all of them from the rebalance migration:
+//   jail     a landlord in jail collects NOTHING. The visitor pays nobody --
+//            not the owner, not the pot, not the bank -- and a `rentFree`
+//            event says so, or the log would look like a dropped charge.
+//   parking  hands over the whole pot and zeroes it. A pot of 0 is silent:
+//            no money, no event, nothing at all.
+//   farm     the owner harvests the counter by landing on it; everybody else
+//            pays nothing and waters it by FARM_INCOME_STEP. The counter lives
+//            ON THE CELL (`board["28"].income`) so it follows the deed through
+//            a trade or a bankruptcy without anything having to move it.
+//   casino   writes the pending block. The turn cannot move on until the
+//            player has bet, which is what "mandatory" means here. `out` is
+//            how it reaches applyAction -- land() is called from four places
+//            and none of them can see the game block.
+function land(board, players, idx, diceSum, events, out, forceCard, roadMult = 1) {
   const fig = players[idx].figure;
   const pos = players[idx].position;
   const cell = board[pos];
   const kind = cellKind(cell);
   events.push({ type: "land", figure: fig, cell: pos, kind });
 
-  if (kind === "street" || kind === "road" || kind === "communal") {
+  if (kind === "street" || kind === "road") {
     const owner = ownerOf(cell);
     if (owner && owner !== fig) {
       const ownerIdx = players.findIndex((p) => p.figure === owner);
       if (ownerIdx >= 0 && !players[ownerIdx].bankrupt) {
-        const amount = rentWithMults(board, pos, diceSum, roadMult, utilMult);
-        charge(players, board, idx, amount, ownerIdx, "rent", pos, events);
+        if (players[ownerIdx].inJail) {
+          events.push({
+            type: "rentFree",
+            figure: fig,
+            owner,
+            cell: pos,
+            reason: "ownerInJail",
+          });
+        } else if (areAllies(diplo, fig, owner)) {
+          // "No rent between allies" (spec §1) overrides every other
+          // multiplier rather than composing with them -- same "say why with
+          // an event instead of a silent gap" convention the jail branch
+          // above already established, just with a different reason.
+          events.push({ type: "rentFree", figure: fig, owner, cell: pos, reason: "ally" });
+        } else {
+          const base = rentWithMults(board, pos, roadMult);
+          const rm = rentMods(diplo, players, fig, owner);
+          const rent = rm.zero ? 0 : Math.floor(base * rm.mult);
+          // Always attached, even as `[]` -- mirrors mono_land passing
+          // `due->'mods'` (never SQL null) into mono_charge for every rent
+          // charge, so a plain unmodified rent still carries `mods: []`
+          // rather than omitting the key. Every OTHER charge() call site
+          // leaves the 9th argument out entirely, which is how a non-rent
+          // `pay` event ends up with no `mods` key at all.
+          const paid = charge(players, board, idx, rent, ownerIdx, "rent", pos, events, rm.mods);
+          // Rent commission (spec §1): when a NON-ally pays rent to one
+          // ally, the BANK -- not the rent itself -- pays the OTHER ally 10%
+          // of what was actually paid. `paid` (charge()'s return) is the
+          // full rent in the normal and shared-debt cases, or only the
+          // payer's remaining cash if this charge tipped them into
+          // bankruptcy -- either way it is what "actually paid" means.
+          const ownerAlly = allyOf(diplo, owner);
+          if (ownerAlly && paid > 0) {
+            const allyIdx = players.findIndex((p) => p.figure === ownerAlly);
+            const commission = Math.floor(paid * COMMISSION);
+            if (allyIdx >= 0 && !players[allyIdx].bankrupt && commission > 0) {
+              // credit(), not a direct patch: mirrors mono_credit, which is
+              // what actually emits the ordinary `collect` event alongside
+              // the dedicated `commission` one below -- every money movement
+              // gets both, so a balance is reconstructible from either feed.
+              credit(players, allyIdx, commission, "commission", events);
+              events.push({
+                type: "commission",
+                figure: ownerAlly,
+                payer: fig,
+                owner,
+                amount: commission,
+                cell: pos,
+              });
+            }
+          }
+        }
       }
     }
   } else if (kind === "tax") {
     charge(players, board, idx, cell.price || 0, null, "tax", pos, events);
+  } else if (kind === "parking") {
+    const pot = potBox.value;
+    if (pot > 0) {
+      // zeroed BEFORE the credit, exactly as the SQL does it: a pot that is
+      // still readable after it has been paid out is the classic way to pay
+      // it twice
+      potBox.value = 0;
+      credit(players, idx, pot, "pot", events);
+      events.push({ type: "pot", figure: fig, cell: pos, amount: pot });
+    }
+  } else if (kind === "farm") {
+    const owner = ownerOf(cell);
+    const income = Math.max(farmIncome(cell), FARM_INCOME_START);
+    if (owner && owner === fig) {
+      // the owner came to collect: the whole counter, printed by the bank, and
+      // the field starts growing again from the opening value
+      cell.income = FARM_INCOME_START;
+      credit(players, idx, income, "farm", events);
+      events.push({
+        type: "farm",
+        stage: "harvest",
+        figure: fig,
+        cell: pos,
+        amount: income,
+        income: FARM_INCOME_START,
+      });
+    } else {
+      // anybody else -- including everybody while it is still unowned -- pays
+      // nothing and leaves the crop bigger for whoever holds the deed
+      cell.income = income + FARM_INCOME_STEP;
+      events.push({
+        type: "farm",
+        stage: "grow",
+        figure: fig,
+        cell: pos,
+        amount: 0,
+        income: cell.income,
+      });
+    }
+  } else if (kind === "casino") {
+    const cash = players[idx].money;
+    if (cash > 0) {
+      out.casino = { cell: pos, figure: fig, min: casinoMinBet(cash), max: cash };
+      events.push({
+        type: "casino",
+        stage: "enter",
+        figure: fig,
+        cell: pos,
+        min: out.casino.min,
+        max: cash,
+      });
+    }
+    // a player with no cash left has nothing to bet: the house waves them
+    // through rather than deadlocking the room on an impossible action
   } else if (kind === "gtj") {
     sendToJail(board, players, idx, "gtj", events);
   } else if (kind === "chance" || kind === "community") {
@@ -739,7 +1275,7 @@ function land(board, players, idx, diceSum, events, out, forceCard, roadMult = 1
     out.lastCard = { deck: kind, text: card.text, figure: fig };
     applyCard(board, players, idx, card, diceSum, events, out);
   }
-  // start / parking / jail (visiting): nothing extra, same as the SQL.
+  // start / jail (visiting): nothing extra, same as the SQL.
 }
 
 // One-shot forced dice for the very next roll, whoever makes it, set by
@@ -775,7 +1311,10 @@ function performRoll(board, players, idx, events, initialDoubles, out, opts = {}
     } else {
       players[idx].jailTurns = (players[idx].jailTurns || 0) + 1;
       if (players[idx].jailTurns >= 3) {
-        charge(players, board, idx, 50, null, "jailFee", null, events);
+        // JAIL_FINE, not a literal: it goes to the BANK and never to the
+        // parking pot (see POT_REASONS), which is why `jailFee` is absent
+        // from that list.
+        charge(players, board, idx, JAIL_FINE, null, "jailFee", null, events);
         if (!players[idx].bankrupt) {
           players[idx].inJail = false;
           players[idx].jailTurns = 0;
@@ -813,10 +1352,17 @@ function nextTurn(players, turn) {
   return turn;
 }
 
-// Bankrupt-skip + win check, run after every action (mirrors the tail of
-// game_action in the SQL). `phaseIn` is whatever the action itself decided.
-function applyEndOfActionChecks(players, turn, phaseIn, winnerIn, events) {
-  let winner = winnerIn;
+// Bankrupt-skip + the diplomacy bankruptcy sweep + the round-tick, run after
+// every action (mirrors the tail of game_action in the SQL, in the SQL's own
+// order). `phaseIn` is whatever the action itself decided; `turn0` is the
+// turn this action STARTED from, read straight off the row before anything
+// in the switch above touched it. The round only ticks when the turn
+// actually moved during THIS action and landed back on the first
+// still-active seat -- checked here ONCE rather than at each of the four
+// places that can move the turn, because only the bankrupt-skip right below
+// can move it a SECOND time within the same action, and double-counting that
+// second move as its own round would be wrong.
+function applyEndOfActionChecks(players, turn, turn0, phaseIn, action, events) {
   let phase = phaseIn;
   if (phase !== "over") {
     const curIdx = players.findIndex((p) => p.order === turn);
@@ -825,14 +1371,45 @@ function applyEndOfActionChecks(players, turn, phaseIn, winnerIn, events) {
       phase = "roll";
     }
   }
-  const active = players.filter((p) => !p.bankrupt);
-  if (!winner && players.length >= 2 && active.length === 1) {
-    winner = active[0].figure;
-    phase = "over";
-    events.push({ type: "win", figure: winner });
+  // "A bankruptcy can happen anywhere inside a landing -- a card that
+  // charges every player, a rent that an ally could not cover -- so this is
+  // swept up here rather than at each of those call sites." (verbatim
+  // reasoning from the SQL; see reconcileDiplomacyBankruptcies() itself.)
+  reconcileDiplomacyBankruptcies(players, events);
+  // new_game/reset_board set the turn back to 0 themselves, which would
+  // otherwise read as a wrap and tick the freshly reset counter to 2.
+  if (
+    action !== "new_game" &&
+    action !== "reset_board" &&
+    phase !== "over" &&
+    players.length > 0 &&
+    turn !== turn0 &&
+    turn === firstActiveOrder(players)
+  ) {
+    diplo.round += 1;
+    runStartOfRound(players, events);
   }
-  if (winner) phase = "over";
-  return { turn, phase, winner };
+  return { turn, phase };
+}
+
+// Last one standing wins -- or the last PAIR standing, if the two of them
+// are allied (spec §1: the game is over when every non-bankrupt player is
+// either one player or one allied pair -- two survivors who are NOT allied
+// still have a game to play). Sorted by seat order so `winners` (and the
+// legacy `winner`, its first entry) reads the same regardless of whatever
+// order the players array itself happens to store them in.
+function checkWin(players, winnerIn, winnersIn, events) {
+  let winner = winnerIn;
+  let winners = winnersIn;
+  const active = players.filter((p) => !p.bankrupt).sort((a, b) => a.order - b.order);
+  if (!winner && players.length >= 2 && (active.length === 1 || active.length === 2)) {
+    if (active.length === 1 || areAllies(diplo, active[0].figure, active[1].figure)) {
+      winners = active.map((p) => p.figure);
+      winner = winners[0];
+      events.push({ type: "win", figure: winner, figures: winners });
+    }
+  }
+  return { winner, winners, phase: winner ? "over" : null };
 }
 
 function finalize(st, gmPrev, seq, events, patch) {
@@ -857,11 +1434,37 @@ function finalize(st, gmPrev, seq, events, patch) {
     events,
     lastCard: patch.lastCard ?? null,
     winner: patch.winner ?? null,
+    // Always an array -- [] while the game runs, 1 or 2 figures once it is
+    // over (spec §1's allied-pair win). Mirrors the SQL exactly (`winners`
+    // defaults to '[]'::jsonb, never null), and is computed fresh by
+    // checkWin() every action rather than carried by the
+    // undefined-means-unchanged convention below, same treatment as
+    // `winner` itself, which this is a superset of.
+    winners: patch.winners ?? [],
     // undefined means "unchanged" (most actions never touch these); an
     // explicit null clears it. Either way it must be a real key, never
     // missing, so the client's `game?.auction ?? null` always sees one.
     auction: patch.auction !== undefined ? patch.auction : (gmPrev.auction ?? null),
     trade: patch.trade !== undefined ? patch.trade : (gmPrev.trade ?? null),
+    // The Free Parking pot. Always a real integer, never a missing key -- the
+    // SQL seeds `pot` onto every existing row in its data step, and the
+    // client's `Number(game?.pot) || 0` would quietly read 0 for a room where
+    // it had gone missing, which is the one failure mode that loses money
+    // silently. Read straight off potBox, which charge() and land() have both
+    // already had their way with.
+    pot: Math.max(Math.round(potBox.value) || 0, 0),
+    // The pending casino bet, or null. Same "a real key, never missing" rule
+    // as auction/trade, for the same reason: `game?.casino ?? null` on the
+    // phone must always see one.
+    casino: patch.casino !== undefined ? patch.casino : (gmPrev.casino ?? null),
+    // Diplomacy state, read straight off the `diplo` box -- same "already had
+    // its way with it" reasoning as `pot` above. `round` always starts at 1
+    // and climbs even in a game that never touches an alliance or a war
+    // (spec's Rounds section makes it unconditional).
+    round: diplo.round,
+    alliances: diplo.alliances,
+    allyOffers: diplo.allyOffers,
+    wars: diplo.wars,
     log,
   };
   return st;
@@ -893,12 +1496,21 @@ function applyAction(prevRow, action, payload) {
   const players = st.Players;
   const board = st.position;
   let turn = st.current_order;
+  // The turn this action STARTED from -- read before the switch below can
+  // touch it, so the round-tick check can tell "did the turn move during
+  // this action" from "was it already sitting on the first active seat".
+  const turn0 = turn;
   const gmPrev = st.game || {};
   const seq = (gmPrev.seq || 0) + 1;
   let phase = gmPrev.phase || "roll";
   let doubles = gmPrev.doubles || 0;
   let dice = gmPrev.dice || null;
   let winner = gmPrev.winner || null;
+  let winners = Array.isArray(gmPrev.winners) ? gmPrev.winners : [];
+  // A pre-diplomacy row can have `winner` set with no `winners` array at
+  // all: backfill it so a read-back is consistent either way, mirroring the
+  // SQL's own defensive coalesce for an upgraded room.
+  if (winner && winners.length === 0) winners = [winner];
   let lastCard = null;
   const events = [];
   // undefined = this action doesn't touch it, finalize() carries the
@@ -906,6 +1518,28 @@ function applyAction(prevRow, action, payload) {
   let auctionOut;
   let tradeOut;
   let logOverride; // set only by new_game/reset_board: the log restarts empty
+
+  // The Free Parking pot for the duration of this action. charge() adds fines
+  // to it and land()'s parking branch empties it; finalize() writes whatever
+  // is left back onto the row. See the note on potBox itself.
+  potBox = { value: Math.max(Math.round(Number(gmPrev.pot) || 0), 0) };
+
+  // The diplomacy layer for the duration of this action. See the note on
+  // `diplo` itself, right above charge(). Defensive against an old row that
+  // predates this feature: `game.alliances` etc. may simply not exist yet.
+  diplo = {
+    alliances: Array.isArray(gmPrev.alliances) ? clone(gmPrev.alliances) : [],
+    allyOffers: Array.isArray(gmPrev.allyOffers) ? clone(gmPrev.allyOffers) : [],
+    wars: Array.isArray(gmPrev.wars) ? clone(gmPrev.wars) : [],
+    round: Number.isInteger(gmPrev.round) && gmPrev.round > 0 ? gmPrev.round : 1,
+  };
+
+  // The pending casino bet. Same "json null and a missing key both mean
+  // nothing pending" reading the SQL does, and the same defensive repair: a
+  // phase left behind without its block would otherwise refuse every action in
+  // the room forever.
+  let cas = gmPrev.casino && typeof gmPrev.casino === "object" ? gmPrev.casino : null;
+  if (!cas && phase === "casino") phase = "act";
 
   const pid = payload.playerId;
   const meIdx = pid ? players.findIndex((p) => p.playerId === pid) : -1;
@@ -916,8 +1550,31 @@ function applyAction(prevRow, action, payload) {
   if (!me && !noSeat) throw new Error("Player is not in this room");
   if (phase === "over" && !noSeat) throw new Error("The game is over");
   if (me?.bankrupt && !boardOnly) throw new Error("You are bankrupt");
-  if (phase === "auction" && !["auction_bid", "auction_drop", "leave", "skip_turn"].includes(action)) {
+  // The four "any time" diplomacy verbs (spec's Verbs table) are allowed
+  // through both phase locks below, same as leave/skip_turn already are: an
+  // incoming alliance or peace offer can land on someone mid-auction or
+  // mid-bet elsewhere at the table, and they still have to be able to answer
+  // it without that unrelated auction/bet blocking them. The five "own turn"
+  // diplomacy verbs (propose/break/declare/peace_propose/backstab) are NOT
+  // listed here on purpose -- they stay refused during either phase exactly
+  // like every other own-turn action.
+  const ANY_TIME_DIPLOMACY = ["ally_accept", "ally_decline", "ally_cancel", "peace_accept", "peace_decline"];
+  if (
+    phase === "auction" &&
+    !["auction_bid", "auction_drop", "leave", "skip_turn", ...ANY_TIME_DIPLOMACY].includes(action)
+  ) {
     throw new Error("An auction is running");
+  }
+  // Landing on the casino is MANDATORY, and "mandatory" is enforced right
+  // here: the player cannot roll, move, buy, build, trade, auction or end
+  // their turn around it. Only casino_play clears the block -- or skip_turn /
+  // leave, for a phone that went away. Message verbatim from the SQL, because
+  // the phone shows `error.message` to the player as-is.
+  if (
+    phase === "casino" &&
+    !["casino_play", "leave", "skip_turn", ...ANY_TIME_DIPLOMACY].includes(action)
+  ) {
+    throw new Error("The casino is waiting");
   }
 
   switch (action) {
@@ -971,6 +1628,11 @@ function applyAction(prevRow, action, payload) {
       doubles = r.doubles;
       phase = "act";
       lastCard = out.lastCard;
+      // A bet can have been opened by the landing itself or by a Chance card
+      // that sent the player to the Casino from the other side of the board.
+      // Either way land() left it on `out`; the phase follows at the bottom of
+      // this function, the same place the SQL derives it.
+      if (out.casino) cas = out.casino;
       break;
     }
 
@@ -983,6 +1645,10 @@ function applyAction(prevRow, action, payload) {
       moveTo(board, players, meIdx, to, false, events);
       land(board, players, meIdx, (dice?.[0] ?? 3) + (dice?.[1] ?? 4), events, out);
       lastCard = out.lastCard;
+      // The debug jump resolves the landing, so jumping onto cell 13 opens the
+      // bet exactly as rolling onto it would -- which is the fastest way to
+      // exercise the casino panel in the harness.
+      if (out.casino) cas = out.casino;
       break;
     }
 
@@ -1009,6 +1675,75 @@ function applyAction(prevRow, action, payload) {
       cell.houses = (cell.houses || 0) + 1;
       me.money -= check.price;
       events.push({ type: "build", figure: me.figure, cell: cellId, amount: check.price, houses: cell.houses });
+      break;
+    }
+
+    // The one new verb. Payload: { playerId, game, bet, colour }.
+    //
+    // Every message below is the SQL's own wording -- the phone quotes
+    // `error.message` straight to the player, so "Bet at least 380$" has to
+    // read identically against either backend.
+    //
+    // THE RANDOMNESS IS HERE AND NOWHERE ELSE. casinoSpin() is called once,
+    // inside the same action that takes the money; the client is handed the
+    // finished result and only animates it. Replaying the action cannot
+    // reroll a loss because the pending block is gone by the time a second
+    // call arrives -- which is what the first check enforces.
+    case "casino_play": {
+      if (!cas || phase !== "casino") throw new Error("The casino is not waiting for you");
+      if (me.order !== turn || cas.figure !== me.figure) {
+        throw new Error("The casino is not waiting for you");
+      }
+
+      const casGame = payload.game;
+      if (!casGame || !CASINO_GAMES.includes(casGame)) {
+        throw new Error("Pick slots, roulette or wheel");
+      }
+      // Roulette is the only game with anything to choose after the bet; the
+      // other two ignore whatever was sent, exactly as the SQL does.
+      let casPick = payload.colour ?? null;
+      if (casGame === "roulette") {
+        if (!["red", "black", "green"].includes(casPick)) {
+          throw new Error("Pick red, black or green");
+        }
+      } else {
+        casPick = null;
+      }
+
+      const raw = payload.bet;
+      if (raw == null || raw === "") throw new Error("casino_play needs a bet");
+      const amt = Number(raw);
+      if (!Number.isFinite(amt)) throw new Error("casino_play needs a bet");
+      if (!Number.isInteger(amt)) throw new Error("The bet must be a whole number");
+      // The floor and the ceiling are recomputed from the money the player has
+      // RIGHT NOW rather than read out of the pending block: the block is a
+      // hint for the slider, never an authority, and trusting it would let a
+      // stale phone bet money that has since gone to a landlord.
+      const minBet = casinoMinBet(me.money);
+      if (amt > me.money) throw new Error("Not enough money");
+      if (amt < minBet) throw new Error(`Bet at least ${minBet}$`);
+
+      const spin = casinoSpin(casGame, amt, casPick);
+      // Two movements, never one net figure -- see the payout convention on
+      // casinoSpin(). The bank is the house: the bet vanishes into it and the
+      // payout is printed by it, so neither side touches the parking pot
+      // (reason 'casino' is not in POT_REASONS).
+      charge(players, board, meIdx, amt, null, "casino", cas.cell, events);
+      credit(players, meIdx, spin.payout, "casino", events);
+      events.push({
+        type: "casino",
+        stage: "result",
+        figure: me.figure,
+        cell: cas.cell,
+        game: casGame,
+        bet: amt,
+        mult: spin.mult,
+        payout: spin.payout,
+        result: spin,
+      });
+      cas = null;
+      // one play per landing: back to a normal `act`, and end_turn follows
+      phase = "act";
       break;
     }
 
@@ -1138,11 +1873,11 @@ function applyAction(prevRow, action, payload) {
       if (me.order !== turn) throw new Error("Not your turn");
       if (!me.inJail) throw new Error("You are not in jail");
       if (phase !== "roll") throw new Error("You already rolled");
-      if (me.money < 50) throw new Error("Not enough money");
-      me.money -= 50;
+      if (me.money < JAIL_FINE) throw new Error("Not enough money");
+      me.money -= JAIL_FINE;
       me.inJail = false;
       me.jailTurns = 0;
-      events.push({ type: "pay", figure: me.figure, to: null, amount: 50, reason: "jailFee" });
+      events.push({ type: "pay", figure: me.figure, to: null, amount: JAIL_FINE, reason: "jailFee" });
       events.push({ type: "jailLeave", figure: me.figure, how: "pay" });
       break;
     }
@@ -1177,6 +1912,217 @@ function applyAction(prevRow, action, payload) {
       break;
     }
 
+    // ---------------------------------------------------------------------
+    // Diplomacy: alliances (SPEC-DIPLOMACY.md §1). ally_propose/ally_break
+    // are "own turn" like build/trade_offer; ally_accept/decline/cancel are
+    // "any time" like a trade's accept/decline, and are exempted from the
+    // auction/casino phase locks above for exactly that reason.
+    // ---------------------------------------------------------------------
+
+    case "ally_propose": {
+      if (me.order !== turn) throw new Error("You can only propose an alliance on your turn");
+      if (phase !== "roll" && phase !== "act") throw new Error("You cannot do that right now");
+      const toFig = payload.to;
+      const check = canAlly(diplo, players, me.figure, toFig);
+      if (!check.ok) throw new Error(check.reason);
+      // One conversation at a time between any two players, in either
+      // direction: two crossing proposals would let both sides "accept" and
+      // race.
+      if (diplo.allyOffers.some((o) => (o.from === me.figure && o.to === toFig) || (o.from === toFig && o.to === me.figure))) {
+        throw new Error("There is already an offer between you");
+      }
+      diplo.allyOffers.push({ from: me.figure, to: toFig });
+      events.push({ type: "ally", stage: "propose", from: me.figure, to: toFig });
+      break;
+    }
+
+    case "ally_accept": {
+      const fromFig = payload.from;
+      const offerIdx = diplo.allyOffers.findIndex((o) => o.from === fromFig && o.to === me.figure);
+      if (offerIdx < 0) throw new Error("There is no offer to answer");
+      // Re-validated at accept time, not just at propose time: the proposer
+      // (or me) could have gone bankrupt, been branded traitor, or been
+      // dragged into a war in the meantime -- `me.figure` first so every
+      // sentence that comes back says "you" about whoever tapped Accept.
+      const check = canAlly(diplo, players, me.figure, fromFig);
+      if (!check.ok) throw new Error(check.reason);
+      diplo.allyOffers.splice(offerIdx, 1);
+      diplo.alliances.push({ a: fromFig, b: me.figure, since: diplo.round });
+      // Both are spoken for now, so every OTHER proposal either of them was
+      // part of is dead on arrival.
+      purgeAllyOffersOf(fromFig);
+      purgeAllyOffersOf(me.figure);
+      events.push({ type: "ally", stage: "form", a: fromFig, b: me.figure });
+      break;
+    }
+
+    case "ally_decline": {
+      const fromFig = payload.from;
+      const offerIdx = diplo.allyOffers.findIndex((o) => o.from === fromFig && o.to === me.figure);
+      if (offerIdx < 0) throw new Error("There is no offer to answer");
+      diplo.allyOffers.splice(offerIdx, 1);
+      events.push({ type: "ally", stage: "decline", from: fromFig, to: me.figure });
+      break;
+    }
+
+    case "ally_cancel": {
+      const toFig = payload.to;
+      const offerIdx = diplo.allyOffers.findIndex((o) => o.from === me.figure && o.to === toFig);
+      if (offerIdx < 0) throw new Error("There is no offer to cancel");
+      diplo.allyOffers.splice(offerIdx, 1);
+      events.push({ type: "ally", stage: "cancel", from: me.figure, to: toFig });
+      break;
+    }
+
+    case "ally_break": {
+      if (me.order !== turn) throw new Error("You can only break an alliance on your turn");
+      if (phase !== "roll" && phase !== "act") throw new Error("You cannot do that right now");
+      const otherFig = allyOf(diplo, me.figure);
+      if (!otherFig) throw new Error("You are not in an alliance");
+      diplo.alliances = diplo.alliances.filter((al) => al.a !== me.figure && al.b !== me.figure);
+      events.push({ type: "ally", stage: "break", figure: me.figure, other: otherFig });
+      break;
+    }
+
+    // ---------------------------------------------------------------------
+    // Diplomacy: war (spec §2). war_declare/peace_propose are "own turn";
+    // peace_accept/decline are "any time", for the same reason the ally
+    // answers above are.
+    // ---------------------------------------------------------------------
+
+    case "war_declare": {
+      if (me.order !== turn) throw new Error("You can only declare war on your turn");
+      if (phase !== "roll" && phase !== "act") throw new Error("You cannot do that right now");
+      const target = payload.target;
+      const check = canDeclareWar(diplo, players, me.figure, target, me.money);
+      if (!check.ok) throw new Error(check.reason);
+      // The fee is guaranteed affordable by canDeclareWar()'s own check just
+      // above, so this can never trip charge()'s bankruptcy/shared-debt
+      // branch -- it is reused purely for its "pay" event shape, the same
+      // way casino_play reuses it for a bet that is always affordable too.
+      // Straight to the bank, never the pot: 'warFee' is not a POT_REASON,
+      // and it is deliberately not in FORCED_CHARGE_REASONS either -- a
+      // declaration is a price paid for a status, not a fine the table
+      // shares, exactly like every other voluntary spend.
+      charge(players, board, meIdx, WAR_FEE, null, "warFee", null, events);
+      const war = {
+        id: seq,
+        declarer: me.figure,
+        target,
+        startRound: diplo.round,
+        endsRound: diplo.round + WAR_ROUNDS,
+        peace: null,
+      };
+      diplo.wars.push(war);
+      const sides = warSides(diplo, war);
+      events.push({
+        type: "war",
+        stage: "declare",
+        declarer: me.figure,
+        target,
+        sideA: sides.a,
+        sideB: sides.b,
+        endsRound: war.endsRound,
+      });
+      break;
+    }
+
+    case "peace_propose": {
+      if (me.order !== turn) throw new Error("You can only offer peace on your turn");
+      if (phase !== "roll" && phase !== "act") throw new Error("You cannot do that right now");
+      const war = diplo.wars.find((w) => w.id === payload.warId);
+      if (!war) throw new Error("There is no such war");
+      if (war.declarer !== me.figure && war.target !== me.figure) {
+        throw new Error("Only the two sides can make peace");
+      }
+      const amount = Number(payload.amount ?? 0);
+      if (!Number.isFinite(amount) || amount < 0) throw new Error("A peace payment cannot be negative");
+      if (amount !== Math.trunc(amount)) throw new Error("The payment must be a whole number");
+      if (amount > me.money) throw new Error("You do not have that much cash");
+      war.peace = { from: me.figure, amount };
+      events.push({ type: "war", stage: "peaceOffer", warId: war.id, from: me.figure, amount });
+      break;
+    }
+
+    case "peace_accept": {
+      const war = diplo.wars.find((w) => w.id === payload.warId);
+      if (!war) throw new Error("There is no such war");
+      if (!war.peace) throw new Error("There is no peace offer to answer");
+      const otherPrincipal = war.declarer === war.peace.from ? war.target : war.declarer;
+      if (me.figure !== otherPrincipal) throw new Error("This offer is not yours to answer");
+      const amount = war.peace.amount;
+      const fromIdx = players.findIndex((p) => p.figure === war.peace.from);
+      if (fromIdx < 0) throw new Error("That player is not in this room");
+      // The purse can have emptied between the offer and the answer.
+      // Refusing here (rather than clamping to whatever is left) leaves the
+      // offer standing so the other side can decline it instead of quietly
+      // getting less than they were promised.
+      if (amount > 0 && players[fromIdx].money < amount) {
+        throw new Error("They can no longer pay what they promised");
+      }
+      if (amount > 0) {
+        players[fromIdx].money -= amount;
+        me.money += amount;
+        events.push({ type: "pay", figure: war.peace.from, to: me.figure, amount, reason: "peace", cell: null });
+      }
+      diplo.wars = diplo.wars.filter((w) => w.id !== war.id);
+      // Peace covers both whole sides, which needs no extra work: the sides
+      // only ever existed as a live reading of this one war row.
+      events.push({ type: "war", stage: "peace", warId: war.id, amount });
+      break;
+    }
+
+    case "peace_decline": {
+      const war = diplo.wars.find((w) => w.id === payload.warId);
+      if (!war) throw new Error("There is no such war");
+      if (!war.peace) throw new Error("There is no peace offer to answer");
+      const otherPrincipal = war.declarer === war.peace.from ? war.target : war.declarer;
+      if (me.figure !== otherPrincipal) throw new Error("This offer is not yours to answer");
+      events.push({ type: "war", stage: "peaceDecline", warId: war.id, from: war.peace.from, amount: war.peace.amount });
+      war.peace = null;
+      break;
+    }
+
+    // ---------------------------------------------------------------------
+    // Diplomacy: the backstab gambit (spec §3). Own turn, allied, once ever.
+    // ---------------------------------------------------------------------
+
+    case "backstab": {
+      if (me.order !== turn) throw new Error("You can only backstab on your turn");
+      if (phase !== "roll" && phase !== "act") throw new Error("You cannot do that right now");
+      if (me.backstabUsed) throw new Error("You only have one backstab in you");
+      const allyFig = allyOf(diplo, me.figure);
+      if (!allyFig) throw new Error("You are not in an alliance");
+      const allyIdx = players.findIndex((p) => p.figure === allyFig);
+      const allyPlayer = allyIdx >= 0 ? players[allyIdx] : null;
+      if (!allyPlayer) throw new Error("You are not in an alliance");
+      // 15% of what the victim is holding right now, floored. Not a charge:
+      // this money cannot bankrupt anybody and never reaches for a shared
+      // debt or a third pocket.
+      const cut = Math.floor(allyPlayer.money * BACKSTAB_CUT);
+      // No separate `ally, stage:'dissolve'` event: the dedicated `backstab`
+      // event below already says the alliance broke, and 'backstab' is not
+      // one of the dissolve reasons the state shape enumerates -- silent on
+      // purpose, the same way mono_ally_dissolve(st, fig) with no reason is.
+      diplo.alliances = diplo.alliances.filter((al) => al.a !== me.figure && al.b !== me.figure);
+      if (cut > 0) {
+        allyPlayer.money -= cut;
+        me.money += cut;
+        // The ordinary money-movement event (victim "pays" the backstabber)
+        // alongside the dedicated `backstab` event just below -- every money
+        // movement in this game gets both.
+        events.push({ type: "pay", figure: allyFig, to: me.figure, amount: cut, reason: "backstab", cell: null });
+      }
+      me.traitor = true;
+      me.traitorUntil = diplo.round + TRAITOR_ROUNDS;
+      me.backstabUsed = true;
+      // The brand is permanent, so any proposal the backstabber had out is
+      // now impossible.
+      purgeAllyOffersOf(me.figure);
+      events.push({ type: "backstab", figure: me.figure, victim: allyFig, amount: cut });
+      break;
+    }
+
     // Board button: force the turn to the next player. Mirrors
     // 20260919100000_auction_trade.sql's skip_turn exactly -- during an
     // auction it drops whoever is up to bid (a sleeping phone must not
@@ -1191,7 +2137,22 @@ function applyAction(prevRow, action, payload) {
       // disables the button once `over`, so this is unreachable via the UI.
       if (phase === "over") throw new Error("The game is over");
       const auction = gmPrev.auction;
-      if (auction && phase === "auction") {
+      if (cas && phase === "casino") {
+        // A phone that went to sleep at the table must not hold the room: the
+        // house lets this one go unplayed and the turn moves on. This is the
+        // ONLY way a landing on the casino ends without a bet, and it is a
+        // board button -- the player's own phone is never given a way out.
+        events.push({ type: "casino", stage: "skipped", figure: cas.figure, cell: cas.cell });
+        cas = null;
+        if (gmPrev.trade) {
+          applyTradeResolution(players, board, gmPrev.trade, "cancelled", events);
+          tradeOut = null;
+        }
+        turn = nextTurn(players, turn);
+        doubles = 0;
+        phase = "roll";
+        events.push({ type: "skip", order: turn });
+      } else if (auction && phase === "auction") {
         const targetFig = auction.turn;
         if (targetFig) {
           auction.in = auction.in.filter((f) => f !== targetFig);
@@ -1240,6 +2201,11 @@ function applyAction(prevRow, action, payload) {
         p.jailTurns = 0;
         p.jailCards = 0;
         p.bankrupt = false;
+        // A new game starts nobody allied, at war or branded -- carrying any
+        // of that over would not be a new game.
+        p.traitor = false;
+        p.traitorUntil = 0;
+        p.backstabUsed = false;
       }
       const freshBoard = {};
       for (const key of Object.keys(payloadBoard)) {
@@ -1261,8 +2227,17 @@ function applyAction(prevRow, action, payload) {
       doubles = 0;
       dice = null;
       winner = null;
+      winners = [];
       auctionOut = null;
       tradeOut = null;
+      // A new game starts with an empty pot and nobody at the tables. The
+      // farm's counter comes back at FARM_INCOME_START with the fresh board,
+      // since `income` is seeded on the cell by initialState().
+      potBox.value = 0;
+      cas = null;
+      // ...and nobody allied, at war or offering either -- see the diplomacy
+      // amendment note on `diplo` itself for why this box exists at all.
+      diplo = { alliances: [], allyOffers: [], wars: [], round: 1 };
       logOverride = [];
       events.push({ type: "newGame" });
       break;
@@ -1278,6 +2253,15 @@ function applyAction(prevRow, action, payload) {
         applyTradeResolution(players, board, gmPrev.trade, "cancelled", events);
         tradeOut = null;
       }
+      // "A bankrupt OR DEPARTED player's alliance dissolves" (spec §1), and
+      // every war they were a PRINCIPAL in ends too -- done here rather than
+      // in the end-of-action sweep because the real server is about to splice
+      // this player out of `players` entirely, after which nothing could tell
+      // "left" from "was never here" (the mock never actually removes a
+      // seat, but mirrors the SQL's own placement of this logic anyway).
+      dissolveAllianceOf(me.figure, "left", events);
+      endWarsOf(me.figure, "left", events);
+      purgeAllyOffersOf(me.figure);
       events.push({ type: "leave", figure: me.figure });
       break;
     }
@@ -1286,21 +2270,48 @@ function applyAction(prevRow, action, payload) {
       throw new Error(`Unknown action ${action}`);
   }
 
-  const checked = applyEndOfActionChecks(players, turn, phase, winner, events);
+  // Order matches the SQL's tail exactly: bankrupt-skip, the diplomacy
+  // bankruptcy sweep and the round-tick all happen first (inside
+  // applyEndOfActionChecks); the casino phase is derived next; the win check
+  // runs last, because it needs the finished, reconciled player list.
+  const checked = applyEndOfActionChecks(players, turn, turn0, phase, action, events);
+  let finalPhase = checked.phase;
+
+  // The casino phase is DERIVED, not tracked branch by branch -- the same way
+  // the SQL reads the block back out of `st` at the end. A bet can have been
+  // opened by a roll, by the debug jump or by a Chance card, and a player who
+  // went broke or left on the way there owes the house nothing.
+  let casFinal = cas;
+  if (casFinal) {
+    const ci = players.findIndex((p) => p.figure === casFinal.figure);
+    if (ci < 0 || players[ci].bankrupt) casFinal = null;
+  }
+  if (finalPhase !== "over" && finalPhase !== "auction") {
+    if (casFinal) finalPhase = "casino";
+    else if (finalPhase === "casino") finalPhase = "act";
+  }
+
+  const won = checkWin(players, winner, winners, events);
+  if (won.phase === "over") finalPhase = "over";
+  // Nothing can be bid on, traded or wagered once somebody has won.
+  if (finalPhase === "over") casFinal = null;
+
   // new_game/reset_board restart the log empty (the SQL resets `gm` to `{}`
   // first) -- everything else concats onto the room's existing history.
   const finalizeGmPrev = logOverride !== undefined ? { ...gmPrev, log: logOverride } : gmPrev;
   return finalize(st, finalizeGmPrev, seq, events, {
     turn: checked.turn,
-    phase: checked.phase,
+    phase: finalPhase,
     doubles,
     dice,
     actorId: pid ?? null,
     action,
-    winner: checked.winner,
+    winner: won.winner,
+    winners: won.winners,
     lastCard,
     auction: auctionOut,
     trade: tradeOut,
+    casino: casFinal,
   });
 }
 
@@ -1322,11 +2333,29 @@ function simulateActorStep(
   const idx = players.findIndex((p) => p.playerId === playerId);
   if (idx < 0 || players[idx].bankrupt) return null;
   if (setTurnTo != null) st.current_order = setTurnTo;
+  // The turn this step starts from -- see applyAction()'s own turn0 for why.
+  const turn0 = st.current_order;
 
   const gmPrev = st.game || {};
   const seq = (gmPrev.seq || 0) + 1;
   const events = [];
   const out = { lastCard: null };
+  // Same pot box applyAction() uses, seeded from the row this step starts
+  // from: a scenario intro or a bot's roll can land on a tax cell (money IN)
+  // or on Free Parking (money OUT), and finalize() reads the running value.
+  // Forgetting this line would silently reset the pot on every bot turn.
+  potBox = { value: Math.max(Math.round(Number(gmPrev.pot) || 0), 0) };
+  // Same reasoning, same box, for the diplomacy layer: a forced roll can land
+  // on an ally's street (free), an enemy's (double), or trigger a shared debt
+  // just like a real roll can -- land()/charge() both read `diplo`, and
+  // forgetting this line would silently drop every alliance/war on the next
+  // bot turn.
+  diplo = {
+    alliances: Array.isArray(gmPrev.alliances) ? clone(gmPrev.alliances) : [],
+    allyOffers: Array.isArray(gmPrev.allyOffers) ? clone(gmPrev.allyOffers) : [],
+    wars: Array.isArray(gmPrev.wars) ? clone(gmPrev.wars) : [],
+    round: Number.isInteger(gmPrev.round) && gmPrev.round > 0 ? gmPrev.round : 1,
+  };
   const r = performRoll(board, players, idx, events, gmPrev.doubles || 0, out, {
     forceTarget,
     forceDoubles,
@@ -1352,21 +2381,85 @@ function simulateActorStep(
     }
   }
 
-  const checked = applyEndOfActionChecks(players, st.current_order, landedPhase, gmPrev.winner || null, events);
+  const checked = applyEndOfActionChecks(players, st.current_order, turn0, landedPhase, "roll", events);
+  // A forced step can land on the Casino too, and when it does the room owes
+  // the house a bet exactly as it would after a real roll. The bot loop knows
+  // what to do about that (it plays the minimum -- see runBotLoop), and the
+  // human's own phone gets the panel. Never while an auction is running:
+  // `landedPhase` has already decided that case.
+  let casFinal = out.casino ?? null;
+  let finalPhase = checked.phase;
+  if (casFinal) {
+    const ci = players.findIndex((p) => p.figure === casFinal.figure);
+    if (ci < 0 || players[ci].bankrupt) casFinal = null;
+  }
+  if (finalPhase !== "over" && finalPhase !== "auction" && casFinal) finalPhase = "casino";
+
+  const winnersPrev = Array.isArray(gmPrev.winners) ? gmPrev.winners : [];
+  const won = checkWin(players, gmPrev.winner || null, winnersPrev, events);
+  if (won.phase === "over") finalPhase = "over";
+  if (finalPhase === "over") casFinal = null;
+
   const row = finalize(st, gmPrev, seq, events, {
     turn: checked.turn,
-    phase: checked.phase,
+    phase: finalPhase,
     doubles: r.doubles,
     dice: r.dice,
     actorId: playerId,
     action: "roll",
-    winner: checked.winner,
+    winner: won.winner,
+    winners: won.winners,
     lastCard: out.lastCard,
     auction: auctionOut,
+    casino: casFinal,
   });
   emit(row);
   afterStateChange(row);
   return row;
+}
+
+// A bot that landed on the Casino settles up.
+//
+// It has to: the bet is MANDATORY, so a bot left standing at the tables would
+// hold phase 'casino' forever and every other phone in the room would be told
+// "The casino is waiting" until the tab was reloaded. It plays the minimum,
+// which is the smallest thing that clears the block, and picks a game at
+// random so the harness sees all three animations over a few laps.
+//
+// Deliberately goes through applyAction rather than poking the row: the mock's
+// casino_play is where the spin, the two ledger movements and the phase change
+// live, and a bot taking a shortcut around them would stop testing the path
+// the human's own tap takes.
+function playBotCasino(playerId) {
+  if (!room) return null;
+  const game = CASINO_GAMES[Math.floor(Math.random() * CASINO_GAMES.length)];
+  const colours = ["red", "black", "green"];
+  const player = room.Players.find((p) => p.playerId === playerId);
+  const bet = casinoMinBet(player?.money ?? 0);
+  if (bet <= 0) return null;
+  try {
+    const row = applyAction(room, "casino_play", {
+      playerId,
+      game,
+      bet,
+      colour: colours[Math.floor(Math.random() * colours.length)],
+    });
+    emit(row);
+    afterStateChange(row);
+    return row;
+  } catch {
+    return null; // never let a bad bot state throw inside a timer
+  }
+}
+
+// Whoever is at the tables right now, if anybody, and only when they are a bot.
+// Returns the row it produced, or null when there was nothing to do.
+function settleCasinoForBots() {
+  const cas = room?.game?.casino;
+  if (!cas || room.game.phase !== "casino") return null;
+  const who = room.Players.find((p) => p.figure === cas.figure);
+  if (!who || who.playerId === ME_PLAYER_ID) return null;
+  return playBotCasino(who.playerId);
 }
 
 // After the human ends their turn, play the bots' turns for them with ~1s
@@ -1385,6 +2478,16 @@ async function runBotLoop(token) {
     if (token !== autoplayToken || !room) return;
     const rolled = simulateActorStep(current.playerId, { buyIfAffordable: true, maybeAuction: true });
     if (!rolled || rolled.game.phase === "over") return;
+
+    // The bot landed on the Casino. Let the human's phone see the panel's
+    // spectator side for a beat, then play the minimum and clear the block —
+    // the bet is mandatory, so nothing else in the room can move until it is.
+    if (rolled.game.phase === "casino") {
+      await delay(900);
+      if (token !== autoplayToken || !room) return;
+      const played = settleCasinoForBots();
+      if (played?.game?.phase === "over") return;
+    }
 
     if (rolled.game.phase === "auction") {
       // The bot itself started this auction (didn't buy, rolled the ~50%).
@@ -1476,6 +2579,15 @@ async function runAutoplayLoop(token) {
     const rolled = simulateActorStep(current.playerId, { buyIfAffordable: true, maybeAuction: true });
     if (!rolled || rolled.game.phase === "over") return;
 
+    // Every seat here is a bot, so the Casino always settles itself. Without
+    // this the TV demo would stop dead the first time anyone landed on 13.
+    if (rolled.game.phase === "casino") {
+      await delay(900);
+      if (token !== autoplayToken || !room) return;
+      const played = settleCasinoForBots();
+      if (played?.game?.phase === "over") return;
+    }
+
     if (rolled.game.phase === "auction") {
       // Auctions always terminate (every bid/drop strictly shrinks `in` or
       // raises `bid`) -- no safety cap needed, unlike the trade wait below.
@@ -1534,7 +2646,101 @@ function afterStateChange(row) {
   if (!row) return;
   const g = row.game || {};
   if (g.phase === "auction" && g.auction) scheduleAuctionBotIfNeeded(row);
+  if (g.phase === "casino" && g.casino) scheduleCasinoBotIfNeeded(row);
   if (g.trade) scheduleTradeBotIfNeeded(row);
+  scheduleAllyBotIfNeeded(row);
+  schedulePeaceBotIfNeeded(row);
+}
+
+// A bot on the receiving end of an alliance proposal always declines it
+// (SPEC-DIPLOMACY.md's bot brief). Without this a proposal to a bot would sit
+// in game.allyOffers forever -- nothing else in this file ever answers on a
+// bot's behalf, and a human phone has no button that could stand in for one.
+// Same "one pending timer, re-checked as stale before it fires" pattern as
+// scheduleAuctionBotIfNeeded/scheduleTradeBotIfNeeded above.
+function scheduleAllyBotIfNeeded(row) {
+  const offers = Array.isArray(row.game?.allyOffers) ? row.game.allyOffers : [];
+  const offer = offers.find((o) => {
+    const bot = row.Players.find((p) => p.figure === o.to);
+    return bot && bot.playerId !== ME_PLAYER_ID && !bot.bankrupt;
+  });
+  if (!offer) {
+    if (pendingAllyBotTimer) clearTimeout(pendingAllyBotTimer.timer);
+    pendingAllyBotTimer = null;
+    return;
+  }
+  const key = `${offer.from}|${offer.to}`;
+  if (pendingAllyBotTimer && pendingAllyBotTimer.key === key) return;
+  if (pendingAllyBotTimer) clearTimeout(pendingAllyBotTimer.timer);
+  const bot = row.Players.find((p) => p.figure === offer.to);
+  const run = () => {
+    pendingAllyBotTimer = null;
+    if (!room) return;
+    const stillPending = (room.game?.allyOffers || []).some((o) => o.from === offer.from && o.to === offer.to);
+    if (!stillPending) return; // stale: already answered some other way
+    gameAction(room.uuid, "ally_decline", { playerId: bot.playerId, from: offer.from }).catch(() => {});
+  };
+  pendingAllyBotTimer = { timer: setTimeout(run, 900 + Math.random() * 400), key, run };
+}
+
+// A bot that is a war principal always accepts a peace offer put to it -- the
+// mirror image of scheduleAllyBotIfNeeded above, same reasoning: a peace
+// offer sitting on a bot's war would otherwise hang that war (and the room)
+// forever.
+function schedulePeaceBotIfNeeded(row) {
+  const wars = Array.isArray(row.game?.wars) ? row.game.wars : [];
+  const war = wars.find((w) => {
+    if (!w.peace) return false;
+    const otherFig = w.declarer === w.peace.from ? w.target : w.declarer;
+    const bot = row.Players.find((p) => p.figure === otherFig);
+    return bot && bot.playerId !== ME_PLAYER_ID && !bot.bankrupt;
+  });
+  if (!war) {
+    if (pendingPeaceBotTimer) clearTimeout(pendingPeaceBotTimer.timer);
+    pendingPeaceBotTimer = null;
+    return;
+  }
+  const key = `${war.id}|${war.peace.from}|${war.peace.amount}`;
+  if (pendingPeaceBotTimer && pendingPeaceBotTimer.key === key) return;
+  if (pendingPeaceBotTimer) clearTimeout(pendingPeaceBotTimer.timer);
+  const otherFig = war.declarer === war.peace.from ? war.target : war.declarer;
+  const bot = row.Players.find((p) => p.figure === otherFig);
+  const run = () => {
+    pendingPeaceBotTimer = null;
+    if (!room) return;
+    const cur = (room.game?.wars || []).find((w) => w.id === war.id);
+    if (!cur || !cur.peace) return; // stale: already resolved some other way
+    gameAction(room.uuid, "peace_accept", { playerId: bot.playerId, warId: war.id }).catch(() => {});
+  };
+  pendingPeaceBotTimer = { timer: setTimeout(run, 900 + Math.random() * 400), key, run };
+}
+
+// A BOT standing at the tables has to be made to bet, from wherever the
+// landing came from: a scenario intro, one of the toolbar's "push a live
+// event" buttons, or a bot loop. The two loops handle their own case inline
+// (they have to await it before calling end_turn), so this is the safety net
+// for every other path -- without it, a scenario intro that happened to roll
+// onto cell 13 for somebody else would freeze the harness with "The casino is
+// waiting" on every button.
+//
+// Never for the human: their phone is the whole point of the feature, and the
+// panel is waiting for them.
+function scheduleCasinoBotIfNeeded(row) {
+  const cas = row.game?.casino;
+  if (!cas) return;
+  const player = row.Players.find((p) => p.figure === cas.figure);
+  if (!player || player.playerId === ME_PLAYER_ID || player.bankrupt) return;
+  const key = `${cas.cell}|${cas.figure}|${row.game.seq}`;
+  if (pendingCasinoBotTimer && pendingCasinoBotTimer.key === key) return;
+  if (pendingCasinoBotTimer) clearTimeout(pendingCasinoBotTimer.timer);
+  const run = () => {
+    pendingCasinoBotTimer = null;
+    // stale check: the loops may already have settled it
+    if (!room || room.game?.phase !== "casino") return;
+    if (room.game?.casino?.figure !== cas.figure) return;
+    playBotCasino(player.playerId);
+  };
+  pendingCasinoBotTimer = { timer: setTimeout(run, 1100), key, run };
 }
 
 function scheduleAuctionBotIfNeeded(row) {
@@ -1653,6 +2859,7 @@ function injectTradeEvent(partialTrade, status) {
     actorId: trade.from,
     action: `trade_${status}`,
     winner: gmPrev.winner ?? null,
+    winners: Array.isArray(gmPrev.winners) ? gmPrev.winners : [],
     lastCard: null,
     trade: newTrade,
   });
@@ -1986,8 +3193,14 @@ export const mockDev = {
     // scenario had running, and any private auction valuation it cached.
     if (pendingAuctionBotTimer) clearTimeout(pendingAuctionBotTimer.timer);
     if (pendingTradeBotTimer) clearTimeout(pendingTradeBotTimer.timer);
+    if (pendingCasinoBotTimer) clearTimeout(pendingCasinoBotTimer.timer);
+    if (pendingAllyBotTimer) clearTimeout(pendingAllyBotTimer.timer);
+    if (pendingPeaceBotTimer) clearTimeout(pendingPeaceBotTimer.timer);
     pendingAuctionBotTimer = null;
     pendingTradeBotTimer = null;
+    pendingCasinoBotTimer = null;
+    pendingAllyBotTimer = null;
+    pendingPeaceBotTimer = null;
     auctionBotLimits = {};
     tradeBotDelayMs = built.tradeBotDelayMs ?? null;
     fetchMode = built.fetchMode || "normal";
@@ -2116,6 +3329,7 @@ export const mockDev = {
       actorId: bot.playerId,
       action: "auction_start",
       winner: gmPrev.winner ?? null,
+      winners: Array.isArray(gmPrev.winners) ? gmPrev.winners : [],
       lastCard: null,
       auction,
     });
@@ -2142,11 +3356,23 @@ export const mockDev = {
       run();
       return;
     }
+    // A bot waiting at the casino is the same kind of pending beat: skip the
+    // wait and make it bet now.
+    if (pendingCasinoBotTimer) {
+      clearTimeout(pendingCasinoBotTimer.timer);
+      const run = pendingCasinoBotTimer.run;
+      pendingCasinoBotTimer = null;
+      run();
+      return;
+    }
     if (!room) return;
     const current = room.Players.find((p) => p.order === room.current_order);
     if (!current || current.playerId === ME_PLAYER_ID || current.bankrupt) return;
     const phase = (room.game || {}).phase;
-    if (phase === "over" || phase === "auction") return;
+    // 'casino' is excluded for the same reason 'auction' is: the room is
+    // waiting on one specific decision, and rolling for somebody would be the
+    // wrong move entirely. A bot's bet is reached through the branch above.
+    if (phase === "over" || phase === "auction" || phase === "casino") return;
     simulateActorStep(current.playerId, { buyIfAffordable: true, maybeAuction: true });
   },
 

@@ -1,0 +1,321 @@
+/* Diplomacy: the relationship chip, action pills and inline confirm panel on
+ * each row of the Players sheet, plus the extra body copy the incoming-offer
+ * overlay needs on top of trade.module.css's alertdialog shell (DiplomacyOverlay
+ * reuses .owrap/.oscrim/.offer/.ofHead/.ofAct/.ofSec/.ofPri from there — this
+ * file only adds what is NEW). Tokens from [data-client]: --surface --sunk
+ * --ink --muted --line --pos --pos-bg --neg --neg-bg --neu-bg --focus --crim
+ * --f-display --f-body.
+ *
+ * Same two-class rule trade.module.css documents at its own head: this module's
+ * load order relative to sheet.module.css / trade.module.css is not guaranteed,
+ * so every selector that touches a <button> stays at least a two-class compound
+ * rather than risking a tie with either file's `:where(button)` reset. */
+
+/* ---------------------------------------------------------------- the row */
+
+/* A player row is no longer just `sh.list > li`'s centred flex strip — once a
+ * row can carry actions and an open confirm panel under it, it has to stack
+ * vertically. Rather than fight that file's `.list > li { align-items:
+ * center }` on specificity, diplomacy rows use their own list/row shell here
+ * and still borrow sh.rowMain/rowTitle/rowSub/tag for the text inside — those
+ * are simple inline-level rules that never assumed a particular parent
+ * layout, so mixing them in costs nothing. */
+.pList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pRow:last-child {
+  border-bottom: 0;
+}
+
+.pRow.dim {
+  opacity: 0.45;
+}
+
+.pHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+}
+
+/* -------------------------------------------------------- relationship chip */
+
+.rel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rel_ally {
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.rel_war {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+.rel_traitor {
+  background: var(--neu-bg);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* -------------------------------------------------------------- action row */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A pill built the same way sh.rowBtn is (44px, pill, --sunk) so the diplomacy
+ * buttons read as the same kind of control as Trade right above them — but
+ * declared locally (rather than importing sh.rowBtn everywhere) because two of
+ * them need a danger variant sh.rowBtn has no notion of. */
+.actions :where(button).pill {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.actions :where(button).pill:disabled {
+  opacity: 0.5;
+  color: var(--muted);
+}
+
+.actions :where(button).pillDanger {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+.actions :where(button).pillDanger:disabled {
+  opacity: 0.5;
+  color: var(--muted);
+  background: var(--sunk);
+}
+
+/* Sits under a pill's disabled reason without needing its own row — same idea
+ * as MineSheet's blocked-build line, but attached to a single pill rather
+ * than the whole row, so two disabled pills can each say why. */
+.pillHint {
+  flex-basis: 100%;
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------- the confirm panel */
+
+/* The one place a player reads the real cost of an irreversible move before
+ * they commit to it. Deliberately plainer than a modal — it is already inside
+ * an open sheet, so a second layer of scrim/backdrop would be one dialog too
+ * many — but visually set apart with its own plate so it reads as "this is
+ * not part of the row above it any more". */
+.panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--sunk);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+.panelLead {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.panelNote {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.panelList {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.panelCols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.panelColHead {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panelColHead.good {
+  color: var(--pos);
+}
+
+.panelColHead.bad {
+  color: var(--neg);
+}
+
+@media (max-width: 359px) {
+  /* Two side-by-side lists of four short sentences each are tight below
+     360px; stacked, every word stays legible instead of squeezed to a sliver
+     next to its neighbour. */
+  .panelCols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panelAct {
+  display: flex;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.panelAct :where(button).cancel {
+  flex: 1 1 0;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1.5px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.panelAct :where(button).confirm {
+  flex: 1.4 1 0;
+  min-height: 48px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: var(--surface);
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.panelAct :where(button).confirmDanger {
+  background: var(--neg);
+  color: #fff;
+}
+
+.panelAct :where(button):disabled {
+  opacity: 0.5;
+}
+
+/* ----------------------------------------------------- peace payment stepper */
+
+.stepRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.stepGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 44px, same floor as every other touch target on this screen (TradeSheet's
+ * own cash stepper included — see trade.module.css's .trStepBtn). */
+.stepGroup :where(button).stepBtn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.stepGroup :where(button).stepBtn:disabled {
+  opacity: 0.35;
+}
+
+.stepVal {
+  display: block;
+  min-width: 60px;
+  text-align: center;
+  font-family: var(--f-display);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------- offer overlay */
+
+/* Extra to trade.module.css's .offer shell: the ally offer's two-column
+ * benefit/cost list reuses .panelCols/.panelColHead/.panelList above, and this
+ * is just the note line for a peace offer's optional payment. */
+.offerNote {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.offerAmount {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--sunk);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.offerAmount strong {
+  font-family: var(--f-display);
+  font-size: 20px;
+}
