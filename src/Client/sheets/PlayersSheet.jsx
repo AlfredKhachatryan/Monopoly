@@ -14,6 +14,7 @@
 // this renders as a plain read-only roster (the game is over, or I am not
 // seated), same as it always did before diplomacy existed.
 import { useState } from "react";
+import { Handshake, Skull, Swords } from "lucide-react";
 import Sheet from "../Sheet";
 import Tok from "../Tok";
 import { fmt } from "../format";
@@ -30,9 +31,25 @@ import {
   warSides,
   warsOf,
 } from "../../Hooks/diplomacy";
-import { allyBenefits, allyCosts, backstabCosts, warCosts } from "../diplomacyText";
+import {
+  allyBenefits,
+  allyCosts,
+  allySummaryLine,
+  backstabCosts,
+  hasSeenAllyExplainer,
+  hasSeenWarExplainer,
+  markSeenAllyExplainer,
+  markSeenWarExplainer,
+  warCosts,
+  warSummaryLine,
+} from "../diplomacyText";
 import sh from "../sheet.module.css";
 import d from "../diplomacy.module.css";
+
+// The relationship chip's leading icon, keyed by `relationshipFor()`'s own
+// `tone` — "war" also covers "allied, at war together", which is still a war
+// chip first and an alliance chip second (see its text).
+const REL_ICON = { ally: Handshake, war: Swords, traitor: Skull };
 
 const CASH_STEP = 10;
 function clampCash(value, max) {
@@ -78,13 +95,34 @@ export default function PlayersSheet({
   // rule, for the same reason — there is only room to read one at a time.
   const [action, setAction] = useState(null);
   const [peaceAmount, setPeaceAmount] = useState(0);
+  // Whether the ally/war confirm panel CURRENTLY open is showing its full
+  // benefits/costs explainer or the one-line summary (complaint C: "show 1
+  // time" — the full text only the first time this device ever proposes/
+  // declares one, a compact line with a "Details" toggle after that). Reset
+  // on every open below, and seeded to `true` on the device's actual first
+  // open so nobody's very first alliance/war is the one time the explainer is
+  // missing.
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   function toggle(figure, kind) {
-    setAction((cur) => {
-      if (cur && cur.figure === figure && cur.kind === kind) return null;
-      if (kind === "peace") setPeaceAmount(0);
-      return { figure, kind };
-    });
+    if (action && action.figure === figure && action.kind === kind) {
+      setAction(null);
+      return;
+    }
+    if (kind === "peace") setPeaceAmount(0);
+    // Read the "have I seen this" flag BEFORE marking it — marking has to
+    // happen once the explainer has actually been put on screen, but the
+    // render that puts it there is the one about to happen, not the next one.
+    let firstTime = false;
+    if (kind === "ally") {
+      firstTime = !hasSeenAllyExplainer();
+      markSeenAllyExplainer();
+    } else if (kind === "war") {
+      firstTime = !hasSeenWarExplainer();
+      markSeenWarExplainer();
+    }
+    setDetailsOpen(firstTime);
+    setAction({ figure, kind });
   }
 
   // Closes the panel only once the server has actually taken the call — a
@@ -149,7 +187,20 @@ export default function PlayersSheet({
                     {isWinner && <span className={sh.tag}>Winner</span>}
                   </div>
                   <span className={`${sh.rowSub} ${sh.rowSubWrap}`}>{bits.join(" · ")}</span>
-                  {rel && <span className={`${d.rel} ${d[`rel_${rel.tone}`]}`}>{rel.text}</span>}
+                  {rel &&
+                    (() => {
+                      // A tiny icon ahead of the words — same idea as the TV's
+                      // diplomacy banner (TvDiplo.jsx), so a row is scannable at
+                      // a glance instead of by reading every chip's sentence:
+                      // ally / at war / traitor now each have their own shape.
+                      const RelIcon = REL_ICON[rel.tone];
+                      return (
+                        <span className={`${d.rel} ${d[`rel_${rel.tone}`]}`}>
+                          {RelIcon && <RelIcon size={12} aria-hidden="true" />}
+                          {rel.text}
+                        </span>
+                      );
+                    })()}
                 </div>
                 {onTrade && !isMe && !p.bankrupt && (
                   <button
@@ -287,24 +338,35 @@ export default function PlayersSheet({
               {rowOpen === "ally" && (
                 <div className={d.panel}>
                   <p className={d.panelLead}>Ally with {p.name}?</p>
-                  <div className={d.panelCols}>
-                    <div>
-                      <p className={`${d.panelColHead} ${d.good}`}>Benefits</p>
-                      <ul className={d.panelList}>
-                        {allyBenefits().map((line) => (
-                          <li key={line}>{line}</li>
-                        ))}
-                      </ul>
+                  {detailsOpen ? (
+                    <div className={d.panelCols}>
+                      <div>
+                        <p className={`${d.panelColHead} ${d.good}`}>Benefits</p>
+                        <ul className={d.panelList}>
+                          {allyBenefits().map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className={`${d.panelColHead} ${d.bad}`}>Costs</p>
+                        <ul className={d.panelList}>
+                          {allyCosts().map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
-                    <div>
-                      <p className={`${d.panelColHead} ${d.bad}`}>Costs</p>
-                      <ul className={d.panelList}>
-                        {allyCosts().map((line) => (
-                          <li key={line}>{line}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
+                  ) : (
+                    <p className={d.panelSummary}>{allySummaryLine()}</p>
+                  )}
+                  <button
+                    type="button"
+                    className={d.detailsBtn}
+                    onClick={() => setDetailsOpen((v) => !v)}
+                  >
+                    {detailsOpen ? "Hide details" : "Details"}
+                  </button>
                   <div className={d.panelAct}>
                     <button type="button" className={d.cancel} onClick={() => setAction(null)}>
                       Cancel
@@ -324,11 +386,22 @@ export default function PlayersSheet({
               {rowOpen === "war" && (
                 <div className={d.panel}>
                   <p className={d.panelLead}>Declare war on {p.name}?</p>
-                  <ul className={d.panelList}>
-                    {warCosts().map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
+                  {detailsOpen ? (
+                    <ul className={d.panelList}>
+                      {warCosts().map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={d.panelSummary}>{warSummaryLine()}</p>
+                  )}
+                  <button
+                    type="button"
+                    className={d.detailsBtn}
+                    onClick={() => setDetailsOpen((v) => !v)}
+                  >
+                    {detailsOpen ? "Hide details" : "Details"}
+                  </button>
                   <div className={d.panelAct}>
                     <button type="button" className={d.cancel} onClick={() => setAction(null)}>
                       Cancel

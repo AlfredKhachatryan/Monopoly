@@ -29,7 +29,7 @@ const ICON = {
   backstab: Skull,
 };
 
-function Group({ figs, players }) {
+function Group({ figs, players, tag }) {
   const list = (figs || []).filter(Boolean);
   if (list.length === 0) return null;
   return (
@@ -40,6 +40,11 @@ function Group({ figs, players }) {
           <span className={c.dipMember} key={fig}>
             <Tok player={p || { name: fig, figure: fig }} size={56} />
             <span>{p?.name ?? nameOfFig(players, fig)}</span>
+            {/* The TRAITOR brand, right under the figure it now applies to —
+                complaint B asks the backstab moment to say so more loudly than
+                the sub-line alone, the same way DiplomacyOverlay's phone alert
+                does with its own header tag. */}
+            {tag && <span className={c.traitorTag}>{tag}</span>}
           </span>
         );
       })}
@@ -52,17 +57,26 @@ export default function TvDiplo({ diplo, players }) {
   const { kind, title, sub, chip, tone, left, right } = diplo;
   const Icon = ICON[kind] || Swords;
   const hasSides = (left?.length || 0) > 0 || (right?.length || 0) > 0;
+  // A backstab is the one diplomacy moment with a victim rather than two
+  // mutual sides, and complaint B asks it to read as CLEARLY heavier than an
+  // ordinary alliance break: its own weight class below (a red ring and a
+  // bigger icon, `prefers-reduced-motion` already covered by the same
+  // fallback every other panel here uses — see tvCenter.module.css), plus the
+  // explicit TRAITOR tag under the figure who did it. Both figures and the
+  // amount already ride on `left`/`right`/`chip` exactly like every other
+  // kind, so nothing about the data this component reads needs to change.
+  const isBackstab = kind === "backstab";
 
   return (
-    <div className={c.dip} data-kind={kind}>
+    <div className={`${c.dip} ${isBackstab ? c.dipBackstab : ""}`} data-kind={kind}>
       <div className={c.dipHead}>
-        <Icon size={36} aria-hidden="true" />
+        <Icon size={isBackstab ? 44 : 36} aria-hidden="true" />
         <strong>{title}</strong>
       </div>
 
       {hasSides && (
         <div className={c.dipSides}>
-          <Group figs={left} players={players} />
+          <Group figs={left} players={players} tag={isBackstab ? "Traitor" : null} />
           <Icon size={26} className={c.dipVs} aria-hidden="true" />
           <Group figs={right} players={players} />
         </div>

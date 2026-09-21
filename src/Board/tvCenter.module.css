@@ -883,6 +883,62 @@
   max-width: 100%;
 }
 
+/* Backstab's own weight class (complaint B): "clearly stronger than an
+ * ordinary alliance break". A red ring around the whole panel that pulses
+ * once after it lands, on top of the shared `panelIn` entrance every other
+ * `.dip` kind already gets — not a replacement for it, so a backstab still
+ * flies onto the centre exactly like every other diplomacy moment. The pulse
+ * is a SECOND animation layered onto the same `animation` shorthand, which
+ * is exactly what the reduced-motion block below drops: that block already
+ * overrides `.dip`'s `animation` property wholesale with `!important`, so a
+ * `.dip.dipBackstab` element loses both animations at once, automatically,
+ * with no extra selector needed here. */
+.dipBackstab {
+  box-shadow:
+    0 0 0 3px var(--neg),
+    0 30px 70px -28px rgba(0, 0, 0, 0.7);
+  animation:
+    panelIn var(--t-enter) ease-out both,
+    dipBackstabPulse 1.6s ease-in-out 1 var(--t-enter);
+}
+
+.dipBackstab .dipHead svg {
+  color: var(--neg);
+}
+
+.dipBackstab .dipSub {
+  color: var(--neg);
+  font-weight: 800;
+}
+
+@keyframes dipBackstabPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px var(--neg),
+      0 30px 70px -28px rgba(0, 0, 0, 0.7);
+  }
+  50% {
+    box-shadow:
+      0 0 0 9px var(--neg),
+      0 30px 70px -28px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* The TRAITOR tag under a figure in the backstab moment — same red pill
+ * DiplomacyOverlay's phone alert uses for the same word, so the brand reads
+ * identically on the sofa and in your hand. */
+.traitorTag {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--neg);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 /* ---- game over ---------------------------------------------------------- */
 
 /* The winner and the final standings.

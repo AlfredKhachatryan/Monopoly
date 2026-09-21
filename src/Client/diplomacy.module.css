@@ -82,6 +82,10 @@
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
+.rel svg {
+  flex: none;
+}
+
 /* -------------------------------------------------------------- action row */
 
 .actions {
@@ -195,6 +199,36 @@
 
 .panelColHead.bad {
   color: var(--neg);
+}
+
+/* The compact confirm (complaint C): one line with the numbers that actually
+ * decide anything, standing in for the two-column benefits/costs list every
+ * confirm after the device's first ever one. Same weight as `.panelNote` —
+ * this is still just a sentence, not a headline. */
+.panelSummary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* The toggle back to the full explainer. A plain text button rather than a
+ * second `.pill` — it is not a decision, just "show me more" — but still a
+ * real tap target: 44px tall even though the label is short, same floor as
+ * every other control on this screen. */
+.detailsBtn {
+  align-self: start;
+  min-height: 44px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 @media (max-width: 359px) {
@@ -318,4 +352,28 @@
 .offerAmount strong {
   font-family: var(--f-display);
   font-size: 20px;
+}
+
+/* The backstab alert's amount is a LOSS for whoever is reading it (complaint
+ * B) — the peace overlay's own `.offerAmount` above is always a gain, so this
+ * is the one place that number needs to read red rather than borrow the
+ * default ink colour. */
+.offerAmount.neg strong {
+  color: var(--neg);
+}
+
+/* The victim alert's TRAITOR brand (complaint B: "clearly stronger... TRAITOR
+ * brand") and the same word wherever else a phone needs to say it loudly
+ * rather than leave it buried in a sentence. */
+.traitorTag {
+  display: inline-flex;
+  align-self: start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--neg);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
