@@ -35,9 +35,10 @@ import { JAIL_MAX_TURNS, accentFor, nameOfFig, playerByFig, readableOn } from ".
 import { TRAITOR_ROUNDS, WAR_ROUNDS } from "../Hooks/diplomacy";
 import { fmt, fmtSigned, fmtText } from "../Client/format";
 import { hasCyrillic } from "../Client/boardDisplay";
+import { cardAmountOf } from "../Client/EventView";
 import Tok from "../Client/Tok";
 import RollDice from "../Client/RollDice";
-import { REVEAL } from "../Client/useReveal";
+import { REVEAL, useCardBeat } from "../Client/useReveal";
 import TvAuction from "./TvAuction";
 import TvDiplo from "./TvDiplo";
 import TvFigure from "./TvFigure";
@@ -45,7 +46,14 @@ import TvTrade from "./TvTrade";
 import { useTvFeed, useTvReduce } from "./TvFeed";
 import c from "./tvCenter.module.css";
 
-const CARD_MS = 4500;
+// How long the card face owns the centre. It used to be a flat 4500ms picked
+// by eye, and it ended AFTER everything the card caused had already played.
+// It is the read beat now (src/Client/useReveal.js's REVEAL.CARD_READ_MS): the
+// face comes down at the exact moment the consequence is allowed to start, so
+// the board centre says one thing at a time — first what the card says, then
+// what it does — instead of running the money under the card that was still
+// announcing it.
+const CARD_MS = REVEAL.CARD_READ_MS;
 const TRADE_END_MS = 2800;
 const TRADE_DONE = ["accepted", "declined", "cancelled", "expired"];
 // Diplomacy moments carry two names (and, for a war, up to four), so they get
@@ -92,27 +100,11 @@ const JAIL_REASON = {
   card: "The card says so",
 };
 
-// What the card moved, summed over the card's own money events.
-//
-// The same rule the phone uses (ClientScreen.jsx), replicated here rather than
-// imported because it lives inside that file's feed effect: the server sends a
-// card's money as separate collect/pay events in the same batch, PLURAL — "pay
-// each player 50$" is three pays, repairs is one pay with its own reason, and
-// "collect 10$ from every player" is other people paying the drawer. Taking
-// only the first match shows −50$ for a −150$ card.
-function cardAmount(events, card) {
-  let amount = 0;
-  for (const e of events.slice(events.indexOf(card) + 1)) {
-    if (e?.type === "card") break; // a second card in one batch is its own story
-    const n = Number(e?.amount);
-    if (!Number.isFinite(n)) continue;
-    const byCard = e.reason === "card" || e.reason === "repairs";
-    if (e.type === "collect" && e.figure === card.figure && byCard) amount += n;
-    else if (e.type === "pay" && e.figure === card.figure && byCard) amount -= n;
-    else if (e.type === "pay" && e.to === card.figure && e.reason === "card") amount += n;
-  }
-  return Number.isFinite(amount) ? amount : 0;
-}
+// What the card moved used to be summed by a private `cardAmount()` here, a
+// third hand-written copy of a rule that also lived in TvSide.jsx and inside
+// ClientScreen's feed effect. It is `cardAmountOf` in src/Client/EventView.jsx
+// now, beside the `card` case that documents it, so the card face, the Latest
+// column and the phone cannot disagree about what one card was worth.
 
 // "Koli is in jail · 2 turns left" — the same sentence the player card tells,
 // because a player who cannot move is the reason the room is waiting.
@@ -264,7 +256,11 @@ export default function TvCenter({
   const [diplo, setDiplo] = useState(null);
   const cardTimer = useRef(null);
   const tradeTimer = useRef(null);
+  // Two, because the jail beat no longer always starts at once: a card that
+  // sends somebody to Jail has to be READ first, so one timer opens the beat
+  // and the other closes it. See the `jailed` branch below.
   const bustTimer = useRef(null);
+  const bustEnd = useRef(null);
   const diploTimer = useRef(null);
   // A war's declare event carries its own sides (sideA/sideB) straight from
   // the spec, so the banner needs no lookup there — but the SPEC says the
@@ -277,6 +273,26 @@ export default function TvCenter({
   // banner, just without the two sides, rather than reading a stale cache.
   const warCache = useRef({});
 
+  // ---- the card read beat -------------------------------------------------
+  // One schedule per batch, shared with every other screen in the room (see
+  // src/Client/useReveal.js). It calls back once per card in the batch, at the
+  // moment that card's face is due — which is REVEAL.CARD_MS after the batch
+  // released for the first one, and a whole read beat later for each card in a
+  // chain. `beat.delayAt(i)` is the same clock for anything else in the batch:
+  // the offset at which the event at index `i` is allowed to be news.
+  const beat = useCardBeat(feed, (c) => {
+    const drawn = c.event;
+    setCard({
+      deck: drawn.deck === "chance" ? "chance" : "chest",
+      kind: drawn.deck === "chance" ? "Chance" : "Community Chest",
+      text: drawn.text,
+      figure: drawn.figure,
+      amount: cardAmountOf(Array.isArray(feed?.events) ? feed.events : [], drawn),
+    });
+    clearTimeout(cardTimer.current);
+    cardTimer.current = setTimeout(() => setCard(null), CARD_MS);
+  });
+
   // One effect per batch. Whatever was transient is dropped first — "the next
   // action" is precisely what ends a card, and a stale "Deal accepted" sitting
   // over the next player's roll would be a lie.
@@ -286,6 +302,7 @@ export default function TvCenter({
     clearTimeout(cardTimer.current);
     clearTimeout(tradeTimer.current);
     clearTimeout(bustTimer.current);
+    clearTimeout(bustEnd.current);
     clearTimeout(diploTimer.current);
     setCard(null);
     setTradeEnd(null);
@@ -295,36 +312,32 @@ export default function TvCenter({
     const rolled = events.some((e) => e?.type === "roll");
     if (rolled) setEverRolled(true);
 
-    // Going to jail, however it happened. No delay: this batch only arrives at
-    // the moment the reveal buffer lets the new state through, which is the
-    // same moment the piece starts its flight to the Jail corner. Waiting even
-    // a beat here would put "Afo is in jail" on the screen BEFORE "Busted",
-    // which tells the story backwards.
-    const jailed = events.find((e) => e?.type === "jail");
-    if (jailed) {
-      setBust({ fig: jailed.figure, reason: jailed.reason || "gtj" });
-      bustTimer.current = setTimeout(() => setBust(null), BUST_MS);
+    // Going to jail, however it happened. For a jail the ROLL caused — the
+    // Go To Jail corner, three doubles — there is still no delay: the batch
+    // arrives at the moment the reveal buffer lets the new state through,
+    // which is the same moment the piece starts its flight to the corner, and
+    // waiting even a beat would put "Afo is in jail" on the screen BEFORE
+    // "Busted", telling the story backwards.
+    //
+    // A jail a CARD caused is the other way round. The piece is still standing
+    // on Chance being read to, so "Go to jail" belongs at the end of the read
+    // beat, not under the card that is in the middle of saying it —
+    // `delayAt` is 0 for every other case, so this one line covers both.
+    const jailAt = events.findIndex((e) => e?.type === "jail");
+    if (jailAt >= 0) {
+      const jailed = events[jailAt];
+      const open = () => {
+        setBust({ fig: jailed.figure, reason: jailed.reason || "gtj" });
+        bustEnd.current = setTimeout(() => setBust(null), BUST_MS);
+      };
+      const wait = beat.delayAt(jailAt);
+      if (wait > 0) bustTimer.current = setTimeout(open, wait);
+      else open();
     }
 
-    const drawn = events.find((e) => e?.type === "card");
-    if (drawn) {
-      const show = () => {
-        setCard({
-          deck: drawn.deck === "chance" ? "chance" : "chest",
-          kind: drawn.deck === "chance" ? "Chance" : "Community Chest",
-          text: drawn.text,
-          figure: drawn.figure,
-          amount: cardAmount(events, drawn),
-        });
-        cardTimer.current = setTimeout(() => setCard(null), CARD_MS);
-      };
-      // The card is drawn in the same batch as the roll that landed on the
-      // deck — and this batch only arrives once the dice are already down, so
-      // the 900ms that used to stand in for "the tumble is probably over" is
-      // now just the time the piece needs to reach its tile.
-      if (rolled) cardTimer.current = setTimeout(show, REVEAL.CARD_MS);
-      else show();
-    }
+    // The card faces themselves are scheduled by `useCardBeat` above, not
+    // here: a batch can carry more than one (a card that moves you onto the
+    // other deck), and each of them gets its own dealt-then-read beat.
 
     const done = [...events]
       .reverse()
@@ -458,6 +471,7 @@ export default function TvCenter({
       clearTimeout(cardTimer.current);
       clearTimeout(tradeTimer.current);
       clearTimeout(bustTimer.current);
+      clearTimeout(bustEnd.current);
       clearTimeout(diploTimer.current);
     },
     [],

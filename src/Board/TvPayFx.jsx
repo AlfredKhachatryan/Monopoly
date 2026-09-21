@@ -39,6 +39,12 @@ const COINS_MIN = 6;
 const COINS_MAX = 10;
 const COIN_STAGGER = 55;
 const ARC_SAMPLES = 24;
+// How long an announcement may sit in the queue before it stops being news —
+// counted from the moment it became ELIGIBLE, not from the moment the batch
+// landed. `delay` is a real wait of its own now (a card's read beat is
+// REVEAL.CARD_READ_MS on top of the piece's hop, and a chain is two of those),
+// and charging this layer for a wait it was told to make would drop the
+// announcement for being late when it was never allowed to be early.
 const STALE_MS = 8000;
 
 const has = (v) => v != null;
@@ -218,11 +224,17 @@ export default function TvPayFx({
   useEffect(() => {
     if (current || queue.length === 0) return undefined;
     const [next, ...rest] = queue;
-    if (Date.now() - next.at > STALE_MS) {
+    if (Date.now() - next.at - (Number(delay) || 0) > STALE_MS) {
       setQueue(rest);
       return undefined;
     }
-    const wait = next.first ? delay : REVEAL.PAY_STAGGER_MS;
+    // Measured from the moment the batch was released, not from the moment
+    // this queue got round to it — same rule as the phone's PayFx, so the two
+    // screens announce the same transfer at the same moment however long
+    // anything ahead of it in the queue took.
+    const wait = next.first
+      ? Math.max(0, (Number(delay) || 0) - (Date.now() - next.at))
+      : REVEAL.PAY_STAGGER_MS;
     const t = setTimeout(() => {
       setQueue(rest);
       setCurrent(next);

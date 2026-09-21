@@ -34,6 +34,13 @@ const has = (v) => v != null;
 
 // A transfer that has been waiting behind an overlay this long is no longer
 // news. It stays in the log; it just stops being a toast.
+//
+// Measured from the moment it became ELIGIBLE, not from the moment the batch
+// landed — `delay` is now a real wait of its own (a card's read beat is
+// REVEAL.CARD_READ_MS on top of the piece's hop, and a chained card is two of
+// those), and counting a wait this component was TOLD to make against the
+// toast's own patience would drop the announcement for being late when it was
+// never allowed to be early.
 const STALE_MS = 6000;
 
 // My point of view, always. The TV says "Koli pays Afo"; this says "You paid
@@ -138,11 +145,19 @@ export default function PayFx({
   useEffect(() => {
     if (current || blocked || queue.length === 0) return undefined;
     const [next, ...rest] = queue;
-    if (Date.now() - next.at > STALE_MS) {
+    if (Date.now() - next.at - (Number(delay) || 0) > STALE_MS) {
       setQueue(rest);
       return undefined;
     }
-    const wait = next.first ? delay : REVEAL.PAY_STAGGER_MS;
+    // `delay` is measured from the moment the batch was RELEASED, not from
+    // the moment this queue got round to it — the card overlay blocks the
+    // toast while it is open, and starting the wait again when the player
+    // finally taps OK put the money a whole read beat later here than on the
+    // TV, which has nothing to block it. Whatever of the wait has already
+    // passed counts.
+    const wait = next.first
+      ? Math.max(0, (Number(delay) || 0) - (Date.now() - next.at))
+      : REVEAL.PAY_STAGGER_MS;
     const t = setTimeout(() => {
       setQueue(rest);
       setCurrent(next);

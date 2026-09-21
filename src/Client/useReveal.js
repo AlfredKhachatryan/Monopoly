@@ -52,7 +52,7 @@
 // resolve onto. If the action is refused, `failLocalRoll` puts the dice back and
 // releases the hold with the state untouched.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 // Every number the roll -> land -> move -> money -> card pipeline is timed by.
 // Shared with the TV so both screens tell the same story at the same pace.
@@ -72,6 +72,13 @@ export const REVEAL = {
   TOAST_MS: 1800,
   PAY_STAGGER_MS: 150, // between the transfers of a pay-each cascade
   CARD_CLEAR_MS: 1200, // a transfer waits this long behind a card overlay
+  // THE READ BEAT. A card is a sentence somebody has to read across a room,
+  // and the server hands its consequence over in the same breath as the draw.
+  // This is how long the table gets with the card face — and therefore how
+  // long everything the card CAUSED waits before it plays. One number, shared
+  // by the TV and every phone, so the room is never told two different
+  // stories at the same moment. See cardSchedule() below.
+  CARD_READ_MS: 3000,
 };
 
 export function prefersReducedMotion() {
@@ -260,6 +267,189 @@ export function useReveal(snapshot, feed, { meFig = null } = {}) {
     releaseSeq: out.releaseSeq,
     beginLocalRoll,
     failLocalRoll,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The card read beat
+// ---------------------------------------------------------------------------
+// The same problem the buffer above solves for the dice, one layer further in.
+//
+// The server resolves a whole action in one transaction, so the row that
+// carries {"type":"card"} ALSO carries everything the card said: the second
+// move to Jail or three cells back, the second landing and its rent, the
+// pays and collects. Until now every screen applied all of it at the moment
+// the roll released — the piece flew straight past the Chance cell to Jail,
+// the cash counted, the feed row appeared — and the card face was dealt
+// REVEAL.CARD_MS later, on top of a board that had already spoiled it. The
+// owner's words: "it is being instant".
+//
+// So a batch that draws a card is not one beat but several, told in order:
+//
+//     release ──CARD_MS──▶ the card face is dealt (the piece has arrived on
+//                          the Chance / Chest cell by now)
+//             ──CARD_READ_MS──▶ the table has read it
+//                          ▶ NOW the consequence plays: the piece walks on,
+//                            the money moves, a second landing resolves
+//
+// and a CHAIN — a card whose move lands on another deck, or on a property
+// whose rent is the next thing to happen — simply repeats that: each card in
+// the batch gets its own dealt-then-read beat, one after the other.
+//
+// `cardSchedule` is the whole of that as arithmetic, with no React in it: it
+// turns one batch's events into the offset, measured from the moment the
+// reveal buffer released the batch, at which each thing is allowed on screen.
+// Both screens run it over the same events and therefore agree to the
+// millisecond without talking to each other.
+//
+// prefers-reduced-motion deliberately does NOT shorten any of this. Reduced
+// motion is a request to stop things MOVING, not a request to read faster —
+// the travel animations are already dropped for it further down (Motion's
+// reducedMotion config, useWalkingTokens), and the beat is the one part of
+// this that is information rather than decoration.
+
+const hasRoll = (events) =>
+  (Array.isArray(events) ? events : []).some((e) => e && e.type === "roll");
+
+// The cell the drawer was standing on when the card came off the deck: the
+// nearest `land` for that figure BEFORE the card event. That is the tile the
+// piece has to stop on and wait on — the row's own `position` is already
+// wherever the card sent it.
+function cellOfDraw(list, at, figure) {
+  for (let j = at - 1; j >= 0; j--) {
+    const e = list[j];
+    if (e && e.type === "land" && e.figure === figure) return e.cell ?? null;
+  }
+  return null;
+}
+
+/**
+ * events   one released batch's events (reveal.feed.events)
+ * rolled   whether the batch contains a roll; defaults to reading the events
+ *
+ * Returns { cards, hold, delayAt } where
+ *   cards[k] = { index, event, figure, cell, showAt, actAt }
+ *     index   the event's index in the batch
+ *     cell    the deck cell the piece must be standing on while it is read
+ *     showAt  ms after release at which the card face is dealt
+ *     actAt   showAt + CARD_READ_MS: everything this card caused may now play
+ *   hold      actAt of the LAST card — what the money layer waits for; 0 when
+ *             nothing was drawn, so a batch with no card is timed exactly as
+ *             it always was
+ *   delayAt(i) the offset at which the event at index `i` may be shown: the
+ *             actAt of the last card drawn before it, or 0
+ */
+export function cardSchedule(events, { rolled } = {}) {
+  const list = Array.isArray(events) ? events : [];
+  const roll = rolled == null ? hasRoll(list) : !!rolled;
+  const cards = [];
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i];
+    if (!e || e.type !== "card") continue;
+    const prev = cards[cards.length - 1];
+    // The first card waits only for the piece to reach the deck cell. Each
+    // one after it waits for the card before it to be read AND for the piece
+    // to travel to wherever that card sent it — the same CARD_MS, measured
+    // from the same kind of moment.
+    const showAt = (prev ? prev.actAt : roll ? 0 : -REVEAL.CARD_MS) + REVEAL.CARD_MS;
+    cards.push({
+      index: i,
+      event: e,
+      figure: e.figure ?? null,
+      cell: cellOfDraw(list, i, e.figure),
+      showAt,
+      actAt: showAt + REVEAL.CARD_READ_MS,
+    });
+  }
+  const hold = cards.length > 0 ? cards[cards.length - 1].actAt : 0;
+  const delayAt = (i) => {
+    let out = 0;
+    for (const c of cards) if (c.index < i) out = c.actAt;
+    return out;
+  };
+  return { cards, hold, delayAt };
+}
+
+/**
+ * The read beat as a hook. One per screen; every screen that runs it over the
+ * same batch gets the same answers.
+ *
+ * feed    the RELEASED batch ({ seq, actor, events }) or null. Live batches
+ *         only, which is what keeps a resync or a reload silent: no feed, no
+ *         beat, and a TV that reconnects mid-game never replays a card.
+ * onCard  called once per card in the batch, at that card's `showAt`, with
+ *         (card, k). Kept in a ref, so a caller may pass a fresh closure every
+ *         render without rescheduling anything.
+ *
+ * Returns { cards, hold, delayAt, pin, cut, seq, reading } — the schedule
+ * itself (see cardSchedule) plus the three live answers below and `seq`, the
+ * batch all of them are about.
+ *   pin      { [figure]: cell } while a card is being read — the tile the
+ *            piece must be shown standing on, whatever the row says. Handed to
+ *            useWalkingTokens so the token stops on Chance and walks on
+ *            afterwards, instead of flying straight past it to Jail.
+ *   cut      the last index in the batch that may be told RIGHT NOW: the card
+ *            currently being read, or Infinity once the last beat is over. A
+ *            running list of events (the TV's Latest column, the phone's three
+ *            newest lines) draws only up to it, so the feed cannot print "Afo
+ *            went to jail on a card" a beat before the card says so. It needs
+ *            no clock of its own — it moves when the beat does.
+ *   reading  true while any card face is owed its beat.
+ *
+ * WHY THE FIRST ANSWER IS DERIVED DURING RENDER. Same reason as the buffer
+ * above: the pin has to be in the caller's hands in the SAME commit the new
+ * row arrives in. Computed in an effect it would be one commit late, the
+ * token would already have been told to fly to Jail, and the pin would pull
+ * it back mid-flight.
+ */
+export function useCardBeat(feed, onCard) {
+  const sched = useMemo(
+    () => cardSchedule(feed?.events),
+    // The batch is immutable and replaced wholesale; its identity is the key.
+    [feed],
+  );
+  const cb = useRef(onCard);
+  cb.current = onCard;
+
+  // Which card of THIS batch is currently owed its beat. `-1` = none left.
+  const [seen, setSeen] = useState(null);
+  const [idx, setIdx] = useState(-1);
+  if (feed && feed.seq !== seen) {
+    setSeen(feed.seq);
+    setIdx(sched.cards.length > 0 ? 0 : -1);
+  }
+
+  useEffect(() => {
+    if (!feed || sched.cards.length === 0) return undefined;
+    const timers = [];
+    sched.cards.forEach((c, k) => {
+      timers.push(setTimeout(() => cb.current?.(c, k), Math.max(0, c.showAt)));
+      timers.push(
+        setTimeout(
+          () => setIdx((cur) => (cur === k ? (k + 1 < sched.cards.length ? k + 1 : -1) : cur)),
+          Math.max(0, c.actAt),
+        ),
+      );
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [feed, sched]);
+
+  const active = idx >= 0 ? sched.cards[idx] ?? null : null;
+  const pinFig = active?.figure ?? null;
+  const pinCell = active?.cell ?? null;
+  const pin = useMemo(
+    () => (pinFig && pinCell != null ? { [pinFig]: pinCell } : null),
+    [pinFig, pinCell],
+  );
+
+  return {
+    cards: sched.cards,
+    hold: sched.hold,
+    delayAt: sched.delayAt,
+    pin,
+    cut: active ? active.index : Infinity,
+    seq: feed?.seq ?? null,
+    reading: active != null,
   };
 }
 

@@ -89,10 +89,11 @@ import {
 } from "../Hooks/rules";
 import { allyOf, isTraitorNow, warSides, warsOf } from "../Hooks/diplomacy";
 import { Pips, hasCyrillic } from "../Client/boardDisplay";
-import { describeEvent } from "../Client/EventView";
+import { describeEvent, foldCardMoney } from "../Client/EventView";
 import EventRow from "../Client/EventRow";
 import Tok from "../Client/Tok";
 import { fmt, fmtSigned } from "../Client/format";
+import { useCardBeat } from "../Client/useReveal";
 import * as figures from "../Client/figures";
 import { useTvFeed, useTvReduce } from "./TvFeed";
 import s from "./tvSide.module.css";
@@ -438,6 +439,10 @@ export default function TvSide({
 }) {
   const feed = useTvFeed(game, silent);
   const reduce = useTvReduce();
+  // The card read beat, off the same schedule the board centre deals its card
+  // faces from (src/Client/useReveal.js). Only `cut` is wanted here: how far
+  // into the newest batch this column is allowed to have read out loud.
+  const beat = useCardBeat(feed);
 
   const list = useMemo(
     () => [...(players || [])].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0)),
@@ -516,41 +521,50 @@ export default function TvSide({
   // every other money row on this screen, and this file no longer keeps a
   // hand-built card row of its own. Only a copy, never the log's object —
   // `game.log` is the shell's state, not ours to write on.
+  //
+  // The scan itself used to live here, hand-written, and a second copy of it
+  // lived in TvCenter.jsx. It is `foldCardMoney` in src/Client/EventView.jsx
+  // now — beside the `card` case that documents the rule — so the centre, this
+  // column and the phone's own "latest" line cannot drift about what one card
+  // was worth, and the phone stopped drawing two rows for one draw.
+  //
+  // …and the newest batch is drawn only as far as the card read beat has got.
+  // The log arrives whole — draw, move, jail, money, all of it — so this
+  // column used to print "Afo went to jail on a card" a beat BEFORE the card
+  // face that says so was even dealt, which is the story told backwards on the
+  // one screen that is also telling it forwards. `beat.cut` (useCardBeat, the
+  // same schedule the centre deals its cards off) is the last event of the
+  // current batch that may be spoken for yet; it moves on its own as each
+  // card's beat runs out, so there is no second clock in here.
+  const beatCut = beat.cut;
+  const beatSeq = beat.seq;
   const rowsData = useMemo(() => {
     const log = Array.isArray(game?.log) ? game.log : null;
     const src = log && log.length > 0 ? log : Array.isArray(game?.events) ? game.events : [];
     const list = src.map(neutral);
 
-    const consumed = new Set();
-    const cardAmounts = new Map();
-    for (let i = 0; i < list.length; i++) {
-      const card = list[i];
-      if (!card || card.type !== "card") continue;
-      let amount = 0;
-      for (let j = i + 1; j < list.length; j++) {
-        const e = list[j];
-        if (!e || e.seq !== card.seq || e.type === "card") break;
-        const amt = Number(e.amount);
-        if (!Number.isFinite(amt)) continue;
-        const byCard = e.reason === "card" || e.reason === "repairs";
-        if (e.type === "collect" && e.figure === card.figure && byCard) {
-          amount += amt;
-          consumed.add(j);
-        } else if (e.type === "pay" && e.figure === card.figure && byCard) {
-          amount -= amt;
-          consumed.add(j);
-        } else if (e.type === "pay" && e.to === card.figure && e.reason === "card") {
-          amount += amt;
-          consumed.add(j);
+    const { skip: consumed, amount: cardAmounts } = foldCardMoney(list);
+
+    // Where the batch being held back begins, so an index in the log can be
+    // compared with an index in the batch. -1 = nothing to hold back.
+    let base = -1;
+    if (Number.isFinite(beatCut) && beatSeq != null) {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i]?.seq === beatSeq) {
+          base = i;
+          break;
         }
       }
-      if (amount) cardAmounts.set(i, amount);
+      // A source with no `seq` at all is the raw `game.events` fallback: it IS
+      // the batch, so its indices are the batch's own.
+      if (base < 0 && !log) base = 0;
     }
 
     const counts = new Map();
     const out = [];
     for (let i = 0; i < list.length; i++) {
       if (consumed.has(i)) continue;
+      if (base >= 0 && i >= base && i - base > beatCut) continue;
       const raw = list[i];
       if (!raw) continue;
       const folded = cardAmounts.get(i) ?? 0;
@@ -568,7 +582,7 @@ export default function TvSide({
       out.push({ ev, key: `${seq}#${n}`, seq: ev.seq ?? null });
     }
     return out.reverse().slice(0, MAX_ROWS);
-  }, [game?.log, game?.events, ctx]);
+  }, [game?.log, game?.events, ctx, beatCut, beatSeq]);
 
   // ---- the squeeze -------------------------------------------------------
   const latestRef = useRef(null);

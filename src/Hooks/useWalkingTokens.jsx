@@ -15,6 +15,19 @@ import { FIGS } from "./rules";
 // - Moves longer than MAX_WALK cells (debug jumps) are placed at once too,
 //   because a dice roll can never exceed 12.
 // - Only one interval runs at a time, whatever number of figures move.
+//
+// `pin` — the card read beat (src/Client/useReveal.js's useCardBeat).
+//
+// A Chance card is resolved by the server in the same transaction as the roll
+// that landed on it, so `pos` already has the piece in Jail, or three cells
+// back, or on the railroad the card sent it to. Flown straight there, the
+// piece never visits the deck at all and the card face is dealt over a board
+// that has already given the answer away. `pin` is a { figure: cell } overlay
+// on the TARGETS — not on the state, which is never touched — that holds the
+// drawer on the deck cell for as long as the card is being read. When it
+// lifts, the ordinary machinery below flies the piece on to where the row has
+// said it was all along. A figure not named in `pin`, and a figure that is not
+// on the board, are unaffected.
 
 const CELLS = 40;
 const WALK = false; // true = hop cell by cell, false = one arc per move
@@ -30,7 +43,7 @@ function targetsFrom(pos) {
   return out;
 }
 
-export function useWalkingTokens(pos) {
+export function useWalkingTokens(pos, pin = null) {
   const reduceMotion = useReducedMotion();
   const [shown, setShown] = useState(() => targetsFrom(pos));
   const shownRef = useRef(shown);
@@ -38,7 +51,15 @@ export function useWalkingTokens(pos) {
   const timer = useRef(null);
 
   useEffect(() => {
-    targetRef.current = targetsFrom(pos);
+    const targets = targetsFrom(pos);
+    if (pin) {
+      for (const [f, cell] of Object.entries(pin)) {
+        // Only a figure that is actually on this board, and only a real cell:
+        // a pin must never conjure a piece into existence or park one nowhere.
+        if (targets[f] !== undefined && cell != null) targets[f] = Number(cell);
+      }
+    }
+    targetRef.current = targets;
 
     // Advance every figure by one cell (or place it if it cannot walk).
     // Returns true while at least one figure still has cells to go.
@@ -74,7 +95,7 @@ export function useWalkingTokens(pos) {
         }
       }, STEP_MS);
     }
-  }, [pos, reduceMotion]);
+  }, [pos, pin, reduceMotion]);
 
   useEffect(() => () => clearInterval(timer.current), []);
 

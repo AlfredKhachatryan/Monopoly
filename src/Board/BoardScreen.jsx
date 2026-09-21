@@ -30,7 +30,7 @@ import {
 } from "../Hooks/supabase";
 import { useWalkingTokens } from "../Hooks/useWalkingTokens";
 import { accentFor, nameOfFig, readableOn } from "../Hooks/rules";
-import { useReveal, REVEAL } from "../Client/useReveal";
+import { useReveal, useCardBeat, REVEAL } from "../Client/useReveal";
 import { announceBatch } from "../Client/transfers";
 import ConnectionBadge from "../Components/ConnectionBadge";
 import ThemeControl from "../Components/ThemeControl";
@@ -143,11 +143,24 @@ function Main() {
   const shownPlayers = view.userData;
   const shownGame = view.game;
 
+  // ---- the card read beat -------------------------------------------------
+  // The second half of the same discipline as the reveal buffer, one layer in:
+  // the row that carries a card also carries everything the card SAID, so
+  // without this the piece flew straight past the Chance cell to Jail and the
+  // money had already moved by the time the face was dealt. `useCardBeat`
+  // (src/Client/useReveal.js) is the schedule; every phone in the room runs the
+  // same one over the same events, so the whole room sees the same moment.
+  // Nothing here is state the beat can get stuck in: no feed — a resync, a
+  // refresh — means no beat at all, and the board simply snaps to the truth.
+  const beat = useCardBeat(reveal.feed);
+
   // Tokens fly from their old tile to their DB position. They are drawn by
   // TvTokens on top of the grid, so the tiles themselves never re-render while
   // a token moves. Fed the HELD board, so a piece leaves its tile the instant
-  // the dice come to rest and not a moment before.
-  const shownTokens = useWalkingTokens(shownPos);
+  // the dice come to rest and not a moment before — and, while a card is being
+  // read, held on the deck cell it was drawn from (`beat.pin`) so the piece
+  // arrives, waits to be told what happened, and only then walks on.
+  const shownTokens = useWalkingTokens(shownPos, beat.pin);
 
   // ---- what just moved ---------------------------------------------------
   const payItems = useMemo(
@@ -155,18 +168,30 @@ function Main() {
     [reveal.feed],
   );
   const payRolled = !!reveal.feed?.events?.some((e) => e?.type === "roll");
-  // A card that caused the payment gets to speak first: the overlay is dealt at
-  // REVEAL.CARD_MS and holds the centre, so the transfer waits behind it rather
-  // than arguing with it. The banner then hangs along the bottom of the centre,
-  // clear of the 440x540 card face above it.
-  const payCard = !!reveal.feed?.events?.some((e) => e?.type === "card");
-  const payDelay =
-    (payRolled ? REVEAL.PIECE_MS : 60) +
-    (payCard ? REVEAL.CARD_MS + REVEAL.CARD_CLEAR_MS : 0);
+  // The piece hops first, then the money speaks — and a card speaks before
+  // both. `beat.hold` is the end of the last read beat in the batch, so a
+  // transfer a card caused waits for the card to have been READ rather than
+  // being dealt underneath it; it is 0 for a batch with no card, which leaves
+  // every ordinary rent, tax and purchase timed exactly as it always was.
+  //
+  // One `hold` for the whole batch rather than one per card: the money layer
+  // takes a single delay for the first announcement and staggers the rest
+  // (PayFx / TvPayFx, REVEAL.PAY_STAGGER_MS), and splitting it per card would
+  // mean teaching `announceBatch` about card boundaries. In a chain that costs
+  // the first card's money the second card's beat; with the shipped decks a
+  // chain cannot carry money on both halves at all, and waiting is the safe
+  // direction — money never appears before the card that explains it.
+  const payDelay = Math.max(payRolled ? REVEAL.PIECE_MS : 60, beat.hold);
   // The cash numbers count as the coins arrive, not before: the count-up is
   // the coins landing, told in digits.
+  //
+  // `CASH_LEAD_MS`, not `CASH_LEAD`. It was the latter, which is not a key of
+  // REVEAL — so this whole expression was NaN, `TvCash`'s `delay > 0` guard
+  // read false, and the player cards had been counting up the instant the row
+  // landed since the day it was written. That is half of why a card's money
+  // looked instant on the big screen.
   const cashDelay =
-    payItems.length > 0 ? payDelay + REVEAL.COIN_MS - REVEAL.CASH_LEAD : 0;
+    payItems.length > 0 ? payDelay + REVEAL.COIN_MS - REVEAL.CASH_LEAD_MS : 0;
 
   // `game.seq` is monotonic across every action, new_game included, so it is
   // the one honest answer to "is this row older than what I already have?". A
@@ -301,8 +326,15 @@ function Main() {
   //                                `pos` / `userData` / `game` — so the token
   //                                flight, the player cards, the Latest list and
   //                                the centre overlays all release together
-  //   useWalkingTokens(shownPos)   the piece leaves its tile when the dice are
-  //                                down, not when the row arrives
+  //   `beat` = useCardBeat(reveal.feed)
+  //                                the card read beat: when each card face is
+  //                                due, and how long everything it caused has
+  //                                to wait (REVEAL.CARD_READ_MS, shared with
+  //                                every phone)
+  //   useWalkingTokens(shownPos, beat.pin)
+  //                                the piece leaves its tile when the dice are
+  //                                down, not when the row arrives — and stands
+  //                                on the deck cell while its card is read
   //   `current` / `focusCellId` / `tint` / `over` / `auctionOn`
   //                                all read from the held view
   //   `roller`                     who the room is waiting for, for the centre
