@@ -3,8 +3,14 @@
  * One fixed 1920x1080 canvas (.screen) scaled to the window by useTvScale, on a
  * letterbox of --ground (.root). Every colour comes from the [data-client] block
  * in styles/tokens.css — BoardScreen puts `data-client=""` on .root, so the TV
- * and the phone controller read exactly the same tokens and flip light/dark with
- * the OS together.
+ * and the phone controller read exactly the same token NAMES.
+ *
+ * They no longer read the same VALUES. .root also carries `data-tv=""`, and the
+ * [data-tv] block in tokens.css pins the board to a dark, slightly blue palette
+ * whatever the operating system says. The phone still follows the OS; the board
+ * is a shared screen in a dark room and was rendering on near-white for anybody
+ * whose machine was set to light. The board's own Light/Dark control still
+ * overrides the pin — see the specificity note on that block.
  *
  * Two globals are loaded above every CSS module and have to be neutralised here
  * rather than edited (Login still depends on both):
@@ -42,19 +48,26 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* main.css paints <body> the global dark purple. The TV is a --ground page in
- * both themes, so while it is mounted <body> is painted the same colour (an
- * overscroll bounce or a rubber-band on a TV browser would otherwise flash
- * purple round the letterbox). useTvChrome adds and removes the class. */
+/* main.css paints <body> the global dark purple. The TV is a --ground page, so
+ * while it is mounted <body> is painted the same colour (an overscroll bounce
+ * or a rubber-band on a TV browser would otherwise flash purple round the
+ * letterbox). useTvChrome adds and removes the class.
+ *
+ * ONE VALUE, NO MEDIA QUERY (2026-09-20). This used to be #f4f6f8 with a
+ * prefers-color-scheme override to #0d0f13, which made the letterbox follow the
+ * OS — and on a light-mode machine wrapped the board in near-white. The board
+ * itself is now pinned dark ([data-tv] in styles/tokens.css), so its letterbox
+ * is pinned with it: #0b0d14 is the same literal as that block's --ground.
+ *
+ * It cannot read var(--ground): --ground is declared on the board root, which
+ * is a DESCENDANT of <body>, so the value has to be copied by hand here. The
+ * one case where the letterbox is NOT this colour is the manual Light choice,
+ * and tokens.css owns that as a single `html[data-theme="light"] body.tv-active`
+ * rule at (0,2,1) — it beats this (0,1,0) rule from any source order. There is
+ * deliberately no dark counterpart there any more: this line IS the dark. */
 :global(body.tv-active) {
-  background: #f4f6f8;
+  background: #0b0d14;
   overflow: hidden;
-}
-
-@media (prefers-color-scheme: dark) {
-  :global(body.tv-active) {
-    background: #0d0f13;
-  }
 }
 
 .root :where(button, input) {
@@ -237,12 +250,49 @@
 }
 
 /* The colour band sits on the board's inner edge, so the ring of tiles reads as
- * one loop. --tint is written per tile by Tile.jsx. */
+ * one loop.
+ *
+ * It paints --band, not --tint. Tile.jsx writes --band as the OWNER's figure
+ * colour on an owned space and the group / kind accent on everything else, so
+ * the band is the single place the board says who owns what (owner call,
+ * 2026-09-20 — it replaced a 3px ring plus a name tag). --tint is untouched and
+ * still means "what kind of space is this": the mark, the centre glow and the
+ * group stripe below all keep reading it. */
 .tile::before {
   content: "";
   position: absolute;
-  background: var(--tint);
+  /* background-COLOR, not the shorthand: an owned band layers a hatch on top of
+   * this as a background-image, and the shorthand would blow that away. */
+  background-color: var(--band, var(--tint));
   border-radius: 4px;
+}
+
+/* An owned band additionally carries a diagonal hatch (owner call, 2026-09-21).
+ *
+ * Colour alone could not carry this signal. The eight figure colours and the
+ * eight street-group colours are sixteen hues competing for one wheel, and
+ * several pairs collide outright: fig0 #E0284C against the Crimson group
+ * #e02749 measures dE 1.6, which is below the threshold the eye can resolve at
+ * all — so a fig0 player buying a Crimson street produced a band identical to
+ * the unowned one, and the signal simply vanished. fig2/Indigo (10.7) and
+ * fig6/Azure (17.3) were ambiguous across a room for the same reason. Retoning
+ * the figures was the alternative and it would have changed player colour
+ * everywhere in the app, tokens and sheets included.
+ *
+ * A texture sidesteps the whole problem, because it is not a hue: flat band =
+ * free, hatched band = taken, whoever owns it and however close the two colours
+ * happen to sit.
+ *
+ * The notches are cut in --surface rather than drawn in black or white. Every
+ * figure colour is lighter than the tile face on this board, so a surface notch
+ * is guaranteed to read against all eight — a black hatch would disappear into
+ * fig5's slate #56606E, and a white one would disappear into the bright half. */
+.tile[data-own]::before {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 3px,
+    color-mix(in srgb, var(--surface) 72%, transparent) 3px 6px
+  );
 }
 
 .tile[data-side="b"]::before {
@@ -314,16 +364,22 @@
   flex: 1 1 auto;
 }
 
-/* The owner dot is absolutely positioned in the tile's top-right corner, which
- * on the side columns is right on top of the name's first line. The 20px it
- * needs is kept free on EVERY side tile, owned or not, so buying a property
- * never re-flows its name. */
-.tile[data-side="l"] .txt,
-.tile[data-side="r"] .txt {
-  padding-right: 20px;
-}
+/* GONE 2026-09-20: `padding-right: 20px` on the side columns' text block.
+ *
+ * It was reserved first for the corner owner dot and then for the owner name
+ * tag, and both of those have now been removed — ownership is the colour band
+ * itself (see the ownership section below). Twenty pixels of a 96px text column
+ * held open for nothing is a fifth of the width a flank name has to live in, so
+ * the names take it back. fitName.js's AVAIL for l/r went 76 → 96 in the same
+ * change; the two numbers are the same fact written in two places and must move
+ * together.
+ *
+ * What has NOT changed is the property that rule existed to protect: the
+ * reservation was identical on owned and unowned tiles so that buying a
+ * property never re-flowed its name. Nothing is pinned to that strip any more,
+ * by anyone, so the property holds for free. */
 
-/* Price and pips on one line. */
+/* Number and pips on one line. */
 .meta {
   display: flex;
   align-items: center;
@@ -336,6 +392,47 @@
 .tile[data-side="l"] .meta,
 .tile[data-side="r"] .meta {
   justify-content: flex-start;
+}
+
+/* The number, and on two tiles a small word stacked over it.
+ *
+ * PRICE and RENT WERE REMOVED on the owner's call (2026-09-20). Every ownable
+ * space used to carry one of the two; the owner wanted the word gone and the
+ * bare number back, which is what the printed board prints. The rent logic is
+ * untouched — an owned tile still shows the live rent and an unowned one still
+ * shows the purchase price (Tile.jsx lineOf) — so what disappeared is a caption
+ * on 22 tiles, not a number.
+ *
+ * Only CROP (the Weed Farm's counter) and POT (the Free Parking pot) still
+ * stack a word, because neither of those numbers is a price or a rent and a
+ * bare figure on either tile would be read as a charge. lineTagOf() now returns
+ * nothing else, so `.val` holds a single child on every other tile and lays out
+ * exactly as it did before the labels existed.
+ *
+ * Stacked rather than beside, for the two that remain: a developed street's
+ * rent is four digits and the house glyphs next to it want every pixel a 112px
+ * tile has. */
+.val {
+  display: grid;
+  justify-items: center;
+  min-width: 0;
+}
+
+.tile[data-side="l"] .val,
+.tile[data-side="r"] .val {
+  justify-items: start;
+}
+
+.tile .tag {
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  /* The tag never decides the width of the block: a long word here must not be
+   * able to push a four-digit rent into an ellipsis. */
+  overflow: hidden;
 }
 
 /* One line with an ellipsis on the side columns, where a tile is only ~78px
@@ -412,14 +509,61 @@
   line-height: 1.15;
 }
 
+/* The 1.4 line-height inherited from .root is BACK (2026-09-20). It had been
+ * overridden to 1 to buy the six pixels the PRICE / RENT row above the number
+ * cost; with those labels removed there is nothing to pay for, and the tile's
+ * vertical layout returns to what it was before they were added. */
 .tile .price {
   font-size: 15px;
   font-weight: 700;
   color: var(--muted);
 }
 
+/* …except on the two tiles that still carry a word over their number. There the
+ * tag row has to come out of the same height budget it always did, so those —
+ * and only those — keep the tight line. data-line is written from lineTagOf(),
+ * which now returns a value for the farm and the pot and nothing else, so this
+ * selector and the tag are switched on by exactly the same fact. */
+.tile[data-line] .price {
+  line-height: 1;
+}
+
+/* An owned space paints its number in the tile's own ink rather than --muted:
+ * it is a live charge somebody is about to owe, not a shop sign. */
+.tile[data-own] .price {
+  color: var(--ink);
+}
+
+/* The Free Parking pot (spec §2). It is the only number on the board that is
+ * money nobody owns yet, growing every time somebody pays a fine — so on the
+ * corner it says "POT 1150$" in the gain colour instead of the flat "Rest" it
+ * shows while the pot is empty. Tile.jsx writes data-line from the same tag the
+ * text uses, so there is no second prop and no second source of truth. */
+.tile[data-line="Pot"] .price,
+.tile[data-line="Pot"] .tag {
+  color: var(--pos);
+}
+
+/* 11px glyphs, not the 12 bits.module.css offers by default: four `Home`
+ * outlines plus a four-digit rent is the widest a 112px row tile ever has to
+ * carry, and 11 is what fits that with the 6px gap. */
 .tile .pips {
   color: var(--ink);
+  --pip: 11px;
+}
+
+/* Buildings wear the OWNER's colour (§9) — a house and a deed are one fact, so
+ * they are one hue — but two of the eight figures do not survive being drawn on
+ * --surface at 11px: mummy slate (#56606E) is 2.7:1 against the dark board and
+ * octopus blue (#1E63C8) exactly 3.0:1, the same pair the token ring above
+ * exists for. So the figure colour is pulled a fifth of the way towards the
+ * page's own ink before it is painted. It is enough to put a floor under the
+ * two dark figures in the dark theme and the two bright ones in the light one,
+ * and far too little to make any of the eight look like another. With no owner
+ * (--pip-ink unset) the fallback is --ink, so an unowned board's buildings —
+ * which the game cannot actually produce — still draw. */
+.tile .pips svg {
+  color: color-mix(in srgb, var(--pip-ink, var(--ink)) 80%, var(--ink));
 }
 
 .tile[data-side="c"] .name {
@@ -430,30 +574,117 @@
   line-height: 1.1;
 }
 
-/* Owner marker: an 18px token with no letter, in the owner's figure colour.
- * `grid` rather than the default inline box: an inline wrapper adds a line
- * box's leading above the token, which pushed it 8px down into the mark. */
-.own {
+/* --------------------------------------------------------------------------
+ * Ownership, rewritten on the owner's call (2026-09-20).
+ *
+ * WHAT WENT. The 3px ring right round an owned tile and the small tag carrying
+ * the owner's name on the inner edge. Both said the same thing, both in small
+ * print, and six owners' worth of them turned the board into a page of
+ * outlines. Neither element exists any more — Tile.jsx renders nothing for
+ * them and there is nothing left here to style.
+ *
+ * WHAT REPLACED THEM. Nothing was added. The colour band an owned tile already
+ * had simply switches from the group's colour to the OWNER's (--band, written
+ * by Tile.jsx; see the .tile::before comment). One signal, in the largest patch
+ * of colour a tile owns, readable across a room, and it costs no pixels because
+ * the band was already there. Six owners at once is six bands, exactly the way
+ * six pieces are six discs.
+ *
+ * WHAT THAT BREAKS, AND THE FIX BELOW. An owned tile losing its group colour
+ * also loses the thing Monopoly is actually played on: whether somebody holds a
+ * complete set. So the group colour is kept as a thin stripe along the tile's
+ * OUTER edge — three pixels, only on owned tiles, and only where there is an
+ * edge going spare.
+ *
+ * WHY THE OUTER EDGE IS SPARE AND THE INNER ONE IS NOT. The inner edge is the
+ * band. The middle is the text block. The outer edge is the PIECE LANE, but the
+ * lane is 38px deep and the discs rest 9px in from the edge (see .here and
+ * TvTokens' EDGE, which carry the same number) — so the outermost 3px of a tile
+ * is the one strip that neither the band, the text, nor any piece ever touches.
+ * That is where the stripe goes, and it is why it is 3px and not 6.
+ * ------------------------------------------------------------------------ */
+
+/* The stripe. ::after is free now that the ring is gone. It is deliberately
+ * quiet: three pixels, inset 6px from each end so it lines up with the band
+ * opposite it rather than running the full width of the tile, and it carries no
+ * radius of its own beyond the 2px that keeps its ends from looking cut. Read
+ * from a sofa it is a hint, not a second band — which is the whole intent: the
+ * owner's colour has to win. */
+.tile[data-own]::after {
+  content: "";
   position: absolute;
-  top: 8px;
-  right: 8px;
-  display: grid;
-  line-height: 0;
+  background: var(--tint);
+  border-radius: 2px;
+  pointer-events: none;
 }
 
-.tile[data-side="t"] .own {
-  top: auto;
-  bottom: 14px;
+/* Bottom row: band on top (inner), stripe on the bottom (outer). */
+.tile[data-side="b"]::after {
+  bottom: 0;
+  left: 6px;
+  right: 6px;
+  height: 3px;
 }
 
-.own .ownTok {
-  font-size: 0;
-  /* Same hairline the pieces wear (.tokRing above) and for the same reason: an
-   * 18px dot in mummy slate or octopus blue on a dark tile is under 3:1 against
-   * --surface, so it needs an edge of its own or it simply is not there. */
-  box-shadow:
-    0 0 0 2px var(--surface),
-    0 0 0 3px color-mix(in srgb, var(--ink) 30%, transparent);
+/* Top row: the mirror — its lane, and so its stripe, is along the top. */
+.tile[data-side="t"]::after {
+  top: 0;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+}
+
+.tile[data-side="l"]::after {
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+}
+
+.tile[data-side="r"]::after {
+  right: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+}
+
+/* The four corners are Start, Jail, Free Parking and Go To Jail. None of them
+ * can be owned, so this never fires — it is here so that a corner can never
+ * grow a stripe by accident if data-own is ever set on one. */
+.tile[data-side="c"]::after {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Dim the unbought (spec §7). --dim-unowned is a ready-made filter from
+ * tokens.css and it is theme-aware in both directions: on the dark board it
+ * drains a little and darkens a little, on the light one it drains a little and
+ * lets the tile's own surface through, because dimming a colour against white
+ * makes it heavier, not lighter.
+ *
+ * MUCH GENTLER SINCE 2026-09-20. It used to be `saturate(.5) brightness(.65)`
+ * dark and `saturate(.4) brightness(1.16)` light, and on a board where nothing
+ * has been bought yet — which is every board for the first ten minutes — that
+ * meant all 22 ownables at once. The owner's verdict was "pale and grayish",
+ * and the light value was the worse of the two: brightness above 1 does not
+ * push a colour back, it pushes it towards white. The board has to read as a
+ * colourful board before anybody owns anything; see the token for the numbers.
+ *
+ * It is applied to the two things on a tile that actually carry the property's
+ * colour — the group band and the mark — and deliberately NOT to the tile as a
+ * whole. A filter on .tile would take the name and the number down with it (the
+ * board is read from a sofa; the text is not negotiable), and it would dim
+ * .tile.act's focus ring, which is the one emphasis §7 says to keep.
+ *
+ * Only ownable spaces ever carry data-dim — BoardGrid decides, and it asks
+ * isProperty(), so the Casino (nobody can buy it), the taxes, the decks and the
+ * four corners are never dimmed. Dim here means "nobody has bought this yet",
+ * so it may only ever be said about something that can be bought.
+ * ------------------------------------------------------------------------ */
+
+.tile[data-dim]::before,
+.tile[data-dim] .mk {
+  filter: var(--dim-unowned);
 }
 
 /* Where the players standing on this tile come to rest. Always empty: the

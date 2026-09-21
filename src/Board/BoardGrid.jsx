@@ -1,18 +1,19 @@
 // The 11 x 11 board: 40 tiles round the edge, the centre panel in the middle,
 // the flying tokens on top.
 //
-// The per-tile strings that depend on the players (owner name, who is standing
-// here) are worked out once per board/player change and handed to Tile as
-// plain strings, so Tile's memo holds. `board` may be missing cells, or be {}
+// The per-tile strings that depend on anything outside the cell itself (owner
+// name, who is standing here, the live rent, the Free Parking pot) are worked
+// out once per board/player change and handed to Tile as plain strings and
+// booleans, so Tile's memo holds. `board` may be missing cells, or be {}
 // entirely, for a room that has not loaded — every id 1..40 is still rendered
 // so the grid keeps its shape, just empty.
 
 import { useEffect, useMemo, useState } from "react";
 import TvCenter from "./TvCenter";
-import Tile, { nameOf, placeOf } from "./Tile";
+import Tile, { lineOf, lineTagOf, nameOf, placeOf } from "./Tile";
 import TvTokens from "./TvTokens";
 import { clearFitCache, fitTile, fontsReady } from "./fitName";
-import { FIGS, ownerOf, playerByFig } from "../Hooks/rules";
+import { FIGS, isProperty, ownerOf, playerByFig } from "../Hooks/rules";
 import s from "./tv.module.css";
 
 const IDS = Array.from({ length: 40 }, (_, i) => i + 1);
@@ -55,6 +56,13 @@ export default function BoardGrid({
     };
   }, [fitVersion]);
 
+  // The Free Parking pot (spec §2). The server keeps it on `game.pot` as a
+  // plain integer and pays the whole thing out to whoever lands on cell 21, so
+  // it belongs to exactly one tile — but it is the ONE number on a tile that
+  // does not come from the board, so it is read here and handed down as a
+  // primitive like everything else. Rounded once, not per tile.
+  const pot = Math.round(Number(game?.pot)) || 0;
+
   const info = useMemo(() => {
     const out = {};
     for (const id of IDS) {
@@ -73,10 +81,30 @@ export default function BoardGrid({
         // standing there, so a tile's text is in the same place, at the same
         // size, occupied or not.
         tight: fitTile(nameOf(cell), placeOf(id)[2]),
+        // The tile's number, and — on the farm and the Free Parking pot only —
+        // the word over it. Computed HERE, not in Tile, and for the same reason
+        // everything else in this map is: an owned space shows its live rent
+        // (§4), which depends on the whole board and on who is in jail, and
+        // passing Tile `board`/`players` would re-render all 40 memoised tiles
+        // on every single state change. Two strings cost nothing and change
+        // only when the answer does.
+        //
+        // `lineTag` is now empty for every ordinary property: PRICE and RENT
+        // were removed on the owner's call and the number stands alone. It is
+        // still passed rather than dropped, because the two tiles that DO carry
+        // a word need it, and because Tile writes it to data-line and folds it
+        // into the aria-label. Both are still primitives, so the memo holds
+        // exactly as before.
+        line: lineOf(cell, board, players, pot),
+        lineTag: lineTagOf(cell, pot),
+        // "Nobody has bought this yet" (§7) — and only ever about things that
+        // CAN be bought. isProperty() is street/road/farm; the Casino, the
+        // taxes, the decks and the four corners are never dimmed.
+        dim: !!cell && isProperty(cell) && !fig,
       };
     }
     return out;
-  }, [board, players, fitVersion]);
+  }, [board, players, fitVersion, pot]);
 
   // Who is doing time. Passed to the token layer so a piece serving a sentence
   // on the Jail corner is told apart from one that is merely visiting — the two
@@ -100,6 +128,9 @@ export default function BoardGrid({
             ownerName={info[id].ownerName}
             here={info[id].here}
             tight={info[id].tight}
+            line={info[id].line}
+            lineTag={info[id].lineTag}
+            dim={info[id].dim}
           />
         ))}
         <TvCenter

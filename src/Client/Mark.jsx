@@ -5,7 +5,7 @@
 // screen — so a space looks the same in the ticket, on an event row and in a
 // sheet list.
 //
-// Special spaces, railroads and utilities get an icon. A street named after a
+// Special spaces, railroads, the Casino and the Weed Farm get an icon. A street named after a
 // real brand (marks.js) gets that brand's logo. Everything else gets a
 // two-letter monogram: the initials of the first two words, or the first two
 // letters of a single word. Names on this board are Russian as often as not, so
@@ -13,13 +13,13 @@
 
 import {
   Armchair,
-  Droplets,
+  Cannabis,
   Flag,
   Gift,
   Landmark,
-  Lightbulb,
   Lock,
   Siren,
+  Spade,
   Sparkles,
   TrainFront,
 } from "lucide-react";
@@ -28,6 +28,15 @@ import b from "./bits.module.css";
 import { markFor } from "./marks";
 import m from "./marks.module.css";
 
+// The two utilities are gone (spec §5/§6), and with them the bulb/droplet pair
+// that used to be picked apart by `cell.info`. Their replacements are single
+// cells with identities of their own, so they are plain entries in this table
+// like every other kind:
+//   casino  a SPADE, not dice — the board centre already spends `Dices` on the
+//           doubles run, and a second dice glyph on cell 13 would read as
+//           "roll here" rather than "gamble here".
+//   farm    `Cannabis`, because the cell is literally a weed farm and an
+//           anonymous leaf or sprout would just look like a park.
 const KIND_ICON = {
   start: Flag,
   tax: Landmark,
@@ -37,12 +46,12 @@ const KIND_ICON = {
   gtj: Siren,
   parking: Armchair,
   road: TrainFront,
+  casino: Spade,
+  farm: Cannabis,
 };
 
 function iconFor(cell) {
-  const kind = cellKind(cell);
-  if (kind === "communal") return cell?.info === "Water" ? Droplets : Lightbulb;
-  return KIND_ICON[kind] || null;
+  return KIND_ICON[cellKind(cell)] || null;
 }
 
 export function monogramOf(name) {
