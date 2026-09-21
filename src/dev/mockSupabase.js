@@ -83,12 +83,20 @@
 //                     schedulePeaceBotIfNeeded. A bot never declares war,
 //                     which needs no code: nothing in this file ever calls
 //                     war_declare on a bot's behalf.
+//
+// WHAT 20260921160000_farm_auction.sql ADDED HERE: the Weed Farm is no longer
+// for sale. Landing on it while nobody owns it opens an auction for the whole
+// table as part of the landing itself, `buy` and `auction_start` on it are both
+// refused with the server's own sentences, and the existing auction bot takes
+// it from there without knowing anything about farms -- it watches
+// game.auction, which is the same object a hand-started auction produces.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtimeConnection } from "../Hooks/connection";
 import {
   ownerOf,
   cellKind,
+  isBuyable,
   priceOf,
   rentFor,
   canBuild,
@@ -1140,7 +1148,9 @@ function applyCard(board, players, idx, card, diceSum, events, out) {
 //   farm     the owner harvests the counter by landing on it; everybody else
 //            pays nothing and waters it by FARM_INCOME_STEP. The counter lives
 //            ON THE CELL (`board["28"].income`) so it follows the deed through
-//            a trade or a bankruptcy without anything having to move it.
+//            a trade or a bankruptcy without anything having to move it. While
+//            it is UNOWNED the landing also asks for an auction, on `out` --
+//            the farm is never bought, only bid for.
 //   casino   writes the pending block. The turn cannot move on until the
 //            player has bet, which is what "mandatory" means here. `out` is
 //            how it reaches applyAction -- land() is called from four places
@@ -1251,6 +1261,21 @@ function land(board, players, idx, diceSum, events, out, forceCard, roadMult = 1
         amount: 0,
         income: cell.income,
       });
+      if (!owner) {
+        // AND, because nobody owns it, the whole table is about to bid for it
+        // (20260921160000_farm_auction.sql). The watering above still counts:
+        // the landing that opens the auction grows the crop exactly like any
+        // other visit, so the deed the winner carries off is already
+        // FARM_INCOME_STEP richer than it was a moment ago.
+        //
+        // A REQUEST, not the auction itself -- the same split the SQL makes,
+        // for the same reason. land() has no phase, no turn and no idea
+        // whether this action is finished with the player yet, so it leaves
+        // the note on `out` (where the casino leaves its pending bet) and
+        // applyAction opens the real auction at the bottom, against the
+        // finished state. Unlike `out.casino` this one never reaches the row.
+        out.farmAuction = { cell: pos, figure: fig };
+      }
     }
   } else if (kind === "casino") {
     const cash = players[idx].money;
@@ -1541,6 +1566,13 @@ function applyAction(prevRow, action, payload) {
   let cas = gmPrev.casino && typeof gmPrev.casino === "object" ? gmPrev.casino : null;
   if (!cas && phase === "casino") phase = "act";
 
+  // The farm's auction request, for the duration of this action only. It is
+  // written by land() when somebody lands on the UNOWNED farm and consumed at
+  // the bottom of this function; nothing ever reads it off the row, because
+  // finalize() is not given it. The SQL keeps the same thing on
+  // `game.farmAuction` and strips it on the way in for the same reason.
+  let farmReq = null;
+
   const pid = payload.playerId;
   const meIdx = pid ? players.findIndex((p) => p.playerId === pid) : -1;
   const me = meIdx >= 0 ? players[meIdx] : null;
@@ -1631,8 +1663,11 @@ function applyAction(prevRow, action, payload) {
       // A bet can have been opened by the landing itself or by a Chance card
       // that sent the player to the Casino from the other side of the board.
       // Either way land() left it on `out`; the phase follows at the bottom of
-      // this function, the same place the SQL derives it.
+      // this function, the same place the SQL derives it. The farm's auction
+      // request travels by the same road, and for the same reason: a card can
+      // drop a player on it from anywhere.
       if (out.casino) cas = out.casino;
+      if (out.farmAuction) farmReq = out.farmAuction;
       break;
     }
 
@@ -1647,8 +1682,12 @@ function applyAction(prevRow, action, payload) {
       lastCard = out.lastCard;
       // The debug jump resolves the landing, so jumping onto cell 13 opens the
       // bet exactly as rolling onto it would -- which is the fastest way to
-      // exercise the casino panel in the harness.
+      // exercise the casino panel in the harness. Same for cell 28 and its
+      // auction, with one condition applied at the bottom of this function:
+      // only the player whose turn it actually is can open one, because an
+      // auction ends by handing the move back to whoever started it.
       if (out.casino) cas = out.casino;
+      if (out.farmAuction) farmReq = out.farmAuction;
       break;
     }
 
@@ -1657,6 +1696,14 @@ function applyAction(prevRow, action, payload) {
       const cell = board[cellId];
       if (!cell) throw new Error(`Cell ${cellId} does not exist`);
       if (cellId !== (me.position || 0)) throw new Error("You are not standing on that cell");
+      // The Weed Farm is never sold over the counter. Landing on it while it is
+      // unowned auctions it to the whole table, so there is no moment at which
+      // buying it could be legal -- not even the moment right after an auction
+      // found no bidder, which is exactly when a phone that has not been
+      // updated would be most tempted to offer a Buy button. It keeps its 150$
+      // price for everything else that reads one (trades, the deed card, a
+      // bot's idea of what it is worth); only this one door is shut.
+      if (cellKind(cell) === "farm") throw new Error("The farm is only ever sold at auction");
       const price = priceOf(cell);
       if (price == null) throw new Error("This cell is not for sale");
       if (ownerOf(cell)) throw new Error("Already owned");
@@ -1756,6 +1803,14 @@ function applyAction(prevRow, action, payload) {
       if (cellId !== (me.position || 0)) throw new Error("You are not standing on that cell");
       if (priceOf(cell) == null) throw new Error("This cell is not for sale");
       if (ownerOf(cell)) throw new Error("Already owned");
+      // The farm starts its own auction and is the only cell that does. Letting
+      // a player start a second one by hand would hand them a re-run of an
+      // auction the table has just finished -- every no-bid ending followed by
+      // "and again", asked for by the one seat that did not want it at any
+      // price either.
+      if (cellKind(cell) === "farm") {
+        throw new Error("The farm auctions itself when somebody lands on it");
+      }
       if (gmPrev.trade) applyTradeResolution(players, board, gmPrev.trade, "cancelled", events);
       tradeOut = null;
       auctionOut = buildAuction(players, me.figure, cellId);
@@ -2291,6 +2346,55 @@ function applyAction(prevRow, action, payload) {
     else if (finalPhase === "casino") finalPhase = "act";
   }
 
+  // The farm auctions itself. land() left a request when somebody landed on the
+  // UNOWNED farm; it is opened HERE, next to the casino's pending bet and for
+  // the same reason -- the landing can have come from a roll, from the debug
+  // jump or from a Chance card, and tracking it branch by branch would mean
+  // getting it right in three places instead of one.
+  //
+  // Every condition is checked against the FINISHED state of this action, and
+  // each of the four is in the SQL for a stated reason:
+  //   * the lander is still here and still solvent (the farm charges nothing,
+  //     but a card can do plenty on the way there, and the bankrupt-skip above
+  //     has already moved the turn on if it did);
+  //   * the lander holds the turn -- an auction ends by handing the move back
+  //     to whoever started it, so it only means anything inside somebody's
+  //     turn, and the debug jump has no turn check of its own;
+  //   * nobody owns it after all, and no auction or bet already owns the room.
+  // Nothing opened here means the farm simply stays unowned, and the next
+  // landing opens a fresh auction -- exactly what happens when nobody bids.
+  if (
+    farmReq &&
+    finalPhase !== "over" &&
+    finalPhase !== "auction" &&
+    finalPhase !== "casino" &&
+    !casFinal &&
+    !auctionOut
+  ) {
+    const li = players.findIndex((p) => p.figure === farmReq.figure);
+    const lander = li >= 0 ? players[li] : null;
+    if (
+      lander &&
+      !lander.bankrupt &&
+      lander.order === checked.turn &&
+      !ownerOf(board[farmReq.cell])
+    ) {
+      // an auction replaces whatever was on the table, exactly as a player's
+      // own auction_start does
+      if (tradeOut === undefined && gmPrev.trade) {
+        applyTradeResolution(players, board, gmPrev.trade, "cancelled", events);
+      }
+      tradeOut = null;
+      // The SAME auction a player starts by hand: same rotation (the lander
+      // bids LAST), same opening bid, same 10$ raise, same auction_start event.
+      // Which is also what lets the mock's own auction bot take it from here --
+      // it watches game.auction and has no idea who opened one.
+      auctionOut = buildAuction(players, farmReq.figure, farmReq.cell);
+      events.push({ type: "auction_start", figure: farmReq.figure, cell: farmReq.cell });
+      finalPhase = "auction";
+    }
+  }
+
   const won = checkWin(players, winner, winners, events);
   if (won.phase === "over") finalPhase = "over";
   // Nothing can be bid on, traded or wagered once somebody has won.
@@ -2366,7 +2470,11 @@ function simulateActorStep(
   let landedPhase = "act";
   if (buyIfAffordable) {
     const cell = board[players[idx].position];
-    const price = priceOf(cell);
+    // isBuyable(), not priceOf(): the farm HAS a price and cannot be bought at
+    // it. This branch writes `bought` straight onto the board without going
+    // near applyAction's refusal, so a bot landing on cell 28 would otherwise
+    // be the one player in the room still able to buy the farm.
+    const price = isBuyable(cell) ? priceOf(cell) : null;
     // small buffer so a bot doesn't spend down to zero
     if (price != null && !ownerOf(cell) && players[idx].money >= price + 100) {
       cell.bought[players[idx].figure] = true;
@@ -2394,6 +2502,40 @@ function simulateActorStep(
     if (ci < 0 || players[ci].bankrupt) casFinal = null;
   }
   if (finalPhase !== "over" && finalPhase !== "auction" && casFinal) finalPhase = "casino";
+
+  // A forced step can also land on the UNOWNED farm, and when it does the farm
+  // auctions itself to the whole table exactly as it would after a real roll
+  // (20260921160000_farm_auction.sql). This is what makes the "farm-auction"
+  // scenario work at all -- its intro roll comes through here and not through
+  // applyAction -- and what stops a bot's own autoplay roll onto cell 28
+  // quietly buying nothing and moving on. runBotLoop needs no new code for it:
+  // it already waits out `phase === 'auction'` whoever opened one, and
+  // scheduleAuctionBotIfNeeded drives the bidding from game.auction alone.
+  //
+  // The conditions are applyAction's, minus the ones this path cannot break:
+  // the auction_start above has already claimed the room if the bot started
+  // one, and `maybeAuction` never fires on a farm because `buy` never does.
+  if (
+    out.farmAuction &&
+    finalPhase !== "over" &&
+    finalPhase !== "auction" &&
+    finalPhase !== "casino" &&
+    !auctionOut &&
+    !casFinal
+  ) {
+    const li = players.findIndex((p) => p.figure === out.farmAuction.figure);
+    const lander = li >= 0 ? players[li] : null;
+    if (
+      lander &&
+      !lander.bankrupt &&
+      lander.order === checked.turn &&
+      !ownerOf(board[out.farmAuction.cell])
+    ) {
+      auctionOut = buildAuction(players, out.farmAuction.figure, out.farmAuction.cell);
+      events.push({ type: "auction_start", figure: out.farmAuction.figure, cell: out.farmAuction.cell });
+      finalPhase = "auction";
+    }
+  }
 
   const winnersPrev = Array.isArray(gmPrev.winners) ? gmPrev.winners : [];
   const won = checkWin(players, gmPrev.winner || null, winnersPrev, events);

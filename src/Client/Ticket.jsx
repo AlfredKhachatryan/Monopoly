@@ -12,7 +12,9 @@
 // space works.
 //
 // THE HEADLINE NUMBER is a decision, not a column:
-//   nobody owns it   → the PRICE, because the only question is "do I buy it"
+//   nobody owns it   → the PRICE, because the only question is "do I buy it".
+//                      Except the farm, which cannot be bought at any price:
+//                      it says "Sold by / Auction" instead. See below.
 //   somebody owns it → the LIVE rent, straight from rules.rentFor(), which is
 //                      the number the server will actually move. That includes
 //                      its one surprise: while the owner sits in jail the space
@@ -46,7 +48,10 @@
 //                its number is the CROP, never a rent: a visitor pays nothing
 //                and only the owner harvests, by landing on it. A line under
 //                the numbers says so, because "Crop 800$" on a space that
-//                charges nobody anything explains nothing by itself.
+//                charges nobody anything explains nothing by itself. It is also
+//                never BOUGHT — landing on it unowned auctions it to the whole
+//                table — so while nobody owns it the headline is the way it is
+//                sold rather than a price.
 // Free Parking is the third change: it used to say "nothing to pay here" and is
 // now the one cell on the board that PAYS, so it shows the live pot.
 //
@@ -247,18 +252,22 @@ export default function Ticket({
   // because "Crop 1250$" on a space that charges nobody anything is otherwise
   // unreadable.
   //
-  // WHERE THE PHONE DELIBERATELY DIFFERS FROM THE TV: the TV never shows the
-  // farm's $150 price, on the grounds that the price only matters during the
-  // auction, which has an overlay of its own. The phone keeps it — it is the
-  // headline while the farm is unowned — because the phone is where the
-  // buy/auction decision is actually made: the Buy button below this card is
-  // priced at that number, and a card that hid it would leave the only screen
-  // with a Buy button as the only screen that would not say what Buy costs.
+  // THE PHONE USED TO SHOW THE $150 PRICE HERE, and no longer does. It was the
+  // headline while the farm was unowned because the phone was where the
+  // buy/auction decision got made, and a screen with a Buy button on it had to
+  // say what Buy cost. Since supabase/migrations/20260921160000_farm_auction.sql
+  // there is no Buy: landing on the unowned farm auctions it to the whole table
+  // on the spot, and $150 is a valuation nobody can pay. Showing it would be
+  // the card quoting a price that buys nothing — so the headline says what
+  // actually happens instead, and the number the bidders are fighting over is
+  // the Crop, which is right underneath it in the table where it always was.
   const farm = kind === "farm";
   const farmNote = farm
     ? mine
       ? `Yours. Land on it yourself to harvest ${fmt(farmIncome(cell))} — the crop then restarts at ${fmt(FARM_INCOME_START)}.`
-      : `Landing here costs nothing and grows the crop by ${fmt(FARM_INCOME_STEP)}. Only the owner harvests it, by landing on it.`
+      : owner
+        ? `Landing here costs nothing and grows the crop by ${fmt(FARM_INCOME_STEP)}. Only the owner harvests it, by landing on it.`
+        : `Nobody can buy it: landing here puts it up for auction and every player bids. The landing still grows the crop by ${fmt(FARM_INCOME_STEP)} first.`
     : null;
 
   const facts = ownable ? null : factsFor(cell, lastCard, me, pot);
@@ -267,7 +276,11 @@ export default function Ticket({
   // [label, amount] for the big number.
   let head = facts?.head ?? null;
   if (ownable) {
-    if (!owner) head = ["Price", price != null ? fmt(price) : "—"];
+    // The unowned farm is the one deed with no asking price to print: see the
+    // note above. "Sold by / Auction" sits in the same two slots a price would
+    // have used, so the card keeps its shape and the biggest words on it are
+    // still the answer to "what happens if I am standing here".
+    if (!owner) head = farm ? ["Sold by", "Auction"] : ["Price", price != null ? fmt(price) : "—"];
     else if (farm) head = ["Crop", fmt(farmIncome(cell))];
     else {
       // rentFor() is the live answer, jail included. A jailed owner collects

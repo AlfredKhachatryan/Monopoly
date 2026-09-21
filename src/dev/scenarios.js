@@ -20,10 +20,13 @@
 //   casino    13  -- NEVER ownable: the bank is the house, so no scenario may
 //                  ever set board[13].bought. Landing there opens a mandatory
 //                  bet (phase 'casino' + game.casino).
-//   farm      28  -- ownable and tradable like any deed, but it charges no
-//                  rent: it carries `income`, a counter that grows by $150
-//                  every time a NON-owner lands on it and is harvested whole
-//                  by the owner landing on it themselves.
+//   farm      28  -- ownable and tradable like any deed, but never BUYABLE:
+//                  landing on it while it is unowned auctions it to the whole
+//                  table on the spot (phase 'auction'), so no scenario may
+//                  stage a Buy on it. It charges no rent either: it carries
+//                  `income`, a counter that grows by $150 every time a
+//                  NON-owner lands on it and is harvested whole by the owner
+//                  landing on it themselves.
 //   tax       5 ($200), 39 ($400 Luxury Tax) -- both feed game.pot
 //   chance    8, 23, 37            community 3, 18, 33
 //   jail 11 (visit/in-jail) · GTJ 31 · parking 21 · start 1
@@ -485,27 +488,6 @@ export const SCENARIOS = {
     }),
   },
 
-  // The Weed Farm is bought exactly like any other deed -- the buy/auction
-  // choice, the price, the auction if nobody takes it. What is different is
-  // what the ticket says about it: a CROP, not a rent, and a note that a
-  // visitor pays nothing. Ero holds it by default, so it is cleared here.
-  "my-buy-farm": {
-    label: "my-buy-farm",
-    describe: "Land on the unowned Weed Farm (28): Buy $150 / Auction, and a crop instead of a rent.",
-    build: () => ({
-      row: baseRow({
-        currentOrder: 1,
-        phase: "roll",
-        playerOverrides: { afo: { position: 23 } },
-        boardMutator: (board) => {
-          board[28].bought.fig0 = false; // Ero's by default
-          board[28].income = 800; // several laps of visitors have watered it
-        },
-      }),
-      intro: { actorId: PLAYER_IDS.afo, target: 28 },
-    }),
-  },
-
   // ---- the casino (spec 5) ----------------------------------------------
 
   // The panel, from the betting side. Rolled onto cell 13, so the row arrives
@@ -567,6 +549,37 @@ export const SCENARIOS = {
   },
 
   // ---- the Weed Farm (spec 6) -------------------------------------------
+
+  // The farm is the one space on the board that is NEVER for sale. Landing on
+  // it while nobody owns it auctions it to the whole table there and then --
+  // there is no Buy button to decline first, and the auction panel opens out of
+  // the landing itself. This was "my-buy-farm" until
+  // 20260921160000_farm_auction.sql took the buy away; it is the same moment
+  // seen from the same phone, and the point of it is now the panel rather than
+  // the choice. Ero holds the deed by default, so it is cleared here, and the
+  // counter is left fat on purpose: $800 already growing is what makes the
+  // bidding interesting, and the landing that opens the auction adds its own
+  // $150 on top before the first bid is taken.
+  //
+  // The mock's auction bot bids for the other three seats by itself
+  // (scheduleAuctionBotIfNeeded), so this scenario plays the whole thing
+  // through without anybody touching the other phones.
+  "farm-auction": {
+    label: "farm-auction",
+    describe: "Land on the unowned Weed Farm (28): it goes straight to auction, everybody bids.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 23 } },
+        boardMutator: (board) => {
+          board[28].bought.fig0 = false; // Ero's by default
+          board[28].income = 800; // several laps of visitors have watered it
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 28 },
+    }),
+  },
 
   // Landing on somebody else's farm: I pay NOTHING and the crop grows $150.
   // The one rule players get wrong, so it is the one the ticket spells out.

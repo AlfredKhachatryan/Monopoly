@@ -27,6 +27,8 @@ export const RAILROAD_RENT = [35, 70, 140, 280];
 // paid by the bank — when the OWNER lands on their own farm, which resets it
 // back to FARM_INCOME_START. There is no passive per-lap payout. The server
 // owns these mutations; the numbers are here so the UI can say what is coming.
+// It is also the one space that is never SOLD: landing on it while nobody owns
+// it auctions it to the whole table on the spot — see isBuyable below.
 export const FARM_INCOME_START = 50;
 export const FARM_INCOME_STEP = 150;
 
@@ -76,6 +78,20 @@ export function cellKind(cell) {
 export const isProperty = (cell) =>
   ["street", "road", "farm"].includes(cellKind(cell));
 
+// What a player may BUY by standing on it — which, since
+// supabase/migrations/20260921160000_farm_auction.sql, is no longer the same
+// set. The Weed Farm is a property in every other sense: it is owned, traded,
+// auctioned and inherited by a creditor. It is simply never sold over the
+// counter. Landing on it while nobody owns it puts it straight up for auction
+// to the whole table, and `buy` on it is refused by the server with "The farm
+// is only ever sold at auction".
+//
+// ANYTHING THAT DECIDES WHETHER TO OFFER A BUY MUST ASK THIS, NOT isProperty():
+// an offer the server would refuse must never reach a button. That is the
+// `choice` computation in ClientScreen.jsx, which is the only place in the app
+// that turns "you are standing on an unowned property" into a Buy.
+export const isBuyable = (cell) => isProperty(cell) && cellKind(cell) !== "farm";
+
 export function ownerOf(cell) {
   return FIGS.find((f) => cell?.bought?.[f]) || null;
 }
@@ -87,7 +103,11 @@ export function priceOf(cell) {
     case "road":
       return cell.price || 200;
     // Mirrors mono_price(): the farm falls back to the 150 the utility it
-    // replaced carried, for a board seeded before the farm existed.
+    // replaced carried, for a board seeded before the farm existed. It is a
+    // VALUATION, not an asking price — nobody can buy the farm at it (see
+    // isBuyable) — but a trade still has to be worth something, the deed card
+    // still has a number to show, and the mock's auction bots still need a
+    // sense of what they are bidding on.
     case "farm":
       return cell.price || 150;
     // The Casino falls through to null on purpose — nothing may ever put a
