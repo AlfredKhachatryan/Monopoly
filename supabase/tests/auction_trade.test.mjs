@@ -769,7 +769,7 @@ await test('rent after a trade goes to the new owner', async () => {
   await call(room, 'trade_accept', { playerId: 'p1' });
   const before = await row(room);
   const r = await call(room, 'move', { playerId: 'p2', to: 17 });
-  const rent = 160 / 10;
+  const rent = Math.floor(160 / 8);
   eq(money(r, 'fig1'), money(before, 'fig1') + rent, 'new owner collected');
   eq(money(r, 'fig0'), money(before, 'fig0'), 'old owner got nothing');
   eq(money(r, 'fig2'), money(before, 'fig2') - rent);
@@ -859,6 +859,7 @@ await test('a 5th and a 6th player can join, a 7th cannot', async () => {
   eq(r.players[4], {
     name: 'Bat', figure: 'fig4', money: 2500, position: 1, order: 4,
     playerId: 'p4', inJail: false, jailTurns: 0, jailCards: 0, bankrupt: false,
+    traitor: false, traitorUntil: 0, backstabUsed: false,
   }, 'the 5th seat is a normal player row');
 
   r = await call(room, 'join', { name: 'Mummy', figure: 'fig5', playerId: 'p5' });
@@ -925,13 +926,14 @@ await test('a fig5 player buys, collects rent from fig0, completes a set and bui
   eq(owner(r, 15), 'fig5');
   eq(money(r, 'fig5'), 1000 - 140 - 140 - 160, 'paid for all three');
 
-  // fig0 lands on 12: full set, no houses -> double the base rent (140/10 * 2)
+  // fig0 lands on 12: full set, no houses -> double the base rent
+  // (floor(140/8) = 17, doubled = 34 since the rebalance)
   const cash5 = money(await row(room), 'fig5');
   r = await call(room, 'move', { playerId: 'p0', to: 12 });
-  eq(money(r, 'fig0'), 500 - 28, 'fig0 paid the doubled base rent');
-  eq(money(r, 'fig5'), cash5 + 28, 'fig5 collected it');
+  eq(money(r, 'fig0'), 500 - 34, 'fig0 paid the doubled base rent');
+  eq(money(r, 'fig5'), cash5 + 34, 'fig5 collected it');
   eq(ev(r, 'pay'), {
-    type: 'pay', figure: 'fig0', to: 'fig5', amount: 28, reason: 'rent', cell: 12,
+    type: 'pay', figure: 'fig0', to: 'fig5', amount: 34, reason: 'rent', cell: 12, mods: [],
   }, 'rent event names both sides');
 
   // and with the whole set fig5 may build; cell 12 is in the 11..20 band ($100)
@@ -984,7 +986,7 @@ await test('a fig6 player going bankrupt hands everything to the creditor', asyn
   await arrange(room, {
     owners: { 17: 'fig6', 19: 'fig6', 38: 'fig0', 40: 'fig0' },
     houses: {
-      17: 0, 19: 0, 40: 5, // a hotel on 40: base 40 * 75 = 3000 rent
+      17: 0, 19: 0, 40: 5, // a hotel on 40: base floor(400/8)=50, x90 = 4500 rent
     },
     players: {
       fig6: { position: 1, money: 100, jailCards: 1 },
@@ -1004,7 +1006,7 @@ await test('a fig6 player going bankrupt hands everything to the creditor', asyn
   eq(owner(r, 19), 'fig0', 'cell 19 changed hands');
   eq(r.position['1'].fig6, false, 'the token is off the board');
   eq(ev(r, 'bankrupt'), {
-    type: 'bankrupt', figure: 'fig6', to: 'fig0', reason: 'rent', amount: 3000,
+    type: 'bankrupt', figure: 'fig6', to: 'fig0', reason: 'rent', amount: 4500,
   });
   eq(r.game.winner, null, 'five players are still standing');
   eq(r.players.length, MAX_SEATS, 'a bankrupt player keeps their seat');
@@ -1104,8 +1106,8 @@ await test('a fig7 player can join a room whose board still has only four keys',
   eq(owner(r, 12), 'fig7', 'a missing bought.fig7 key did not stop the purchase');
 
   r = await call(roomId, 'move', { playerId: 'q0', to: 12 });
-  eq(money(r, 'fig7'), 2500 - 140 + 14, 'rent reached the fig7 owner');
-  eq(money(r, 'fig0'), 500 - 14, 'and left the fig0 payer');
+  eq(money(r, 'fig7'), 2500 - 140 + 17, 'rent reached the fig7 owner');
+  eq(money(r, 'fig0'), 500 - 17, 'and left the fig0 payer');
 
   r = await call(roomId, 'leave', { playerId: 'q7' });
   eq(owner(r, 12), null, 'and the cell went back to the bank on leave');
@@ -1505,7 +1507,7 @@ await test('new_game clears every jail card and every jail state', async () => {
   eq(r.game.doubles, 0, 'and the doubles run');
 });
 
-await test('a jailed player still collects rent, bids in an auction and answers a trade', async () => {
+await test('a jailed player collects NO rent, but still bids and answers a trade', async () => {
   const room = await newRoom(SIX);
   // fig3 is locked up and owns 12/14/15 (the salmon set)
   await arrange(room, {
@@ -1518,8 +1520,27 @@ await test('a jailed player still collects rent, bids in an auction and answers 
     game: { phase: 'act', doubles: 0, dice: null, auction: null, trade: null, winner: null },
   });
   let r = await call(room, 'move', { playerId: 'p0', to: 12 });
-  eq(money(r, 'fig3'), 1028, 'rent reaches a jailed owner');
+  // §3: a landlord behind bars cannot send a bill. The visitor pays nobody --
+  // not the owner, not the bank, not the parking pot.
+  eq(money(r, 'fig3'), 1000, 'a jailed owner collects nothing');
+  eq(money(r, 'fig0'), 900, 'and the visitor is charged nothing at all');
+  eq(r.game.pot, 0, 'the skipped rent did not fall into the pot either');
+  assert(!types(r).includes('pay'), 'there is no pay event');
+  eq(ev(r, 'rentFree'), {
+    type: 'rentFree', figure: 'fig0', owner: 'fig3', cell: 12, reason: 'ownerInJail',
+  }, 'and the log says why nothing moved');
   eq(player(r, 'fig3').inJail, true, 'and does not let them out');
+
+  // the moment they are out, the same landing charges again
+  await arrange(room, {
+    players: { fig3: { inJail: false, jailTurns: 0 }, fig0: { position: 1, money: 900 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  r = await call(room, 'move', { playerId: 'p0', to: 12 });
+  eq(money(r, 'fig3'), 1034, 'out of jail: the doubled base rent flows again');
+  eq(money(r, 'fig0'), 900 - 34);
+  await arrange(room, { players: { fig3: { inJail: true, jailTurns: 1, money: 1000 } } });
 
   // an auction started by fig0 puts the jailed fig3 in the rotation
   await arrange(room, {
@@ -1553,10 +1574,16 @@ await test('a jailed player still collects rent, bids in an auction and answers 
 });
 
 // ---------------------------------------------------------------------------
-// 5. Railroads and utilities
+// 5. Railroads, and the two cells that used to be utilities
+//
+// The utilities are gone: 13 is the Casino (nobody can own it) and 28 is the
+// Weed Farm (ownable, but it never charges a visitor). The railroad half of
+// this section is unchanged apart from the rebalanced numbers, and the utility
+// half now pins down that the rent branch really was REMOVED rather than left
+// reachable with different inputs.
 //
 // From a bug report after real play: "I cannot buy the second Railroad."
-// Railroads are cells 6/16/26/36 and utilities 13/28; all six carry colour
+// Railroads are cells 6/16/26/36 and utilities were 13/28; all six carry colour
 // "#000", which is also the colour of Start, Tax, Jail, Chance and Community
 // Chest. Anything that identified a property by its COLOUR or GROUP instead
 // of its cell id would therefore treat the second railroad as already
@@ -1568,10 +1595,12 @@ await test('a jailed player still collects rent, bids in an auction and answers 
 // These stay as the record that the SERVER was, and remains, right.
 // ---------------------------------------------------------------------------
 
-section('railroads & utilities');
+section('railroads, casino & farm cells');
 
 const RAILS = [6, 16, 26, 36];
-const UTILS = [13, 28];
+/** Cell 13 is the Casino now, cell 28 the Weed Farm. */
+const CASINO = 13;
+const FARM = 28;
 
 /** mono_rent for one cell, straight out of the stored board. */
 async function rentOf(room, cell, diceSum = 7) {
@@ -1643,17 +1672,36 @@ await test('landing on an unowned railroad while somebody else owns another is s
   eq(owner(r, 6), 'fig1', 'the other owner keeps theirs');
 });
 
-await test('the second utility can be bought after a real roll, both ways round', async () => {
-  let room = await newRoom();
-  let r = await landAndBuy(room, { from: 23, to: 28, dice: [2, 3], owned: [13] });
-  eq(owner(r, 28), 'fig0', 'SECOND utility bought while already holding 13');
-  eq(money(r, 'fig0'), 1850);
-  eq(owner(r, 13), 'fig0', '13 is untouched');
+await test('the farm can be bought after a real roll; the casino can never be bought', async () => {
+  // 23 + (2,3) = 28, the Weed Farm. It is an ordinary 150$ deed.
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 23, money: 2000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  let r = await rollDice(room, 'p0', 2, 3);
+  eq(player(r, 'fig0').position, FARM, 'landed on the farm');
+  eq(money(r, 'fig0'), 2000, 'a visitor pays nothing to stand on it');
+  eq(types(r), ['roll', 'move', 'land', 'farm'], 'the landing waters the crop instead');
+  r = await call(room, 'buy', { playerId: 'p0', cell: String(FARM) });
+  eq(owner(r, FARM), 'fig0', 'the farm is an ordinary deed');
+  eq(money(r, 'fig0'), 1850, 'and costs the ordinary 150$');
 
-  room = await newRoom();
-  r = await landAndBuy(room, { from: 8, to: 13, dice: [2, 3], owned: [28] });
-  eq(owner(r, 13), 'fig0', 'and the other way round');
-  eq(money(r, 'fig0'), 1850);
+  // 8 + (2,3) = 13, the Casino. It has no price, so `buy` and `auction_start`
+  // both bounce off the same "not for sale" guard every non-ownable cell uses.
+  const other = await newRoom();
+  await arrange(other, {
+    players: { fig0: { position: 8, money: 2000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  const landed = await rollDice(other, 'p0', 2, 3);
+  eq(player(landed, 'fig0').position, CASINO, 'landed on the casino');
+  eq(landed.game.phase, 'casino', 'and owes the house a bet');
+  await call(other, 'casino_play', { playerId: 'p0', game: 'wheel', bet: landed.game.casino.min });
+  await rejects(other, 'buy', { playerId: 'p0', cell: String(CASINO) }, 'This cell is not for sale');
+  await rejects(other, 'auction_start', { playerId: 'p0', cell: CASINO }, 'This cell is not for sale');
 });
 
 await test('buy is refused for the right reasons, not for owning a sibling railroad', async () => {
@@ -1674,9 +1722,9 @@ await test('buy is refused for the right reasons, not for owning a sibling railr
   await rejects(room, 'buy', { playerId: 'p0', cell: '11' }, 'This cell is not for sale');
 });
 
-await test('railroad rent is 25/50/100/200 by CELLS owned, and follows a trade', async () => {
+await test('railroad rent is 35/70/140/280 by CELLS owned, and follows a trade', async () => {
   const room = await newRoom();
-  const expect = [25, 50, 100, 200];
+  const expect = [35, 70, 140, 280];
   for (let n = 1; n <= 4; n += 1) {
     const owners = {};
     for (const c of RAILS.slice(0, n)) owners[c] = 'fig0';
@@ -1698,20 +1746,34 @@ await test('railroad rent is 25/50/100/200 by CELLS owned, and follows a trade',
   });
   const r = await call(room, 'trade_accept', { playerId: 'p3' });
   eq(owner(r, 36), 'fig3', 'a railroad is tradable on its own');
-  eq(await rentOf(room, 6), 100, 'the seller is down to three');
-  eq(await rentOf(room, 36), 25, 'the buyer has one');
+  eq(await rentOf(room, 6), 140, 'the seller is down to three');
+  eq(await rentOf(room, 36), 35, 'the buyer has one');
 });
 
-await test('utility rent is 4x / 10x by CELLS owned', async () => {
+await test('the utility rent branch is gone: casino and farm rent 0 whatever the dice', async () => {
   const room = await newRoom();
-  await arrange(room, { owners: { 13: 'fig0', 28: null } });
-  eq(await rentOf(room, 13, 9), 36, 'one utility: 4 x dice');
-  await arrange(room, { owners: { 13: 'fig0', 28: 'fig0' } });
-  eq(await rentOf(room, 13, 9), 90, 'both utilities: 10 x dice');
-  eq(await rentOf(room, 28, 9), 90);
-  await arrange(room, { owners: { 13: 'fig0', 28: 'fig1' } });
-  eq(await rentOf(room, 13, 9), 36, 'split ownership is 4x for each of them');
-  eq(await rentOf(room, 28, 9), 36);
+  // The old branch was `dice_sum * (4 or 10)`. If any trace of it survived, an
+  // owned farm (and a "somehow owned" casino) would charge something here.
+  await arrange(room, { owners: { [FARM]: 'fig0' } });
+  for (const dice of [2, 7, 9, 12]) {
+    eq(await rentOf(room, FARM, dice), 0, `an owned farm charges 0 on dice ${dice}`);
+    eq(await rentOf(room, CASINO, dice), 0, `the casino charges 0 on dice ${dice}`);
+  }
+  await arrange(room, { owners: { [FARM]: 'fig1' } });
+  eq(await rentOf(room, FARM, 9), 0, 'and it makes no difference who holds the deed');
+
+  // mono_rent also lost its fifth argument, so the old five-argument call that
+  // forced the utility multiplier no longer resolves at all.
+  let failed = null;
+  try {
+    await db.query(
+      `select public.mono_rent(position, '28', 9, 2, 10) from public.test where uuid = $1`,
+      [room],
+    );
+  } catch (err) {
+    failed = err.message;
+  }
+  assert(failed !== null, 'mono_rent(.., util_mult) must no longer exist');
 });
 
 await test('a real landing pays railroad rent for the owner’s count, not the colour', async () => {
@@ -1723,10 +1785,10 @@ await test('a real landing pays railroad rent for the owner’s count, not the c
     game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
   });
   const r = await rollDice(room, 'p0', 4, 6); // 16 -> 26, owned by fig1 who holds two
-  eq(money(r, 'fig0'), 1950, 'paid 50, the two-railroad rate');
-  eq(money(r, 'fig1'), 2050);
+  eq(money(r, 'fig0'), 1930, 'paid 70, the two-railroad rate');
+  eq(money(r, 'fig1'), 2070);
   eq(ev(r, 'pay'), {
-    type: 'pay', figure: 'fig0', to: 'fig1', amount: 50, reason: 'rent', cell: 26,
+    type: 'pay', figure: 'fig0', to: 'fig1', amount: 70, reason: 'rent', cell: 26, mods: [],
   });
 });
 
@@ -1739,14 +1801,26 @@ await test('a railroad goes through an auction like any other space', async () =
   await call(room, 'auction_drop', { playerId: 'p3' });
   const r = await call(room, 'auction_drop', { playerId: 'p0' });
   eq(owner(r, 36), 'fig1', 'the bidder won it');
-  eq(await rentOf(room, 6), 50, 'the starter still has exactly two');
-  eq(await rentOf(room, 36), 25, 'the winner has one');
+  eq(await rentOf(room, 6), 70, 'the starter still has exactly two');
+  eq(await rentOf(room, 36), 35, 'the winner has one');
 });
 
-await test('bankruptcy hands every railroad and utility over as individual cells', async () => {
+await test('the farm goes through an auction like any other space', async () => {
+  const room = await newRoom();
+  await standOn(room, 'fig0', FARM);
+  await call(room, 'auction_start', { playerId: 'p0', cell: FARM });
+  await call(room, 'auction_bid', { playerId: 'p1', amount: 120 });
+  await call(room, 'auction_drop', { playerId: 'p2' });
+  await call(room, 'auction_drop', { playerId: 'p3' });
+  const r = await call(room, 'auction_drop', { playerId: 'p0' });
+  eq(owner(r, FARM), 'fig1', 'the bidder won the farm');
+  eq(r.position[String(FARM)].income, 50, 'and the counter came with it, untouched');
+});
+
+await test('bankruptcy hands every railroad and the farm over as individual cells', async () => {
   const room = await newRoom();
   await arrange(room, {
-    owners: { 6: 'fig0', 16: 'fig0', 26: 'fig0', 13: 'fig0', 36: 'fig1', 28: 'fig1' },
+    owners: { 6: 'fig0', 16: 'fig0', 26: 'fig0', [FARM]: 'fig0', 36: 'fig1' },
     // 26 + (4,6) = 36, which fig1 owns: the rent is what bankrupts fig0.
     players: { fig0: { position: 26, money: 10 }, fig1: { position: 20, money: 2000 } },
     current_order: 0,
@@ -1754,15 +1828,21 @@ await test('bankruptcy hands every railroad and utility over as individual cells
   });
   const r = await rollDice(room, 'p0', 4, 6);
   eq(player(r, 'fig0').bankrupt, true, 'could not pay the rent');
-  for (const c of [...RAILS, ...UTILS]) {
+  for (const c of [...RAILS, FARM]) {
     eq(owner(r, c), 'fig1', `cell ${c} went to the creditor`);
   }
-  eq(await rentOf(room, 6), 200, 'the creditor now holds all four railroads');
-  eq(await rentOf(room, 13, 9), 90, 'and both utilities');
+  eq(await rentOf(room, 6), 280, 'the creditor now holds all four railroads');
+  eq(owner(r, CASINO), null, 'and the casino is still nobody’s');
 });
 
 // ---------------------------------------------------------------------------
-// 6. "Advance to the nearest railroad / utility" -- Chance c5 and c4
+// 6. "Advance to the nearest railroad" -- Chance c5
+//
+// c4 used to be its utility twin. There are no utilities any more, so the
+// rebalance migration RETARGETED it: it is a plain `moveTo` onto the Casino
+// now, and the tests for it live in the casino section below. c5 is therefore
+// the only surviving user of the `nearest` kind, and the only remaining caller
+// that passes a road_mult.
 //
 // This is the one card that relocates a player and then resolves a landing
 // WITHOUT a roll of its own, and until now it was the only branch of
@@ -1773,9 +1853,8 @@ await test('bankruptcy hands every railroad and utility over as individual cells
 //
 // What the SQL actually says (20260918140000_game_rules.sql):
 //
-//   * mono_deck line 450 / 452 -- c4 is {kind:'nearest', what:'communal'} and
-//     c5 is {kind:'nearest', what:'road'}; 0-based indices 3 and 4 of the
-//     15-card Chance deck.
+//   * mono_deck -- c5 is {kind:'nearest', what:'road'}, 0-based index 4 of the
+//     15-card Chance deck. c4 sits beside it at index 3 and is now a moveTo.
 //   * mono_apply_card lines 553-566 -- the target is the LOWEST cell of that
 //     kind strictly above the player's current cell:
 //         where mono_cell_kind(cell) = card->>'what' and key::integer > pos
@@ -1783,34 +1862,25 @@ await test('bankruptcy hands every railroad and utility over as individual cells
 //     and when nothing is above `pos` it falls back to mono_cell_of_kind
 //     (line 146: the lowest cell of that kind on the whole board), which is
 //     what makes the move wrap. Chance is 8 / 23 / 37; railroads 6 / 16 / 26 /
-//     36; utilities 13 / 28. So 37 is the only Chance cell that wraps, and it
-//     wraps for BOTH kinds -- to railroad 6 and to utility 13.
-//   * mono_move_to is called with collect_go = true (line 564), and line 407
-//     pays the 200$ when `new_pos <= old_pos`. The wrap therefore collects and
-//     the two forward moves do not.
-//   * mono_land is called with road_mult = 2 and util_mult = 10 (line 565),
-//     unconditionally for both cards -- which is harmless, because mono_rent
-//     only consults road_mult on a 'road' cell (line 251) and util_mult on a
-//     'communal' one (line 258), and the card can only ever land you on the
-//     kind it asked for.
-//   * The two multipliers are NOT the same kind of thing, and this is the trap:
-//         road:     (25 << greatest(cnt - 1, 0)) * coalesce(road_mult, 1)
-//         communal: coalesce(dice_sum, 7) * coalesce(util_mult, <4 or 10>)
-//     road_mult MULTIPLIES the count-based rate (50 / 100 / 200 / 400 for
-//     1 / 2 / 3 / 4 railroads), while util_mult sits INSIDE the coalesce and
-//     REPLACES the ordinary 4x-or-10x choice. A single-utility owner therefore
-//     charges 10 x dice, not 4 x 10 x dice. Both tests below assert the plain
-//     mono_rent for the same board alongside the rent the card actually
-//     charged, so the two readings cannot be confused: the railroad case must
-//     come out at exactly twice the plain rate, the utility case at exactly
-//     2.5 times it (10x against 4x) rather than ten times it.
+//     36. So 37 is the only Chance cell that wraps, to railroad 6.
+//   * mono_move_to is called with collect_go = true, and pays the Start bonus
+//     when `new_pos <= old_pos`. The wrap therefore collects -- 150$ since the
+//     rebalance, down from 200$ -- and the two forward moves do not.
+//   * mono_land is called with road_mult = 2, and road_mult MULTIPLIES the
+//     count-based rate:
+//         road:  (35 << greatest(cnt - 1, 0)) * coalesce(road_mult, 1)
+//     so the card charges 70 / 140 / 280 / 560 for 1 / 2 / 3 / 4 railroads.
+//     Each case below asserts the plain mono_rent for the same board next to
+//     the rent the card actually charged, so the doubling cannot hide: the
+//     card's figure has to come out at exactly twice the plain rate.
+//   * There used to be a util_mult beside it, which did NOT multiply -- it sat
+//     inside a coalesce and REPLACED the 4x-or-10x utility choice. Both the
+//     argument and the branch it fed went with the utilities; section 5
+//     asserts that the five-argument mono_rent no longer resolves at all.
 //   * The dice are NOT thrown again. mono_land passes its own dice_sum into
-//     mono_apply_card (line 678) and the nearest branch passes the same value
-//     straight back into mono_land (line 565), so the utility rent is ten
-//     times the sum that carried you onto the Chance square. (Official
-//     Monopoly has you re-throw; the migration header, line 48, records the
-//     simplification on purpose. Flagged, not fixed -- migrations are not ours
-//     to touch.)
+//     mono_apply_card and the nearest branch passes the same value straight
+//     back into mono_land. Nothing reads it for a railroad any more, but it
+//     still has to survive the round trip intact.
 //
 // Method, deliberately the same as section 5: every landing here is a REAL
 // forced roll. The one addition is that the CARD is forced too, by extending
@@ -1821,14 +1891,14 @@ await test('bankruptcy hands every railroad and utility over as individual cells
 // walks was broken, which is precisely the failure mode that produced Bug A.
 // ---------------------------------------------------------------------------
 
-section('nearest railroad / utility card');
+section('nearest railroad card');
 
 /** The real Chance deck, so the card ids below are the server's, not ours. */
 const CHANCE = (await db.query(
   `select public.mono_deck('chance', $1::jsonb) as d`, [JSON.stringify(SEED_BOARD)],
 )).rows[0].d;
 
-const NEAREST_CARD = { road: 'c5', communal: 'c4' };
+const NEAREST_CARD = { road: 'c5' };
 const CHANCE_CELLS = [8, 23, 37];
 
 /**
@@ -1929,22 +1999,36 @@ async function nearestRoll(room, { chance, kind, owners = {}, cash = 2000, from,
   return r;
 }
 
-await test('the Chance deck carries exactly the two nearest cards these tests force', async () => {
+await test('the Chance deck carries exactly one nearest card, and c4 now points at the Casino', async () => {
   const near = CHANCE.filter((c) => c.kind === 'nearest');
-  eq(near.map((c) => [c.id, c.what]), [['c4', 'communal'], ['c5', 'road']],
-    'two nearest cards, one per kind, in deck order');
-  // The numbers the tests below assert are the numbers the cards promise the
+  eq(near.map((c) => [c.id, c.what]), [['c5', 'road']],
+    'one nearest card, the railroad one; the utility twin is gone');
+  // The numbers the tests below assert are the numbers the card promises the
   // player, so tie the two together here rather than leaving them as folklore.
-  assert(/10 times your dice/.test(near[0].text), `utility card text: ${near[0].text}`);
-  assert(/double rent/.test(near[1].text), `railroad card text: ${near[1].text}`);
-  // Both `what` values have to be kinds mono_cell_kind can actually produce,
-  // or the search would silently find nothing and the card would do nothing.
-  for (const c of near) {
-    const hits = Object.keys(SEED_BOARD).filter((k) => {
-      const cell = SEED_BOARD[k];
-      return c.what === 'road' ? cell.road === true : cell.communal === true;
-    });
-    assert(hits.length > 0, `no cell on the board is of kind ${c.what}`);
+  assert(/double rent/.test(near[0].text), `railroad card text: ${near[0].text}`);
+  // `what` has to be a kind mono_cell_kind can actually produce, or the search
+  // would silently find nothing and the card would do nothing.
+  const hits = Object.keys(SEED_BOARD).filter((k) => SEED_BOARD[k].road === true);
+  assert(hits.length > 0, 'no cell on the board is of kind road');
+
+  // c4 kept its slot in the deck -- fifteen Chance cards, unchanged odds --
+  // but it is a moveTo onto the casino cell now.
+  const c4 = CHANCE.find((c) => c.id === 'c4');
+  eq(CHANCE.length, 15, 'the deck is still fifteen cards');
+  eq(c4.kind, 'moveTo', 'c4 is a plain move now');
+  eq(c4.cell, CASINO, 'and it targets the casino cell');
+  assert(/Casino/.test(c4.text), `casino card text: ${c4.text}`);
+  // No card that can carry you past Start still promises the old 200$ bonus:
+  // the phones print these strings verbatim, so a stale one is a lie the
+  // player can catch.
+  for (const deck of ['chance', 'community']) {
+    const cards = (await db.query(
+      `select public.mono_deck($1, $2::jsonb) as d`, [deck, JSON.stringify(SEED_BOARD)],
+    )).rows[0].d;
+    for (const c of cards.filter((x) => /Start/.test(x.text))) {
+      assert(!/\$200/.test(c.text),
+        `${deck} ${c.id} still promises the old Start bonus: ${c.text}`);
+    }
   }
 });
 
@@ -1961,46 +2045,31 @@ await test('nearest railroad: 8 -> 16, 23 -> 26, and 37 wraps round to 6', async
   }
 });
 
-await test('nearest utility: 8 -> 13, 23 -> 28, and 37 wraps round to 13', async () => {
-  for (const [chance, target] of [[8, 13], [23, 28], [37, 13]]) {
+await test('only the wrap from 37 collects the Start bonus, and it is 150 now', async () => {
+  for (const chance of CHANCE_CELLS) {
     const room = await newRoom();
-    const r = await nearestRoll(room, { chance, kind: 'communal' });
-    eq(player(r, 'fig0').position, target, `from Chance ${chance} the nearest utility is ${target}`);
-    eq(lands(r)[1], { type: 'land', figure: 'fig0', cell: target, kind: 'communal' },
-      'the card resolved a second landing, on the utility');
-    eq(owner(r, target), null, 'nobody owned it, so nothing was charged');
-    eq(r.position[String(target)].fig0, true, 'the token really is on the utility');
-    eq(r.position[String(chance)].fig0, false, 'and no longer on the Chance square');
-  }
-});
-
-await test('only the wrap from 37 collects the 200$; the forward moves collect nothing', async () => {
-  for (const kind of ['road', 'communal']) {
-    for (const chance of CHANCE_CELLS) {
-      const room = await newRoom();
-      const r = await nearestRoll(room, { chance, kind });
-      if (chance === 37) {
-        eq(money(r, 'fig0'), 2200, `${kind} from 37: the card walked backwards past Start`);
-        eq(ev(r, 'collect'),
-          { type: 'collect', figure: 'fig0', amount: 200, reason: 'passGo' },
-          'and mono_move_to paid the bonus, with the reason the UI keys on');
-        eq(types(r), ['roll', 'move', 'land', 'card', 'move', 'collect', 'land'],
-          'the collect sits between the second move and the second landing');
-      } else {
-        eq(money(r, 'fig0'), 2000, `${kind} from ${chance}: a forward move, nothing collected`);
-        assert(!types(r).includes('collect'),
-          `${kind} from ${chance}: there must be no collect event at all`);
-        eq(types(r), ['roll', 'move', 'land', 'card', 'move', 'land']);
-      }
+    const r = await nearestRoll(room, { chance, kind: 'road' });
+    if (chance === 37) {
+      eq(money(r, 'fig0'), 2150, 'from 37 the card walked backwards past Start');
+      eq(ev(r, 'collect'),
+        { type: 'collect', figure: 'fig0', amount: 150, reason: 'passGo' },
+        'and mono_move_to paid the rebalanced bonus, with the reason the UI keys on');
+      eq(types(r), ['roll', 'move', 'land', 'card', 'move', 'collect', 'land'],
+        'the collect sits between the second move and the second landing');
+    } else {
+      eq(money(r, 'fig0'), 2000, `from ${chance}: a forward move, nothing collected`);
+      assert(!types(r).includes('collect'),
+        `from ${chance}: there must be no collect event at all`);
+      eq(types(r), ['roll', 'move', 'land', 'card', 'move', 'land']);
     }
   }
 });
 
-await test('nearest railroad DOUBLES the count-based rate: 50 / 100 / 200 / 400', async () => {
+await test('nearest railroad DOUBLES the count-based rate: 70 / 140 / 280 / 560', async () => {
   // From Chance 23 the card always picks 26, whatever else the owner holds, so
   // the only thing changing between the four rounds is the count.
   const order = [26, 6, 16, 36];
-  const expect = [50, 100, 200, 400];
+  const expect = [70, 140, 280, 560];
   for (let cnt = 1; cnt <= 4; cnt += 1) {
     const room = await newRoom();
     const owners = {};
@@ -2008,7 +2077,7 @@ await test('nearest railroad DOUBLES the count-based rate: 50 / 100 / 200 / 400'
     const r = await nearestRoll(room, { chance: 23, kind: 'road', owners });
     eq(player(r, 'fig0').position, 26, 'the target does not depend on who owns what');
     eq(ev(r, 'pay'), {
-      type: 'pay', figure: 'fig0', to: 'fig1', amount: expect[cnt - 1], reason: 'rent', cell: 26,
+      type: 'pay', figure: 'fig0', to: 'fig1', amount: expect[cnt - 1], reason: 'rent', cell: 26, mods: [],
     }, `${cnt} railroad(s) owned`);
     eq(money(r, 'fig0'), 2000 - expect[cnt - 1]);
     eq(money(r, 'fig1'), 2000 + expect[cnt - 1], 'and it reached the owner');
@@ -2019,50 +2088,10 @@ await test('nearest railroad DOUBLES the count-based rate: 50 / 100 / 200 / 400'
   }
 });
 
-await test('nearest utility is 10x the dice already rolled -- not 4 x 10, and not re-thrown', async () => {
-  // Three different rolled sums, three different rents. The rent tracking the
-  // sum is what proves the dice are reused rather than thrown a second time:
-  // a re-throw would have no reason to agree with game.dice three times over.
-  const cases = [
-    { chance: 8,  target: 13, dice: [3, 4], sum: 7 },
-    { chance: 8,  target: 13, dice: [1, 4], sum: 5, from: 3 }, // 3 + 5 = 8 as well
-    { chance: 23, target: 28, dice: [4, 5], sum: 9 },
-  ];
-  for (const c of cases) {
+await test('the nearest railroad being your own charges nothing', async () => {
+  for (const [chance, target] of [[23, 26], [8, 16]]) {
     const room = await newRoom();
-    const r = await nearestRoll(room, {
-      chance: c.chance, kind: 'communal', owners: { [c.target]: 'fig1' },
-      from: c.from, dice: c.dice,
-    });
-    eq(r.game.dice, c.dice, 'the row still records the dice that were rolled');
-    eq(ev(r, 'pay'), {
-      type: 'pay', figure: 'fig0', to: 'fig1', amount: c.sum * 10, reason: 'rent', cell: c.target,
-    }, `dice ${c.dice.join('+')} = ${c.sum}, so the rent is ${c.sum * 10}`);
-    eq(money(r, 'fig0'), 2000 - c.sum * 10);
-    eq(money(r, 'fig1'), 2000 + c.sum * 10);
-    // util_mult sits inside a coalesce, so it REPLACES the 4x a single-utility
-    // owner would otherwise get. If it multiplied instead, this rent would be
-    // c.sum * 40 and the assertion above would already have failed -- this line
-    // is here to say out loud what the plain rate for the same board is.
-    eq(await rentOf(room, c.target, c.sum), c.sum * 4,
-      'one utility rents at 4x normally, so the card charged 10x, not 40x');
-  }
-
-  // The owner holding BOTH utilities is the case that cannot tell the two
-  // readings apart -- the ordinary rate is already 10x -- so it is here as the
-  // control rather than as the evidence.
-  const room = await newRoom();
-  const r = await nearestRoll(room, {
-    chance: 8, kind: 'communal', owners: { 13: 'fig1', 28: 'fig1' },
-  });
-  eq(ev(r, 'pay').amount, 70, 'both utilities: 10 x 7, the same as the card forces');
-  eq(await rentOf(room, 13, 7), 70, 'and the plain rate agrees, so nothing is doubled twice');
-});
-
-await test('the nearest cell being your own charges nothing', async () => {
-  for (const [kind, chance, target] of [['road', 23, 26], ['communal', 8, 13]]) {
-    const room = await newRoom();
-    const r = await nearestRoll(room, { chance, kind, owners: { [target]: 'fig0' } });
+    const r = await nearestRoll(room, { chance, kind: 'road', owners: { [target]: 'fig0' } });
     eq(player(r, 'fig0').position, target, `the card still moved them to ${target}`);
     eq(money(r, 'fig0'), 2000, 'you do not pay yourself, doubled or otherwise');
     eq(types(r), ['roll', 'move', 'land', 'card', 'move', 'land'],
@@ -2075,9 +2104,9 @@ await test('an unowned nearest cell is left buyable at its ordinary price', asyn
   // The card is the only way onto a property without a roll that reaches it, so
   // this is the one place where "can I still buy what I was put on?" is a real
   // question rather than a restatement of section 5.
-  for (const [kind, chance, target, price] of [['road', 23, 26, 200], ['communal', 8, 13, 150]]) {
+  for (const [chance, target, price] of [[23, 26, 200], [8, 16, 200]]) {
     const room = await newRoom();
-    const r = await nearestRoll(room, { chance, kind });
+    const r = await nearestRoll(room, { chance, kind: 'road' });
     eq(owner(r, target), null, 'the landing left it unowned');
     eq(r.game.phase, 'act', 'and did not end the turn');
     eq(r.game.auction, null, 'no auction was started for them');
@@ -2093,51 +2122,45 @@ await test('an unowned nearest cell is left buyable at its ordinary price', asyn
 await test('a nearest rent you cannot cover bankrupts you to the owner, with no partial payment', async () => {
   const ALL_RAILS = { 6: 'fig1', 16: 'fig1', 26: 'fig1', 36: 'fig1' };
 
-  // 400$ owed with 399$ in hand. mono_charge (line 368) compares `money <
-  // amount` and hands the whole thing to mono_bankrupt: no debt is recorded, no
-  // part of the 400 is paid, and the creditor gets the cash that WAS there.
+  // 560$ owed with 559$ in hand. mono_charge compares `money < amount` and
+  // hands the whole thing to mono_bankrupt: no debt is recorded, no part of the
+  // 560 is paid, and the creditor gets the cash that WAS there.
   let room = await newRoom();
-  let r = await nearestRoll(room, { chance: 23, kind: 'road', owners: ALL_RAILS, cash: 399 });
+  let r = await nearestRoll(room, { chance: 23, kind: 'road', owners: ALL_RAILS, cash: 559 });
   eq(ev(r, 'bankrupt'), {
-    type: 'bankrupt', figure: 'fig0', to: 'fig1', reason: 'rent', amount: 400,
+    type: 'bankrupt', figure: 'fig0', to: 'fig1', reason: 'rent', amount: 560,
   }, 'the amount on the event is what was OWED, not what was taken');
   assert(!types(r).includes('pay'), 'there is no pay event: nothing was part-paid');
   eq(types(r), ['roll', 'move', 'land', 'card', 'move', 'land', 'bankrupt']);
   eq(player(r, 'fig0').bankrupt, true);
   eq(player(r, 'fig0').money, 0);
-  eq(money(r, 'fig1'), 2000 + 399, 'the creditor got the 399 that existed, not the 400 owed');
+  eq(money(r, 'fig1'), 2000 + 559, 'the creditor got the 559 that existed, not the 560 owed');
   eq(player(r, 'fig0').position, 26, 'the recorded position is still where the card left them');
   eq(r.position['26'].fig0, false, 'but the token is off the board');
   eq(r.current_order, 1, 'a bankrupt player cannot finish their turn');
   eq(r.game.phase, 'roll', 'and the next player is asked to roll');
   eq(r.game.winner, null, 'three players are still in, so nobody won');
 
-  // Exactly 400$ pays, because the test is `<` and not `<=`: you are allowed to
+  // Exactly 560$ pays, because the test is `<` and not `<=`: you are allowed to
   // be left with nothing.
   room = await newRoom();
-  r = await nearestRoll(room, { chance: 23, kind: 'road', owners: ALL_RAILS, cash: 400 });
+  r = await nearestRoll(room, { chance: 23, kind: 'road', owners: ALL_RAILS, cash: 560 });
   eq(ev(r, 'pay'), {
-    type: 'pay', figure: 'fig0', to: 'fig1', amount: 400, reason: 'rent', cell: 26,
+    type: 'pay', figure: 'fig0', to: 'fig1', amount: 560, reason: 'rent', cell: 26, mods: [],
   });
   eq(player(r, 'fig0').bankrupt, false, 'broke is not bankrupt');
   eq(money(r, 'fig0'), 0);
-  eq(money(r, 'fig1'), 2400);
+  eq(money(r, 'fig1'), 2560);
   eq(r.current_order, 0, 'and they still hold the turn');
 
-  // The utility side of the same path, so it is not only the doubled railroad
-  // rent that is known to reach mono_bankrupt.
-  room = await newRoom();
-  r = await nearestRoll(room, { chance: 8, kind: 'communal', owners: { 13: 'fig1' }, cash: 69 });
-  eq(ev(r, 'bankrupt'), {
-    type: 'bankrupt', figure: 'fig0', to: 'fig1', reason: 'rent', amount: 70,
-  }, '10 x 7 with 69$ in hand');
-  eq(money(r, 'fig1'), 2069);
-  eq(player(r, 'fig0').bankrupt, true);
+  // A rent that goes to a PLAYER never touches the parking pot, however big it
+  // is and whether or not it bankrupts the payer.
+  eq(r.game.pot, 0, 'rent is income, not a fine');
 });
 
 await test('one seq for the whole card: card is followed by a second move and a second land', async () => {
   // The fullest shape the branch can emit -- wrap AND rent -- in one action.
-  // fig1 holds 6 and 16, so the railroad the card picks rents at 2 x 50.
+  // fig1 holds 6 and 16, so the railroad the card picks rents at 2 x 70.
   const room = await newRoom();
   const before = await row(room);
   const r = await nearestRoll(room, {
@@ -2160,8 +2183,8 @@ await test('one seq for the whole card: card is followed by a second move and a 
   eq(r.game.lastCard, {
     deck: 'chance', figure: 'fig0', text: CHANCE.find((c) => c.id === 'c5').text,
   }, 'and lastCard is set for a phone that missed the live event');
-  eq(money(r, 'fig0'), 2000 + 200 - 100, '200 for the wrap, then 100 for two railroads doubled');
-  eq(money(r, 'fig1'), 2100);
+  eq(money(r, 'fig0'), 2000 + 150 - 140, '150 for the wrap, then 140 for two railroads doubled');
+  eq(money(r, 'fig1'), 2140);
 
   // The running history has to agree, because that is what a reloaded phone
   // reads instead of game.events: every one of this action's events, in the
@@ -2176,7 +2199,1838 @@ await test('one seq for the whole card: card is followed by a second move and a 
 });
 
 // ---------------------------------------------------------------------------
-// 7. Regression smoke: a few hundred random legal-ish actions
+// 7. The rebalance
+//
+// Every number the playtest changed, asserted against mono_rent and against a
+// real landing rather than against the migration's own comment header. The
+// point of pinning all six of them in one place is that the client mirrors
+// them in src/Hooks/rules.js: when one side moves, this section is where the
+// other side is told what it now has to say.
+// ---------------------------------------------------------------------------
+
+section('rebalance');
+
+await test('street rent is price/8, doubled for the full set, x1/6/18/50/70/90 by houses', async () => {
+  const room = await newRoom();
+  // 12 / 14 / 15 are the salmon set; 12 costs 140, so the base is floor(140/8).
+  const base = Math.floor(140 / 8);
+  eq(base, 17, 'floor(140/8)');
+
+  await arrange(room, { owners: { 12: 'fig0' }, houses: { 12: 0 } });
+  eq(await rentOf(room, 12), base, 'one street of the set, bare: the plain base');
+
+  await arrange(room, { owners: { 12: 'fig0', 14: 'fig0', 15: 'fig0' } });
+  eq(await rentOf(room, 12), base * 2, 'the whole colour set doubles the bare rent');
+
+  // With buildings the set bonus stops applying and the multiplier takes over.
+  const mult = [1, 6, 18, 50, 70, 90];
+  for (let h = 1; h <= 5; h += 1) {
+    await arrange(room, { houses: { 12: h } });
+    eq(await rentOf(room, 12), base * mult[h],
+      `${h === 5 ? 'a hotel' : `${h} house(s)`} rents at base x ${mult[h]}`);
+  }
+
+  // and the multipliers are not secretly the old 1/5/15/45/60/75
+  await arrange(room, { houses: { 12: 1 } });
+  assert(await rentOf(room, 12) !== base * 5, 'one house is not the old x5');
+});
+
+await test('passing Start pays 150, not 200', async () => {
+  const room = await newRoom();
+  // 39 + (1,2) wraps to cell 2, an unowned street, so the only money that can
+  // move on this roll is the Start bonus.
+  await arrange(room, {
+    players: { fig0: { position: 39, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  const r = await rollDice(room, 'p0', 1, 2);
+  eq(player(r, 'fig0').position, 2, 'wrapped past Start');
+  eq(money(r, 'fig0'), 1150, 'and collected 150');
+  eq(ev(r, 'collect'), { type: 'collect', figure: 'fig0', amount: 150, reason: 'passGo' });
+});
+
+await test('start money is 2500 and house prices are unchanged', async () => {
+  const room = await newRoom();
+  eq(money(await row(room), 'fig0'), 2500, 'a fresh seat holds 2500');
+  const h = (await db.query(
+    `select public.mono_house_price(5)  as a, public.mono_house_price(15) as b,
+            public.mono_house_price(25) as c, public.mono_house_price(35) as d`,
+  )).rows[0];
+  eq([h.a, h.b, h.c, h.d], [50, 100, 150, 200], '50/100/150/200 by decade');
+});
+
+// ---------------------------------------------------------------------------
+// 8. The Free Parking pot
+//
+// The rule is "fines pile up, prices do not", and the whole of it lives in one
+// `reason in (...)` list inside mono_charge. These tests come at it from both
+// sides: every reason that IS a fine has to raise the pot, and every reason
+// that merely moves money to the bank has to leave it alone.
+// ---------------------------------------------------------------------------
+
+section('free parking pot');
+
+/** The pot as a phone reads it. */
+const potOf = (r) => r.game.pot;
+
+await test('both tax cells feed the pot and Free Parking hands the whole thing over', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: {
+      fig0: { position: 1, money: 1000 }, fig1: { position: 1, money: 1000 },
+      fig2: { position: 1, money: 1000 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null },
+  });
+
+  let r = await call(room, 'move', { playerId: 'p0', to: 5 });   // Tax, 200
+  eq(money(r, 'fig0'), 800, 'the tax was charged');
+  eq(potOf(r), 200, 'and landed on Free Parking');
+  eq(ev(r, 'pay'), {
+    type: 'pay', figure: 'fig0', to: null, amount: 200, reason: 'tax', cell: 5,
+  });
+
+  r = await call(room, 'move', { playerId: 'p1', to: 39 });      // Luxury Tax, 400
+  eq(money(r, 'fig1'), 600);
+  eq(potOf(r), 600, 'the pot accumulates across players and actions');
+
+  const before = money(await row(room), 'fig2');
+  r = await call(room, 'move', { playerId: 'p2', to: 21 });      // Free Park
+  eq(money(r, 'fig2'), before + 600, 'the whole pot went to whoever landed');
+  eq(potOf(r), 0, 'and it is empty again');
+  eq(ev(r, 'collect'), { type: 'collect', figure: 'fig2', amount: 600, reason: 'pot' });
+  eq(ev(r, 'pot'), { type: 'pot', figure: 'fig2', cell: 21, amount: 600 },
+    'plus the event the TV celebrates on');
+});
+
+await test('an empty pot is silent: no event, no money, nothing', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null, pot: 0 },
+  });
+  const r = await call(room, 'move', { playerId: 'p0', to: 21 });
+  eq(money(r, 'fig0'), 1000, 'nothing was paid out');
+  eq(potOf(r), 0);
+  eq(types(r), ['move', 'land'], 'and no pot or collect event was emitted');
+});
+
+await test('a card fine feeds the pot, and so does a repairs assessment', async () => {
+  // c11 is the 15$ speeding fine. 1 + (3,4) = 8, a Chance cell.
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  let r = await rollForCard(room, 'p0', 3, 4, 'c11');
+  eq(money(r, 'fig0'), 985, 'the fine was charged');
+  eq(potOf(r), 15, 'and it is a fine to the bank, so the pot took it');
+
+  // c10 is "general repairs": 25 per house, 100 per hotel, also to the bank.
+  await arrange(room, {
+    owners: { 12: 'fig0', 14: 'fig0', 15: 'fig0' },
+    houses: { 12: 5, 14: 2, 15: 0 },
+    players: { fig0: { position: 1, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  r = await rollForCard(room, 'p0', 3, 4, 'c10');
+  eq(money(r, 'fig0'), 1000 - 150, 'one hotel (100) and two houses (50)');
+  eq(potOf(r), 15 + 150, 'the assessment joined the pot the fine started');
+});
+
+await test('a card that pays ANOTHER player leaves the pot alone', async () => {
+  // c14: "pay each player $50" -- that is income for them, not a fine.
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  const r = await rollForCard(room, 'p0', 3, 4, 'c14');
+  eq(money(r, 'fig0'), 1000 - 150, 'three other players at 50 each');
+  eq(potOf(r), 0, 'and not one dollar of it reached the pot');
+});
+
+await test('jail fines, purchases, houses and auction hammer prices never reach the pot', async () => {
+  const room = await newRoom();
+
+  // pay_jail
+  await arrange(room, {
+    players: { fig0: { position: 11, money: 1000, inJail: true, jailTurns: 1 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null, pot: 0 },
+  });
+  let r = await call(room, 'pay_jail', { playerId: 'p0' });
+  eq(money(r, 'fig0'), 950, 'the fine was taken');
+  eq(potOf(r), 0, 'the jail fine goes to the bank, not to Free Parking');
+
+  // the third failed roll takes the same 50 through mono_charge('jailFee')
+  await arrange(room, {
+    players: { fig0: { position: 11, money: 1000, inJail: true, jailTurns: 2 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null, pot: 0 },
+  });
+  r = await rollDice(room, 'p0', 1, 2);
+  eq(ev(r, 'jailLeave').how, 'fee', 'the forced fine was paid');
+  eq(potOf(r), 0, 'and it is still not a fine the table shares');
+
+  // buy and build
+  await arrange(room, {
+    owners: { 12: null, 14: 'fig0', 15: 'fig0' },
+    houses: { 12: 0, 14: 0, 15: 0 },
+    players: { fig0: { position: 12, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null, pot: 0 },
+  });
+  r = await call(room, 'buy', { playerId: 'p0', cell: '12' });
+  eq(potOf(r), 0, 'a purchase is a price, not a penalty');
+  r = await call(room, 'build', { playerId: 'p0', cell: '12' });
+  eq(potOf(r), 0, 'and so is a house');
+
+  // the auction hammer price
+  await standOn(room, 'fig0', 27, { game: { pot: 0 } });
+  await call(room, 'auction_start', { playerId: 'p0', cell: 27 });
+  await call(room, 'auction_bid', { playerId: 'p1', amount: 100 });
+  await call(room, 'auction_drop', { playerId: 'p2' });
+  await call(room, 'auction_drop', { playerId: 'p3' });
+  r = await call(room, 'auction_drop', { playerId: 'p0' });
+  eq(owner(r, 27), 'fig1', 'the auction settled');
+  eq(potOf(r), 0, 'and the bank kept the hammer price');
+});
+
+await test('new_game empties the pot', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  let r = await call(room, 'move', { playerId: 'p0', to: 5 });
+  eq(potOf(r), 200, 'there is something in it');
+  r = await call(room, 'new_game', { position: SEED_BOARD });
+  eq(potOf(r), 0, 'and the new game starts from nothing');
+});
+
+// ---------------------------------------------------------------------------
+// 9. The Casino (cell 13)
+//
+// The two things worth being paranoid about here are that the bet is really
+// MANDATORY -- the turn cannot move around it -- and that the randomness is
+// really SERVER-side and really VOLATILE. The second one has a specific
+// failure mode: an immutable or stable function may legally be folded to one
+// evaluation per statement, which would deal every row of a set the same hand
+// and, worse, would let a phone replay the RPC until it liked the answer.
+//
+// Outcomes are forced the same way the dice are: mono_casino_spin reads its
+// random() draws in a fixed order (three of 6 for slots, one of 37 for
+// roulette, one of 12 for wheel) and setseed() governs the session PRNG, so a
+// seed search pins an exact reel/slot/segment. Nothing about the result is
+// ever sent by the client.
+// ---------------------------------------------------------------------------
+
+section('casino');
+
+const spinSeeds = new Map();
+
+/**
+ * A seed whose next draws, read the way mono_casino_spin reads them, come out
+ * as `want`. `mod` is the die the game rolls: 6 (three times) for slots, 37
+ * for roulette, 12 for wheel.
+ */
+async function seedForSpin(mod, want) {
+  const key = `${mod}:${want.join(',')}`;
+  if (spinSeeds.has(key)) return spinSeeds.get(key);
+  const cols = want.map((_, i) => `floor(random()*${mod})::int as d${i}`).join(', ');
+  for (let i = 1; i <= 200000; i += 1) {
+    const s = i / 200000;
+    await db.query('select setseed($1)', [s]);
+    const got = (await db.query(`select ${cols}`)).rows[0];
+    if (want.every((w, j) => got[`d${j}`] === w)) {
+      spinSeeds.set(key, s);
+      return s;
+    }
+  }
+  throw new Error(`no seed produces the spin ${key}`);
+}
+
+const SPIN = {
+  slots: (reels) => ({ mod: 6, want: reels }),
+  roulette: (slot) => ({ mod: 37, want: [slot] }),
+  wheel: (segment) => ({ mod: 12, want: [segment - 1] }),
+};
+
+/** fig0 rolls 8 -> 13 and is left owing the house a bet. */
+async function atCasino(room, cash) {
+  await arrange(room, {
+    players: { fig0: { position: 8, money: cash, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: {
+      phase: 'roll', doubles: 0, dice: null, auction: null, trade: null,
+      winner: null, casino: null,
+    },
+  });
+  return rollDice(room, 'p0', 2, 3);
+}
+
+/** Force the outcome, then play it. */
+async function playCasino(room, pid, game, bet, spin, colour = null) {
+  await db.query('select setseed($1)', [await seedForSpin(spin.mod, spin.want)]);
+  return call(room, 'casino_play', { playerId: pid, game, bet, colour });
+}
+
+await test('landing on the casino is mandatory: nothing else may happen until the bet', async () => {
+  const room = await newRoom();
+  const r = await atCasino(room, 1000);
+  eq(player(r, 'fig0').position, CASINO, 'landed on 13');
+  eq(r.game.phase, 'casino', 'and the room is waiting on a bet');
+  eq(r.game.casino, { cell: CASINO, figure: 'fig0', min: 150, max: 1000 },
+    'the pending block tells the slider its floor and its ceiling');
+  eq(ev(r, 'casino'), {
+    type: 'casino', stage: 'enter', figure: 'fig0', cell: CASINO, min: 150, max: 1000,
+  });
+
+  for (const [action, payload] of [
+    ['end_turn', { playerId: 'p0' }],
+    ['roll', { playerId: 'p0' }],
+    ['buy', { playerId: 'p0', cell: '12' }],
+    ['build', { playerId: 'p0', cell: '12' }],
+    ['auction_start', { playerId: 'p0', cell: 27 }],
+    ['trade_offer', { playerId: 'p0', to: 'fig1', give: { cells: [], cash: 10 }, get: { cells: [], cash: 0 } }],
+    ['move', { playerId: 'p0', to: 20 }],
+  ]) {
+    await rejects(room, action, payload, 'The casino is waiting');
+  }
+  // and nobody else can act around them either
+  await rejects(room, 'roll', { playerId: 'p1' }, 'The casino is waiting');
+  await rejects(room, 'casino_play', { playerId: 'p1', game: 'wheel', bet: 150 },
+    'The casino is not waiting for you');
+
+  const after = await playCasino(room, 'p0', 'wheel', 150, SPIN.wheel(1));
+  eq(after.game.phase, 'act', 'one resolved play and the turn is ordinary again');
+  eq(after.game.casino, null, 'the pending block is cleared');
+  const done = await call(room, 'end_turn', { playerId: 'p0' });
+  eq(done.game.phase, 'roll', 'and end_turn works again');
+});
+
+await test('the minimum bet is 15% rounded up to 10$, and never more than the cash', async () => {
+  const cases = [[2500, 380], [1000, 150], [660, 100], [100, 20], [60, 10], [5, 5], [1, 1], [0, 0]];
+  for (const [cash, want] of cases) {
+    const got = (await db.query('select public.mono_casino_min_bet($1) as m', [cash])).rows[0].m;
+    eq(got, want, `15% of ${cash}, rounded up to 10$ and capped`);
+  }
+  // and the pending block quotes the same helper, so the slider cannot offer a
+  // bet the server will then refuse
+  const room = await newRoom();
+  const r = await atCasino(room, 660);
+  eq(r.game.casino.min, 100);
+  eq(r.game.casino.max, 660);
+  await rejects(room, 'casino_play', { playerId: 'p0', game: 'wheel', bet: 90 }, 'Bet at least 100$');
+  await rejects(room, 'casino_play', { playerId: 'p0', game: 'wheel', bet: 661 }, 'Not enough money');
+  await rejects(room, 'casino_play', { playerId: 'p0', game: 'wheel', bet: 100.5 },
+    'The bet must be a whole number');
+  await rejects(room, 'casino_play', { playerId: 'p0', game: 'wheel' }, 'casino_play needs a bet');
+  await rejects(room, 'casino_play', { playerId: 'p0', game: 'blackjack', bet: 100 },
+    'Pick slots, roulette or wheel');
+  await rejects(room, 'casino_play', { playerId: 'p0', game: 'roulette', bet: 100 },
+    'Pick red, black or green');
+  await rejects(room, 'casino_play', { playerId: 'p0', game: 'roulette', bet: 100, colour: 'puce' },
+    'Pick red, black or green');
+  // all-in is allowed: the ceiling is exactly their cash
+  const allIn = await playCasino(room, 'p0', 'wheel', 660, SPIN.wheel(12));
+  eq(money(allIn, 'fig0'), 6600, 'all-in on the x10 segment');
+});
+
+await test('slots: three of a kind x10, exactly two x2, no match loses the bet', async () => {
+  const cases = [
+    { reels: [3, 3, 3], mult: 10 },
+    { reels: [0, 0, 0], mult: 10 },
+    { reels: [3, 3, 1], mult: 2 },
+    { reels: [3, 1, 3], mult: 2 },
+    { reels: [1, 3, 3], mult: 2 },
+    { reels: [0, 1, 2], mult: 0 },
+    { reels: [5, 4, 3], mult: 0 },
+  ];
+  for (const c of cases) {
+    const room = await newRoom();
+    await atCasino(room, 1000);
+    const r = await playCasino(room, 'p0', 'slots', 200, SPIN.slots(c.reels));
+    const e = ev(r, 'casino');
+    eq(e.stage, 'result');
+    eq(e.result.reels, c.reels, `reels ${c.reels}`);
+    eq(e.mult, c.mult, `reels ${c.reels} pay x${c.mult}`);
+    eq(e.payout, 200 * c.mult, 'payout is bet x mult');
+    // x2 means they END HOLDING 2x the bet: 1000 - 200 + 400
+    eq(money(r, 'fig0'), 1000 - 200 + 200 * c.mult, 'the bet left and the payout came back');
+  }
+});
+
+await test('roulette: every one of the 37 slots is the colour and the multiplier it should be', async () => {
+  // 0 green, 1..18 red, 19..36 black -- 18 / 18 / 1, exactly the spec's odds.
+  for (let slot = 0; slot <= 36; slot += 1) {
+    const want = slot === 0 ? 'green' : (slot <= 18 ? 'red' : 'black');
+    const room = await newRoom();
+    await atCasino(room, 1000);   // 15% of 1000 rounds to a 150$ floor
+    const r = await playCasino(room, 'p0', 'roulette', 200, SPIN.roulette(slot), want);
+    const e = ev(r, 'casino');
+    eq(e.result.slot, slot, `slot ${slot}`);
+    eq(e.result.colour, want, `slot ${slot} is ${want}`);
+    eq(e.mult, want === 'green' ? 14 : 2, `${want} pays`);
+    eq(money(r, 'fig0'), 1000 - 200 + 200 * (want === 'green' ? 14 : 2));
+  }
+});
+
+await test('roulette: the wrong colour loses the bet', async () => {
+  const cases = [
+    { slot: 0, pick: 'red' }, { slot: 0, pick: 'black' },
+    { slot: 7, pick: 'black' }, { slot: 7, pick: 'green' },
+    { slot: 30, pick: 'red' }, { slot: 30, pick: 'green' },
+  ];
+  for (const c of cases) {
+    const room = await newRoom();
+    await atCasino(room, 1000);
+    const r = await playCasino(room, 'p0', 'roulette', 200, SPIN.roulette(c.slot), c.pick);
+    const e = ev(r, 'casino');
+    eq(e.mult, 0, `slot ${c.slot} with ${c.pick} on the table`);
+    eq(e.payout, 0);
+    eq(money(r, 'fig0'), 800, 'the bet is simply gone');
+    assert(!types(r).includes('collect'), 'and nothing was credited back');
+  }
+});
+
+await test('wheel: 5 segments lose, 4 pay x1.5, 2 pay x3, 1 pays x10', async () => {
+  const want = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 1.5, 7: 1.5, 8: 1.5, 9: 1.5, 10: 3, 11: 3, 12: 10 };
+  const tally = { 0: 0, 1.5: 0, 3: 0, 10: 0 };
+  for (let seg = 1; seg <= 12; seg += 1) {
+    const room = await newRoom();
+    await atCasino(room, 1000);
+    const r = await playCasino(room, 'p0', 'wheel', 200, SPIN.wheel(seg));
+    const e = ev(r, 'casino');
+    eq(e.result.segment, seg, `segment ${seg}`);
+    eq(e.mult, want[seg], `segment ${seg} pays x${want[seg]}`);
+    eq(money(r, 'fig0'), 1000 - 200 + 200 * want[seg]);
+    tally[want[seg]] += 1;
+  }
+  eq(tally, { 0: 5, 1.5: 4, 3: 2, 10: 1 }, 'the twelve segments split exactly 5 / 4 / 2 / 1');
+
+  // x1.5 on an odd bet rounds the house's way, in whole dollars
+  const room = await newRoom();
+  await atCasino(room, 1000);
+  const r = await playCasino(room, 'p0', 'wheel', 333, SPIN.wheel(6));
+  eq(ev(r, 'casino').payout, 499, 'floor(333 * 1.5)');
+  eq(money(r, 'fig0'), 1000 - 333 + 499);
+});
+
+await test('the randomness is server-side and VOLATILE, not folded per statement', async () => {
+  // If mono_casino_spin were immutable or stable, the planner would be free to
+  // evaluate it once for the whole statement and hand all fifty rows the same
+  // segment -- which is also exactly the shape of "the player can reroll".
+  await db.query('select setseed(0.4242)');
+  const segs = (await db.query(
+    `select (public.mono_casino_spin('wheel', 100, null)->>'segment')::int as s
+       from generate_series(1, 50)`,
+  )).rows.map((x) => x.s);
+  assert(new Set(segs).size > 1,
+    `one statement produced a single segment ${segs[0]} fifty times: the function is being folded`);
+
+  // And over a large sample the three games land on the spec's odds.
+  await db.query('select setseed(0.1234)');
+  const n = 6000;
+  const slots = (await db.query(
+    `select (public.mono_casino_spin('slots', 100, null)->>'mult')::numeric as m
+       from generate_series(1, ${n})`,
+  )).rows.map((x) => Number(x.m));
+  const triples = slots.filter((m) => m === 10).length / n;
+  const pairs = slots.filter((m) => m === 2).length / n;
+  assert(triples > 0.015 && triples < 0.045, `3 of a kind came out at ${triples}, want ~0.028`);
+  assert(pairs > 0.37 && pairs < 0.46, `2 of a kind came out at ${pairs}, want ~0.417`);
+
+  const wheel = (await db.query(
+    `select (public.mono_casino_spin('wheel', 100, null)->>'mult')::numeric as m
+       from generate_series(1, ${n})`,
+  )).rows.map((x) => Number(x.m));
+  const lose = wheel.filter((m) => m === 0).length / n;
+  assert(lose > 0.38 && lose < 0.45, `the wheel lost ${lose} of the time, want ~0.417 (5/12)`);
+
+  const greens = (await db.query(
+    `select count(*) filter (where public.mono_casino_spin('roulette', 100, 'green')->>'colour' = 'green') as g
+       from generate_series(1, ${n})`,
+  )).rows[0].g / n;
+  assert(greens > 0.012 && greens < 0.045, `green came up ${greens} of the time, want ~0.027 (1/37)`);
+});
+
+await test('casino money never touches the parking pot, in either direction', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 8, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: {
+      phase: 'roll', doubles: 0, dice: null, auction: null, trade: null,
+      winner: null, casino: null, pot: 500,
+    },
+  });
+  await rollDice(room, 'p0', 2, 3);
+  const lost = await playCasino(room, 'p0', 'wheel', 200, SPIN.wheel(1));
+  eq(money(lost, 'fig0'), 800, 'the bet was lost');
+  eq(potOf(lost), 500, 'and the pot is untouched: a wager is not a fine');
+
+  await arrange(room, {
+    players: { fig0: { position: 8, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: {
+      phase: 'roll', doubles: 0, dice: null, auction: null, trade: null,
+      winner: null, casino: null, pot: 500,
+    },
+  });
+  await rollDice(room, 'p0', 2, 3);
+  const won = await playCasino(room, 'p0', 'wheel', 200, SPIN.wheel(12));
+  eq(money(won, 'fig0'), 1000 - 200 + 2000, 'the bank printed the payout');
+  eq(potOf(won), 500, 'and did not raid the pot to do it');
+});
+
+await test('a player with no cash walks straight through the casino', async () => {
+  const room = await newRoom();
+  const r = await atCasino(room, 0);
+  eq(player(r, 'fig0').position, CASINO, 'they still land on it');
+  eq(r.game.phase, 'act', 'but there is nothing they could bet, so nothing is pending');
+  eq(r.game.casino, null);
+  const done = await call(room, 'end_turn', { playerId: 'p0' });
+  eq(done.game.phase, 'roll', 'and the turn moves on normally');
+});
+
+await test('skip_turn releases a casino nobody is playing', async () => {
+  const room = await newRoom();
+  const r = await atCasino(room, 1000);
+  eq(r.game.phase, 'casino');
+  const s = await call(room, 'skip_turn', {});
+  eq(s.game.phase, 'roll', 'the table moved on');
+  eq(s.game.casino, null, 'and the unplayed bet was released');
+  eq(s.current_order, 1, 'to the next player');
+  eq(money(s, 'fig0'), 1000, 'the house took nothing for the walk-out');
+  eq(ev(s, 'casino'), {
+    type: 'casino', stage: 'skipped', figure: 'fig0', cell: CASINO,
+  });
+});
+
+await test('a player leaving mid-bet releases the casino; another player leaving does not', async () => {
+  // somebody else walking out must not hand the better a free pass
+  let room = await newRoom();
+  let r = await atCasino(room, 1000);
+  r = await call(room, 'leave', { playerId: 'p2' });
+  eq(r.game.phase, 'casino', 'the bet is still owed');
+  eq(r.game.casino.figure, 'fig0');
+
+  // the better walking out has to release it, or the room freezes
+  room = await newRoom();
+  await atCasino(room, 1000);
+  r = await call(room, 'leave', { playerId: 'p0' });
+  eq(r.game.casino, null, 'nobody is left to place the bet');
+  eq(r.game.phase, 'roll', 'and the next player is asked to roll');
+});
+
+await test('the c4 Chance card sends you to the casino, where the bet is mandatory too', async () => {
+  // 1 + (3,4) = 8, a Chance cell; c4 is the retargeted "nearest utility" card.
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 1000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: {
+      phase: 'roll', doubles: 0, dice: null, auction: null, trade: null,
+      winner: null, casino: null,
+    },
+  });
+  const r = await rollForCard(room, 'p0', 3, 4, 'c4');
+  eq(player(r, 'fig0').position, CASINO, 'the card carried them to the casino');
+  eq(r.game.phase, 'casino', 'and a bet is owed from there too');
+  eq(r.game.casino.figure, 'fig0');
+  eq(lands(r).map((e) => [e.cell, e.kind]), [[8, 'chance'], [CASINO, 'casino']],
+    'two landings: the Chance square, then the casino');
+  await rejects(room, 'end_turn', { playerId: 'p0' }, 'The casino is waiting');
+  const after = await playCasino(room, 'p0', 'slots', r.game.casino.min, SPIN.slots([1, 2, 3]));
+  eq(after.game.phase, 'act');
+});
+
+// ---------------------------------------------------------------------------
+// 10. The Weed Farm (cell 28)
+//
+// A deed like any other -- bought, auctioned, traded, lost to a bankruptcy --
+// that charges nobody anything. Its entire economy is one integer on the cell,
+// which is where it lives precisely so that it follows the deed rather than
+// having to be kept in step with it.
+// ---------------------------------------------------------------------------
+
+section('weed farm');
+
+const incomeOf = (r) => r.position[String(FARM)].income;
+
+await test('a non-owner pays nothing and leaves the counter 150$ bigger', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { [FARM]: 'fig1' },
+    players: { fig0: { position: 1, money: 1000 }, fig1: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null, pot: 0 },
+  });
+  eq(incomeOf(await row(room)), 50, 'the counter starts at 50');
+
+  let r = await call(room, 'move', { playerId: 'p0', to: FARM });
+  eq(money(r, 'fig0'), 1000, 'the visitor paid nothing at all');
+  eq(money(r, 'fig1'), 1000, 'and the owner collected nothing for the visit');
+  eq(potOf(r), 0, 'nothing reached the pot either');
+  eq(incomeOf(r), 200, 'the crop grew by 150');
+  eq(ev(r, 'farm'), {
+    type: 'farm', stage: 'grow', figure: 'fig0', cell: FARM, amount: 0, income: 200,
+  });
+  assert(!types(r).includes('pay'), 'no pay event');
+
+  // no cap, and every non-owner counts
+  r = await call(room, 'move', { playerId: 'p2', to: FARM });
+  eq(incomeOf(r), 350);
+  r = await call(room, 'move', { playerId: 'p3', to: FARM });
+  eq(incomeOf(r), 500);
+  r = await call(room, 'move', { playerId: 'p0', to: FARM });
+  eq(incomeOf(r), 650, 'the same player landing again grows it again');
+});
+
+await test('an unowned farm grows too: everybody is a non-owner', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  const r = await call(room, 'move', { playerId: 'p0', to: FARM });
+  eq(owner(r, FARM), null, 'still nobody’s');
+  eq(incomeOf(r), 200, 'and the crop grew anyway');
+  eq(money(r, 'fig0'), 1000, 'standing on it is free');
+});
+
+await test('the owner landing on it collects the whole counter and resets it to 50', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { [FARM]: 'fig0' },
+    players: { fig0: { position: 1, money: 1000 }, fig1: { position: 1, money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null, pot: 0 },
+  });
+  // three visitors water it: 50 + 3 x 150
+  for (const pid of ['p1', 'p2', 'p3']) await call(room, 'move', { playerId: pid, to: FARM });
+  eq(incomeOf(await row(room)), 500, 'the crop is worth 500');
+
+  const r = await call(room, 'move', { playerId: 'p0', to: FARM });
+  eq(money(r, 'fig0'), 1500, 'the owner harvested the whole counter');
+  eq(incomeOf(r), 50, 'and the field starts again at 50');
+  eq(ev(r, 'collect'), { type: 'collect', figure: 'fig0', amount: 500, reason: 'farm' },
+    'the bank printed it: it is generated income, not taken from anybody');
+  eq(ev(r, 'farm'), {
+    type: 'farm', stage: 'harvest', figure: 'fig0', cell: FARM, amount: 500, income: 50,
+  });
+  eq(potOf(r), 0, 'and the pot was not involved');
+
+  // landing again immediately harvests only the fresh 50 -- there is no
+  // per-turn or per-lap payout, the owner has to keep coming back
+  const again = await call(room, 'move', { playerId: 'p0', to: FARM });
+  eq(money(again, 'fig0'), 1550);
+  eq(incomeOf(again), 50);
+});
+
+await test('the counter follows the deed through a trade', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { [FARM]: 'fig0' },
+    players: { fig0: { position: 20, money: 1000 }, fig1: { position: 1, money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  await call(room, 'move', { playerId: 'p2', to: FARM });
+  await call(room, 'move', { playerId: 'p3', to: FARM });
+  eq(incomeOf(await row(room)), 350, 'fig0 has 350 growing');
+
+  await arrange(room, {
+    players: { fig0: { position: 20 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  await call(room, 'trade_offer', {
+    playerId: 'p0', to: 'fig1', give: { cells: [FARM], cash: 0 }, get: { cells: [], cash: 100 },
+  });
+  let r = await call(room, 'trade_accept', { playerId: 'p1' });
+  eq(owner(r, FARM), 'fig1', 'the deed changed hands');
+  eq(incomeOf(r), 350, 'and the standing crop went with it, unharvested');
+
+  // the old owner is now a visitor: they water it instead of harvesting it
+  r = await call(room, 'move', { playerId: 'p0', to: FARM });
+  eq(incomeOf(r), 500, 'the seller grew it for the buyer');
+  const cash0 = money(r, 'fig0');
+  // and the new owner collects the lot
+  r = await call(room, 'move', { playerId: 'p1', to: FARM });
+  eq(money(r, 'fig1'), money(await row(room), 'fig1'), 'read-back sanity');
+  eq(incomeOf(r), 50, 'harvested and reset');
+  eq(ev(r, 'collect').amount, 500, 'the buyer took everything that had grown');
+  eq(money(r, 'fig0'), cash0, 'and the seller got none of it');
+});
+
+await test('the farm never charges rent, whoever owns it and whatever the dice', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { [FARM]: 'fig1' },
+    players: { fig0: { position: 23, money: 1000, inJail: false, jailTurns: 0 }, fig1: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  // a real roll, 23 + (2,3) = 28
+  const r = await rollDice(room, 'p0', 2, 3);
+  eq(player(r, 'fig0').position, FARM);
+  eq(money(r, 'fig0'), 1000, 'no rent on a real landing either');
+  eq(money(r, 'fig1'), 1000);
+  eq(types(r), ['roll', 'move', 'land', 'farm'], 'land then farm, and no pay in between');
+  eq(r.game.phase, 'act', 'and the turn carries on normally');
+});
+
+await test('mono_upgrade_cells migrates a legacy in-flight board', async () => {
+  // Exactly what a room opened before this migration holds: cell 13 and cell 28
+  // are `communal` with info Light / Water, 13 has been BOUGHT by somebody, and
+  // neither cell has ever heard of a casino, a farm or an income counter.
+  const board = JSON.parse(JSON.stringify(SEED_BOARD));
+  board['13'] = {
+    ...board['13'], communal: true, info: 'Light', price: 150,
+    bought: { ...board['13'].bought, fig1: true },
+  };
+  delete board['13'].casino;
+  board['28'] = { ...board['28'], communal: true, info: 'Water', price: 150 };
+  delete board['28'].farm;
+  delete board['28'].income;
+
+  const roomId = 'legacy03';
+  await db.query(
+    `insert into public.test (uuid, position, "Players", current_order)
+     values ($1, $2::jsonb, '[]'::jsonb, 0)`,
+    [roomId, JSON.stringify(board)],
+  );
+  await db.query(
+    `update public.test set position = public.mono_upgrade_cells(position) where uuid = $1`,
+    [roomId],
+  );
+  let after = (await row(roomId)).position;
+
+  eq(after['13'].casino, true, 'the old Light cell is the casino');
+  assert(!('communal' in after['13']), 'and the dead communal flag is gone');
+  assert(!('price' in after['13']), 'the casino has no price: nobody can buy it');
+  eq(Object.values(after['13'].bought).filter((v) => v === true), [],
+    'and the deed somebody held on it was cleared: the casino has no owner');
+  eq(after['28'].farm, true, 'the old Water cell is the farm');
+  assert(!('communal' in after['28']), 'and it too lost the dead flag');
+  eq(after['28'].price, 150, 'the farm keeps the price it inherited');
+  eq(after['28'].income, 50, 'and starts its counter at 50');
+
+  // mono_cell_kind has to read BOTH vintages, because a phone that has not
+  // reloaded still seeds the legacy shape.
+  const kinds = (await db.query(
+    `select public.mono_cell_kind($1::jsonb) as legacy_light,
+            public.mono_cell_kind($2::jsonb) as legacy_water,
+            public.mono_cell_kind($3::jsonb) as new_casino,
+            public.mono_cell_kind($4::jsonb) as new_farm,
+            public.mono_cell_kind($5::jsonb) as stray_communal`,
+    [
+      JSON.stringify({ communal: true, info: 'Light', id: 13 }),
+      JSON.stringify({ communal: true, info: 'Water', id: 28 }),
+      JSON.stringify({ casino: true }),
+      JSON.stringify({ farm: true, income: 50 }),
+      JSON.stringify({ communal: true, info: 'Something else', id: 99 }),
+    ],
+  )).rows[0];
+  eq(kinds.legacy_light, 'casino');
+  eq(kinds.legacy_water, 'farm');
+  eq(kinds.new_casino, 'casino');
+  eq(kinds.new_farm, 'farm');
+  eq(kinds.stray_communal, 'farm',
+    'a leftover communal reads as the OWNABLE kind, so no deed is confiscated by accident');
+
+  // idempotent, and an accumulated counter is never clamped back down
+  await db.query(
+    `update public.test set position = jsonb_set(position, '{28,income}', '800')
+      where uuid = $1`, [roomId],
+  );
+  await db.query(
+    `update public.test set position = public.mono_upgrade_cells(position) where uuid = $1`,
+    [roomId],
+  );
+  after = (await row(roomId)).position;
+  eq(after['28'].income, 800, 'a standing crop survives a re-run of the upgrade');
+});
+
+await test('new_game normalises a board seeded by a phone that has not reloaded', async () => {
+  const room = await newRoom();
+  const stale = JSON.parse(JSON.stringify(SEED_BOARD));
+  stale['13'] = { ...stale['13'], communal: true, info: 'Light', price: 150 };
+  delete stale['13'].casino;
+  stale['28'] = { ...stale['28'], communal: true, info: 'Water', price: 150, income: 900 };
+  delete stale['28'].farm;
+
+  const r = await call(room, 'new_game', { position: stale });
+  eq(r.position['13'].casino, true, 'the stale payload was normalised on the way in');
+  assert(!('price' in r.position['13']), 'and the casino cannot be bought in the new game');
+  eq(r.position['28'].farm, true);
+  eq(r.position['28'].income, 50, 'the farm counter starts the new game at 50');
+  eq(potOf(r), 0);
+});
+
+// ---------------------------------------------------------------------------
+// 11. Diplomacy: alliances, wars, the Backstab gambit
+//
+// Every rule in these four sections is a rule about money that moves between
+// players, so almost every test is written the same way: arrange an exact
+// state, take exactly one action, and check both the balances AND the events
+// that are supposed to explain them.
+//
+// The board cells used here:
+//   26  a railroad. One owned rents 35, four rent 280. No colour set, no
+//       houses, no dice: the cleanest base rent on the board.
+//   5   Tax, 200 to the pot. Used wherever a forced charge is needed that is
+//       not rent.
+// ---------------------------------------------------------------------------
+
+/** Every pay event of one reason, and the first of them. */
+const pays = (r, reason) => (r.game.events || []).filter((e) => e.type === 'pay' && e.reason === reason);
+const payOf = (r, reason) => pays(r, reason)[0];
+const evs = (r, type) => (r.game.events || []).filter((e) => e.type === type);
+
+/** mono_rent_due as the server computes it, without moving any money. */
+async function rentDue(room, cell, payer, diceSum = 7, roadMult = 1) {
+  const res = await db.query(
+    `select public.mono_rent_due(
+       jsonb_build_object('players', "Players", 'board', position, 'game', game),
+       $2, $3, $4, $5) as due
+       from public.test where uuid = $1`,
+    [room, String(cell), payer, diceSum, roadMult],
+  );
+  return res.rows[0].due;
+}
+
+/**
+ * Hand the turn on with skip_turn until game.round ticks over, and return the
+ * row of the action that ticked it. skip_turn is used rather than end_turn
+ * because it needs no phase, no dice and no live player, so a table with a
+ * bankrupt seat or an arranged state still walks forward.
+ */
+async function toNextRound(room) {
+  const start = (await row(room)).game.round;
+  let r = null;
+  for (let i = 0; i < 12; i += 1) {
+    r = await call(room, 'skip_turn', {});
+    if (r.game.round !== start) return r;
+  }
+  throw new Error('the round never ticked over');
+}
+
+/** fig0 and fig1 allied for real, through the two verbs. */
+async function allyUp(room, a = 'fig0', b = 'fig1', order = 0) {
+  await arrange(room, {
+    current_order: order,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, casino: null },
+  });
+  await call(room, 'ally_propose', { playerId: `p${a.slice(3)}`, to: b });
+  return call(room, 'ally_accept', { playerId: `p${b.slice(3)}`, from: a });
+}
+
+// ---------------------------------------------------------------------------
+
+section('alliance');
+
+await test('propose + accept forms the pair and clears every offer either had', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  let r = await call(room, 'ally_propose', { playerId: 'p0', to: 'fig1' });
+  eq(r.game.allyOffers, [{ from: 'fig0', to: 'fig1' }], 'the proposal is pending');
+  eq(r.game.alliances, [], 'and nothing is formed yet');
+  eq(ev(r, 'ally'), { type: 'ally', stage: 'propose', from: 'fig0', to: 'fig1' });
+
+  // a second, unrelated proposal from somebody else to fig1
+  await arrange(room, { current_order: 2, game: { phase: 'act' } });
+  r = await call(room, 'ally_propose', { playerId: 'p2', to: 'fig1' });
+  eq(r.game.allyOffers.length, 2, 'two suitors');
+
+  r = await call(room, 'ally_accept', { playerId: 'p1', from: 'fig0' });
+  eq(r.game.alliances, [{ a: 'fig0', b: 'fig1', since: 1 }], 'formed, stamped with the round');
+  eq(r.game.allyOffers, [], 'and fig2 is left holding a dead proposal');
+  eq(ev(r, 'ally'), { type: 'ally', stage: 'form', a: 'fig0', b: 'fig1' });
+});
+
+await test('a proposal can be declined by the target or cancelled by the sender', async () => {
+  const room = await newRoom();
+  await arrange(room, { current_order: 0, game: { phase: 'act', doubles: 0, auction: null, trade: null } });
+  await call(room, 'ally_propose', { playerId: 'p0', to: 'fig1' });
+  let r = await call(room, 'ally_decline', { playerId: 'p1', from: 'fig0' });
+  eq(r.game.allyOffers, [], 'declined');
+  eq(r.game.alliances, []);
+  eq(ev(r, 'ally'), { type: 'ally', stage: 'decline', from: 'fig0', to: 'fig1' });
+  await rejects(room, 'ally_decline', { playerId: 'p1', from: 'fig0' }, 'There is no offer to answer');
+
+  await call(room, 'ally_propose', { playerId: 'p0', to: 'fig1' });
+  r = await call(room, 'ally_cancel', { playerId: 'p0', to: 'fig1' });
+  eq(r.game.allyOffers, [], 'cancelled');
+  eq(ev(r, 'ally'), { type: 'ally', stage: 'cancel', from: 'fig0', to: 'fig1' });
+  await rejects(room, 'ally_cancel', { playerId: 'p0', to: 'fig1' }, 'There is no offer to cancel');
+});
+
+await test('answering a proposal is legal off your turn; proposing is not', async () => {
+  const room = await newRoom();
+  await arrange(room, { current_order: 0, game: { phase: 'act', doubles: 0, auction: null, trade: null } });
+  await rejects(room, 'ally_propose', { playerId: 'p1', to: 'fig2' },
+    'You can only propose an alliance on your turn');
+  await call(room, 'ally_propose', { playerId: 'p0', to: 'fig1' });
+  // it is still fig0's turn, and fig1 answers anyway
+  const r = await call(room, 'ally_accept', { playerId: 'p1', from: 'fig0' });
+  eq(r.game.alliances.length, 1, 'accepted out of turn');
+  eq(r.current_order, 0, 'and the turn did not move');
+});
+
+await test('one alliance per player, no self-alliance, no ghosts, no duplicates', async () => {
+  const room = await newRoom();
+  await arrange(room, { current_order: 0, game: { phase: 'act', doubles: 0, auction: null, trade: null } });
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig0' }, 'You cannot ally with yourself');
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig9' }, 'That player is not in this room');
+  await call(room, 'ally_propose', { playerId: 'p0', to: 'fig1' });
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig1' }, 'There is already an offer between you');
+  await call(room, 'ally_accept', { playerId: 'p1', from: 'fig0' });
+
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig2' }, 'You are already in an alliance');
+  await arrange(room, { current_order: 2, game: { phase: 'act' } });
+  await rejects(room, 'ally_propose', { playerId: 'p2', to: 'fig1' }, 'They are already in an alliance');
+  await rejects(room, 'ally_propose', { playerId: 'p2', to: 'fig4' }, 'That player is not in this room');
+});
+
+await test('a bankrupt player is nobody to ally with', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig1: { bankrupt: true, money: 0 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig1' }, 'That player is bankrupt');
+});
+
+await test('ally_break is free, on your turn, and only when there is one', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  // allied, but not their turn: the turn is checked first, deliberately
+  await rejects(room, 'ally_break', { playerId: 'p1' }, 'You can only break an alliance on your turn');
+  await arrange(room, { current_order: 2, game: { phase: 'act' } });
+  await rejects(room, 'ally_break', { playerId: 'p2' }, 'You are not in an alliance');
+  await arrange(room, { current_order: 0, game: { phase: 'act' } });
+  const before = (await row(room)).players.map((p) => p.money);
+  const r = await call(room, 'ally_break', { playerId: 'p0' });
+  eq(r.game.alliances, [], 'gone');
+  eq(r.players.map((p) => p.money), before, 'and it cost nothing');
+  eq(ev(r, 'ally'), { type: 'ally', stage: 'break', figure: 'fig0', other: 'fig1' });
+});
+
+await test('rent between allies is 0, and says why', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    owners: { 26: 'fig1' },
+    players: { fig0: { position: 1, money: 1000 }, fig1: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  eq(await rentOf(room, 26), 35, 'the deed still charges 35 to the world');
+  eq(await rentDue(room, 26, 'fig0'), { amount: 0, zero: true, mods: [] }, 'but not to an ally');
+
+  const r = await call(room, 'move', { playerId: 'p0', to: 26 });
+  eq(money(r, 'fig0'), 1000, 'nothing left the visitor');
+  eq(money(r, 'fig1'), 1000, 'and nothing reached the landlord');
+  eq(pays(r, 'rent').length, 0, 'no rent event at all');
+  eq(ev(r, 'rentFree'), {
+    type: 'rentFree', figure: 'fig0', owner: 'fig1', cell: 26, reason: 'ally',
+  });
+});
+
+await test('a non-ally pays the landlord in full and the BANK tips the other ally 10%', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig1', 'fig2', 1);
+  await arrange(room, {
+    owners: { 26: 'fig1' },
+    players: {
+      fig0: { position: 1, money: 1000 }, fig1: { money: 1000 },
+      fig2: { money: 1000 }, fig3: { money: 1000 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, pot: 0 },
+  });
+  const r = await call(room, 'move', { playerId: 'p0', to: 26 });
+  eq(money(r, 'fig0'), 965, 'the visitor paid 35');
+  eq(money(r, 'fig1'), 1035, 'the landlord kept every dollar of it');
+  eq(money(r, 'fig2'), 1003, 'and the ally was tipped floor(35 * 10%) = 3');
+  eq(potOf(r), 0, 'the commission is printed by the bank, not taken from the pot');
+  eq(ev(r, 'commission'), {
+    type: 'commission', figure: 'fig2', payer: 'fig0', owner: 'fig1', amount: 3, cell: 26,
+  });
+  eq(ev(r, 'collect'), { type: 'collect', figure: 'fig2', amount: 3, reason: 'commission' });
+});
+
+await test('no commission when the landlord has no ally, and none on a 0 rent', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { 26: 'fig1' },
+    players: { fig0: { position: 1, money: 1000 }, fig1: { money: 1000, inJail: true } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  let r = await call(room, 'move', { playerId: 'p0', to: 26 });
+  eq(evs(r, 'commission').length, 0, 'unallied landlord, no tip');
+
+  // a jailed landlord collects nothing, so there is nothing to take 10% of
+  await allyUp(room, 'fig1', 'fig2', 1);
+  await arrange(room, {
+    players: { fig0: { position: 1 }, fig1: { inJail: true } },
+    current_order: 0,
+    game: { phase: 'act' },
+  });
+  r = await call(room, 'move', { playerId: 'p0', to: 26 });
+  eq(ev(r, 'rentFree').reason, 'ownerInJail');
+  eq(evs(r, 'commission').length, 0, 'no rent arrived, so no tip');
+});
+
+await test('an allied player pays +25% rent to everybody who is not their ally', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig0', 'fig3', 0);
+  await arrange(room, {
+    owners: { 26: 'fig1' },
+    players: { fig0: { position: 1, money: 1000 }, fig1: { money: 1000 }, fig3: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  eq(await rentDue(room, 26, 'fig0'),
+    { amount: 43, zero: false, mods: ['allyTax'] }, 'floor(35 * 1.25)');
+  const r = await call(room, 'move', { playerId: 'p0', to: 26 });
+  eq(money(r, 'fig0'), 957);
+  eq(money(r, 'fig1'), 1043, 'the surcharge goes to the landlord, not the bank');
+  eq(payOf(r, 'rent'), {
+    type: 'pay', figure: 'fig0', to: 'fig1', amount: 43, reason: 'rent', cell: 26,
+    mods: ['allyTax'],
+  });
+  eq(money(r, 'fig3'), 1000, 'and the ally of the payer is not billed for anything');
+});
+
+await test('upkeep: 50$ per allied player into the pot at the start of every round', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    players: {
+      fig0: { money: 1000 }, fig1: { money: 1000 },
+      fig2: { money: 1000 }, fig3: { money: 1000 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, pot: 0, round: 1 },
+  });
+  const r = await toNextRound(room);
+  eq(r.game.round, 2, 'the round ticked when the turn came back to seat 0');
+  eq(money(r, 'fig0'), 950);
+  eq(money(r, 'fig1'), 950);
+  eq(money(r, 'fig2'), 1000, 'the unallied pay nothing');
+  eq(money(r, 'fig3'), 1000);
+  eq(potOf(r), 100, 'both bills landed on Free Parking');
+  eq(evs(r, 'allyUpkeep'), [
+    { type: 'allyUpkeep', figure: 'fig0', amount: 50 },
+    { type: 'allyUpkeep', figure: 'fig1', amount: 50 },
+  ], 'billed in seat order');
+  eq(r.game.alliances.length, 1, 'and the alliance survives a bill it can pay');
+});
+
+await test('upkeep a player cannot pay dissolves the alliance instead of bankrupting them', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    players: { fig0: { money: 20 }, fig1: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, pot: 0, round: 1 },
+  });
+  const r = await toNextRound(room);
+  eq(r.game.alliances, [], 'dissolved');
+  eq(money(r, 'fig0'), 20, 'the broke one paid nothing');
+  eq(player(r, 'fig0').bankrupt, false, 'and is emphatically not bankrupt');
+  eq(money(r, 'fig1'), 1000, 'the solvent one was never billed: seat 0 came up first');
+  eq(potOf(r), 0);
+  eq(ev(r, 'ally'), { type: 'ally', stage: 'dissolve', a: 'fig0', b: 'fig1', reason: 'upkeep' });
+});
+
+await test('upkeep already paid by the first member is not refunded when the second cannot pay', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    players: { fig0: { money: 1000 }, fig1: { money: 20 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, pot: 0, round: 1 },
+  });
+  const r = await toNextRound(room);
+  eq(r.game.alliances, [], 'dissolved');
+  eq(money(r, 'fig0'), 950, 'seat 0 had already paid when seat 1 came up short');
+  eq(money(r, 'fig1'), 20);
+  eq(potOf(r), 50);
+  eq(evs(r, 'allyUpkeep'), [{ type: 'allyUpkeep', figure: 'fig0', amount: 50 }]);
+});
+
+await test('shared debt: the ally covers the shortfall when the two of them can cover the charge', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig0', 'fig2', 0);
+  await arrange(room, {
+    owners: { 6: 'fig1', 16: 'fig1', 26: 'fig1', 36: 'fig1' },
+    players: {
+      fig0: { position: 1, money: 100 }, fig1: { money: 1000 }, fig2: { money: 300 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  // four railroads rent 280, and fig0 is allied so they pay floor(280 * 1.25)
+  eq((await rentDue(room, 26, 'fig0')).amount, 350);
+  const r = await call(room, 'move', { playerId: 'p0', to: 26 });
+  eq(player(r, 'fig0').bankrupt, false, 'nobody went under');
+  eq(money(r, 'fig0'), 0, 'the payer is cleaned out');
+  eq(money(r, 'fig2'), 50, 'the ally handed over exactly the 250 shortfall');
+  eq(money(r, 'fig1'), 1350, 'and the landlord was paid in full');
+  eq(ev(r, 'debtShare'), {
+    type: 'debtShare', figure: 'fig0', ally: 'fig2', amount: 250, reason: 'rent',
+  });
+  eq(payOf(r, 'debtShare'), {
+    type: 'pay', figure: 'fig2', to: 'fig0', amount: 250, reason: 'debtShare', cell: 26,
+  });
+  eq(r.game.alliances.length, 1, 'the alliance survives a bill it could cover');
+});
+
+await test('shared debt: when the two of them cannot cover it, the ally is untouched', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig0', 'fig2', 0);
+  await arrange(room, {
+    owners: { 6: 'fig1', 16: 'fig1', 26: 'fig1', 36: 'fig1' },
+    players: {
+      fig0: { position: 1, money: 100 }, fig1: { money: 1000 }, fig2: { money: 100 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  const r = await call(room, 'move', { playerId: 'p0', to: 26 });
+  eq(player(r, 'fig0').bankrupt, true, 'the payer went bankrupt exactly as before');
+  eq(money(r, 'fig0'), 0);
+  eq(money(r, 'fig2'), 100, 'and the ally lost nothing at all');
+  eq(money(r, 'fig1'), 1100, 'the landlord got what there was');
+  eq(evs(r, 'debtShare').length, 0, 'no shortfall was taken');
+  eq(ev(r, 'bankrupt'), {
+    type: 'bankrupt', figure: 'fig0', to: 'fig1', reason: 'rent', amount: 350,
+  });
+  eq(r.game.alliances, [], 'and the bankruptcy dissolves the pair');
+  eq(evs(r, 'ally').map((e) => e.stage), ['dissolve']);
+  eq(evs(r, 'ally')[0].reason, 'bankrupt');
+});
+
+await test('voluntary spending is never shared: a purchase and a bid stay personal', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig0', 'fig2', 0);
+  await arrange(room, {
+    players: { fig0: { position: 27, money: 100 }, fig2: { money: 5000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, casino: null },
+  });
+  // cell 27 costs 260: the ally's 5000 must not make it buyable
+  assert(SEED_BOARD['27'].price > 100, 'cell 27 is dearer than 100');
+  await rejects(room, 'buy', { playerId: 'p0', cell: '27' }, 'Not enough money');
+  await call(room, 'auction_start', { playerId: 'p0', cell: 27 });
+  await call(room, 'auction_drop', { playerId: 'p1' });
+  await call(room, 'auction_drop', { playerId: 'p2' });
+  await call(room, 'auction_drop', { playerId: 'p3' });
+  // fig0 is the last bidder standing and is allied to 5000$ they cannot touch
+  await rejects(room, 'auction_bid', { playerId: 'p0', amount: 200 }, 'Not enough money');
+});
+
+await test('a forced charge that is not rent is shared too', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig0', 'fig2', 0);
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 50 }, fig2: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, pot: 0 },
+  });
+  const r = await call(room, 'move', { playerId: 'p0', to: 5 });   // Tax, 200
+  eq(money(r, 'fig0'), 0);
+  eq(money(r, 'fig2'), 850, 'the ally covered the 150 shortfall');
+  eq(potOf(r), 200, 'and the whole fine still reached the pot');
+  eq(ev(r, 'debtShare').reason, 'tax');
+});
+
+await test('allies win together: the game is over when the survivors are one allied pair', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    players: { fig2: { bankrupt: true, money: 0 }, fig3: { bankrupt: true, money: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  const r = await call(room, 'skip_turn', {});
+  eq(r.game.phase, 'over');
+  eq(r.game.winners, ['fig0', 'fig1'], 'both of them');
+  eq(r.game.winner, 'fig0', 'and the legacy field keeps the first');
+  eq(ev(r, 'win'), { type: 'win', figure: 'fig0', figures: ['fig0', 'fig1'] });
+});
+
+await test('two survivors who are NOT allies still have a game to play', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig2: { bankrupt: true, money: 0 }, fig3: { bankrupt: true, money: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  const r = await call(room, 'skip_turn', {});
+  eq(r.game.phase, 'roll', 'still running');
+  eq(r.game.winners, []);
+  eq(r.game.winner, null);
+});
+
+await test('one survivor still wins alone, and winners carries just them', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: {
+      fig1: { bankrupt: true, money: 0 }, fig2: { bankrupt: true, money: 0 },
+      fig3: { bankrupt: true, money: 0 },
+    },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  const r = await call(room, 'skip_turn', {});
+  eq(r.game.phase, 'over');
+  eq(r.game.winners, ['fig0']);
+  eq(r.game.winner, 'fig0');
+});
+
+await test('a player who leaves takes the alliance with them', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  const r = await call(room, 'leave', { playerId: 'p1' });
+  eq(r.game.alliances, [], 'dissolved');
+  eq(ev(r, 'ally'), { type: 'ally', stage: 'dissolve', a: 'fig0', b: 'fig1', reason: 'left' });
+});
+
+// ---------------------------------------------------------------------------
+
+section('war');
+
+await test('war_declare costs 500 to the BANK and writes the two sides and the end round', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig1', 'fig2', 1);
+  await arrange(room, {
+    players: { fig0: { money: 1000 }, fig3: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, pot: 0, round: 1 },
+  });
+  const r = await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  eq(money(r, 'fig0'), 500, 'the fee left the declarer');
+  eq(potOf(r), 0, 'and went to the bank, NOT to Free Parking');
+  eq(r.game.wars.length, 1);
+  const w = r.game.wars[0];
+  eq(w.declarer, 'fig0');
+  eq(w.target, 'fig1');
+  eq(w.startRound, 1);
+  eq(w.endsRound, 6, 'startRound + 5');
+  eq(w.peace, null);
+  eq(ev(r, 'war'), {
+    type: 'war', stage: 'declare', declarer: 'fig0', target: 'fig1',
+    sideA: ['fig0'], sideB: ['fig1', 'fig2'], endsRound: 6,
+  });
+  eq(payOf(r, 'warFee'), {
+    type: 'pay', figure: 'fig0', to: null, amount: 500, reason: 'warFee', cell: null,
+  });
+});
+
+await test('war guards: your own ally, yourself, a ghost, a broke wallet, somebody else’s turn', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    players: { fig0: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  await rejects(room, 'war_declare', { playerId: 'p0', target: 'fig1' },
+    'You cannot declare war on your ally');
+  await rejects(room, 'war_declare', { playerId: 'p0', target: 'fig0' },
+    'You cannot declare war on yourself');
+  await rejects(room, 'war_declare', { playerId: 'p0', target: 'fig9' },
+    'That player is not in this room');
+  await rejects(room, 'war_declare', { playerId: 'p1', target: 'fig2' },
+    'You can only declare war on your turn');
+  await arrange(room, { players: { fig0: { money: 499 } } });
+  await rejects(room, 'war_declare', { playerId: 'p0', target: 'fig2' }, 'Not enough money');
+});
+
+await test('nobody on either prospective side may already be at war', async () => {
+  const room = await newRoom(SIX);
+  await allyUp(room, 'fig1', 'fig2', 1);
+  await arrange(room, {
+    players: {
+      fig0: { money: 2000 }, fig3: { money: 2000 },
+      fig4: { money: 2000 }, fig5: { money: 2000 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+
+  await arrange(room, { current_order: 3, game: { phase: 'act' } });
+  await rejects(room, 'war_declare', { playerId: 'p3', target: 'fig0' },
+    'Somebody here is already at war');
+  // fig2 is nobody's principal - they are only fig1's ally - and that is
+  // exactly the case this guard has to catch
+  await rejects(room, 'war_declare', { playerId: 'p3', target: 'fig2' },
+    'Somebody here is already at war');
+  // fig4 and fig5 are clear of it, so their war is fine
+  await arrange(room, { current_order: 4, game: { phase: 'act' } });
+  const r = await call(room, 'war_declare', { playerId: 'p4', target: 'fig5' });
+  eq(r.game.wars.length, 2, 'two separate wars can run at once');
+});
+
+await test('rent doubles across the lines, for principals and for a dragged-in ally', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { 26: 'fig0' },
+    players: { fig0: { money: 2000 }, fig1: { money: 2000 }, fig2: { money: 2000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  eq((await rentDue(room, 26, 'fig1')), { amount: 70, zero: false, mods: ['war'] },
+    'the target pays double');
+  eq((await rentDue(room, 26, 'fig2')), { amount: 35, zero: false, mods: [] },
+    'a bystander pays the plain rate');
+
+  // fig1 pulls fig2 onto their side
+  await arrange(room, { current_order: 1, game: { phase: 'act' } });
+  await call(room, 'ally_propose', { playerId: 'p1', to: 'fig2' });
+  await call(room, 'ally_accept', { playerId: 'p2', from: 'fig1' });
+  eq(await rentDue(room, 26, 'fig2'),
+    { amount: 87, zero: false, mods: ['war', 'allyTax'] },
+    'dragged in: floor(35 x 2 x 1.25), floored once');
+
+  // and drops them again
+  await arrange(room, { current_order: 2, game: { phase: 'act' } });
+  await call(room, 'ally_break', { playerId: 'p2' });
+  eq(await rentDue(room, 26, 'fig2'), { amount: 35, zero: false, mods: [] },
+    'out of the alliance is out of the war');
+});
+
+await test('a real landing across the lines moves the doubled money and carries the mods', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { 26: 'fig0' },
+    players: { fig0: { money: 2000 }, fig1: { position: 1, money: 2000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  const r = await call(room, 'move', { playerId: 'p1', to: 26 });
+  eq(money(r, 'fig1'), 1930, 'paid 70');
+  eq(payOf(r, 'rent'), {
+    type: 'pay', figure: 'fig1', to: 'fig0', amount: 70, reason: 'rent', cell: 26,
+    mods: ['war'],
+  });
+});
+
+await test('the traitor brand stacks with a war, multiplicatively', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { 26: 'fig0' },
+    players: {
+      fig0: { money: 2000 },
+      fig1: { money: 2000, traitor: true, traitorUntil: 9 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  eq(await rentDue(room, 26, 'fig1'),
+    { amount: 43, zero: false, mods: ['traitor'] }, 'the brand alone is floor(35 x 1.25)');
+  await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  eq(await rentDue(room, 26, 'fig1'),
+    { amount: 87, zero: false, mods: ['war', 'traitor'] }, 'floor(35 x 2 x 1.25)');
+});
+
+await test('the modifiers multiply in the order the spec lists, floored exactly once', async () => {
+  const room = await newRoom();
+  // A state no legal game can reach - a traitor may never ally - arranged by
+  // hand purely to pin the arithmetic: 35 x 2 x 1.25 x 1.25 = 109.375 -> 109.
+  await arrange(room, {
+    owners: { 26: 'fig0' },
+    players: { fig1: { traitor: true, traitorUntil: 9 } },
+    current_order: 0,
+    game: {
+      phase: 'act', doubles: 0, auction: null, trade: null, round: 1,
+      alliances: [{ a: 'fig1', b: 'fig2', since: 1 }],
+      wars: [{
+        id: 1, declarer: 'fig0', target: 'fig1', startRound: 1, endsRound: 6, peace: null,
+      }],
+    },
+  });
+  eq(await rentDue(room, 26, 'fig1'),
+    { amount: 109, zero: false, mods: ['war', 'allyTax', 'traitor'] });
+  // and an ally of the owner still pays nothing, whatever else is true
+  await arrange(room, {
+    game: { alliances: [{ a: 'fig0', b: 'fig1', since: 1 }] },
+  });
+  eq(await rentDue(room, 26, 'fig1'), { amount: 0, zero: true, mods: [] },
+    'free between allies beats everything');
+});
+
+await test('opposite sides of a war cannot ally, and nobody may end up in two wars', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: {
+      fig0: { money: 2000 }, fig1: { money: 2000 },
+      fig2: { money: 2000 }, fig3: { money: 2000 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig1' },
+    'You are on opposite sides of a war');
+
+  await arrange(room, { current_order: 2, game: { phase: 'act' } });
+  await call(room, 'war_declare', { playerId: 'p2', target: 'fig3' });
+  await arrange(room, { current_order: 0, game: { phase: 'act' } });
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig2' },
+    'That would put you in two wars at once');
+  // joining ONE war by allying with somebody already in it stays legal: the
+  // second war is what makes the pairing impossible, not the first
+  await arrange(room, { current_order: 1, game: { phase: 'act' } });
+  await call(room, 'ally_propose', { playerId: 'p1', to: 'fig9' })
+    .then(() => { throw new Error('fig9 is not in the room'); }, () => {});
+});
+
+await test('a war expires at the start of its endsRound, not before', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    current_order: 0,
+    game: {
+      phase: 'roll', doubles: 0, auction: null, trade: null, round: 1,
+      wars: [{
+        id: 7, declarer: 'fig0', target: 'fig1', startRound: 1, endsRound: 3, peace: null,
+      }],
+    },
+  });
+  let r = await toNextRound(room);
+  eq(r.game.round, 2);
+  eq(r.game.wars.length, 1, 'round 2 is still wartime');
+  r = await toNextRound(room);
+  eq(r.game.round, 3);
+  eq(r.game.wars, [], 'and round 3 is not');
+  eq(ev(r, 'war'), { type: 'war', stage: 'expire', warId: 7 });
+});
+
+await test('peace: either principal offers, the other accepts, and the payment changes hands', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { money: 2000 }, fig1: { money: 2000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  let r = await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  const id = r.game.wars[0].id;
+
+  await arrange(room, { current_order: 2, game: { phase: 'act' } });
+  await rejects(room, 'peace_propose', { playerId: 'p2', warId: id, amount: 0 },
+    'Only the two sides can make peace');
+  await arrange(room, { current_order: 0, game: { phase: 'act' } });
+  await rejects(room, 'peace_propose', { playerId: 'p0', warId: 999, amount: 0 },
+    'There is no such war');
+  await rejects(room, 'peace_propose', { playerId: 'p0', warId: id, amount: 5000 },
+    'You do not have that much cash');
+  await rejects(room, 'peace_propose', { playerId: 'p0', warId: id, amount: -5 },
+    'A peace payment cannot be negative');
+
+  r = await call(room, 'peace_propose', { playerId: 'p0', warId: id, amount: 200 });
+  eq(r.game.wars[0].peace, { from: 'fig0', amount: 200 });
+  eq(ev(r, 'war'), { type: 'war', stage: 'peaceOffer', warId: id, from: 'fig0', amount: 200 });
+
+  await rejects(room, 'peace_accept', { playerId: 'p0', warId: id }, 'not yours to answer');
+  await rejects(room, 'peace_accept', { playerId: 'p2', warId: id }, 'not yours to answer');
+
+  const before = money(await row(room), 'fig0');
+  r = await call(room, 'peace_accept', { playerId: 'p1', warId: id });
+  eq(r.game.wars, [], 'the war is over');
+  eq(money(r, 'fig0'), before - 200);
+  eq(money(r, 'fig1'), 2200);
+  eq(payOf(r, 'peace'), {
+    type: 'pay', figure: 'fig0', to: 'fig1', amount: 200, reason: 'peace', cell: null,
+  });
+  eq(evs(r, 'war').map((e) => e.stage), ['peace']);
+  eq(evs(r, 'war')[0], { type: 'war', stage: 'peace', warId: id, amount: 200 });
+});
+
+await test('peace can be declined, and a declined offer leaves the war running', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { money: 2000 }, fig1: { money: 2000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  let r = await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  const id = r.game.wars[0].id;
+  await rejects(room, 'peace_accept', { playerId: 'p1', warId: id },
+    'There is no peace offer to answer');
+  await call(room, 'peace_propose', { playerId: 'p0', warId: id, amount: 0 });
+  r = await call(room, 'peace_decline', { playerId: 'p1', warId: id });
+  eq(r.game.wars.length, 1, 'still at war');
+  eq(r.game.wars[0].peace, null, 'but the offer is gone');
+  eq(ev(r, 'war'), { type: 'war', stage: 'peaceDecline', warId: id, from: 'fig0', amount: 0 });
+  eq(money(r, 'fig0'), 1500, 'no payment moved');
+});
+
+await test('a peace offer the proposer can no longer afford is refused, not quietly shrunk', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { money: 2000 }, fig1: { money: 2000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  let r = await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  const id = r.game.wars[0].id;
+  await call(room, 'peace_propose', { playerId: 'p0', warId: id, amount: 1000 });
+  await arrange(room, { players: { fig0: { money: 10 } } });
+  await rejects(room, 'peace_accept', { playerId: 'p1', warId: id },
+    'They can no longer pay what they promised');
+  eq((await row(room)).game.wars.length, 1, 'the war and the offer both stand');
+});
+
+await test('a principal going bankrupt ends the war', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    owners: { 6: 'fig2', 16: 'fig2', 26: 'fig2', 36: 'fig2' },
+    players: {
+      fig0: { money: 2000 }, fig1: { position: 1, money: 100 }, fig2: { money: 1000 },
+    },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  let r = await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  const id = r.game.wars[0].id;
+  r = await call(room, 'move', { playerId: 'p1', to: 26 });
+  eq(player(r, 'fig1').bankrupt, true);
+  eq(r.game.wars, [], 'the war died with them');
+  eq(evs(r, 'war'), [{ type: 'war', stage: 'end', warId: id, reason: 'bankrupt' }]);
+});
+
+await test('a principal leaving the room ends the war', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { money: 2000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  let r = await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  const id = r.game.wars[0].id;
+  r = await call(room, 'leave', { playerId: 'p1' });
+  eq(r.game.wars, []);
+  eq(evs(r, 'war'), [{ type: 'war', stage: 'end', warId: id, reason: 'left' }]);
+});
+
+// ---------------------------------------------------------------------------
+
+section('backstab');
+
+await test('backstab takes floor(15%) of the ally’s cash, breaks the pair and brands the taker', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    players: { fig0: { money: 1000 }, fig1: { money: 777 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 2 },
+  });
+  const r = await call(room, 'backstab', { playerId: 'p0' });
+  eq(money(r, 'fig0'), 1116, 'floor(777 x 15%) = 116');
+  eq(money(r, 'fig1'), 661);
+  eq(r.game.alliances, [], 'the alliance is gone');
+  eq(player(r, 'fig0').traitor, true, 'branded');
+  eq(player(r, 'fig0').traitorUntil, 7, 'round 2 + 5');
+  eq(player(r, 'fig0').backstabUsed, true);
+  eq(player(r, 'fig1').traitor, false, 'the victim is not the traitor');
+  eq(ev(r, 'backstab'), {
+    type: 'backstab', figure: 'fig0', victim: 'fig1', amount: 116,
+  });
+  eq(payOf(r, 'backstab'), {
+    type: 'pay', figure: 'fig1', to: 'fig0', amount: 116, reason: 'backstab', cell: null,
+  });
+  eq(evs(r, 'ally').length, 0, 'the story is told once, by the backstab event');
+});
+
+await test('backstab needs an alliance, your own turn, and is available exactly once', async () => {
+  const room = await newRoom();
+  await rejects(room, 'backstab', { playerId: 'p0' }, 'You are not in an alliance');
+  await allyUp(room);
+  await rejects(room, 'backstab', { playerId: 'p1' }, 'You can only backstab on your turn');
+  await arrange(room, {
+    players: { fig1: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  await call(room, 'backstab', { playerId: 'p0' });
+
+  // a traitor may never ally again, from either end
+  await arrange(room, { current_order: 0, game: { phase: 'act' } });
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig2' },
+    'You are a traitor, nobody will ally with you');
+  await arrange(room, { current_order: 2, game: { phase: 'act' } });
+  await rejects(room, 'ally_propose', { playerId: 'p2', to: 'fig0' },
+    'They are a traitor, nobody will ally with them');
+
+  // and the gambit itself is spent, even if a pair somehow reappeared
+  await arrange(room, {
+    current_order: 0,
+    game: { phase: 'act', alliances: [{ a: 'fig0', b: 'fig3', since: 1 }] },
+  });
+  await rejects(room, 'backstab', { playerId: 'p0' }, 'You only have one backstab in you');
+});
+
+await test('the brand costs +25% rent to everybody, and burns out after five rounds', async () => {
+  const room = await newRoom();
+  await allyUp(room);
+  await arrange(room, {
+    owners: { 26: 'fig2' },
+    players: { fig0: { position: 1, money: 2000 }, fig1: { money: 1000 }, fig2: { money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  let r = await call(room, 'backstab', { playerId: 'p0' });
+  eq(player(r, 'fig0').traitorUntil, 6);
+  eq(await rentDue(room, 26, 'fig0'),
+    { amount: 43, zero: false, mods: ['traitor'] }, 'floor(35 x 1.25) to everybody');
+
+  // rounds 2, 3, 4 and 5 still burn
+  for (let want = 2; want <= 5; want += 1) {
+    r = await toNextRound(room);
+    eq(r.game.round, want);
+    eq((await rentDue(room, 26, 'fig0')).mods, ['traitor'], `still branded in round ${want}`);
+  }
+  r = await toNextRound(room);
+  eq(r.game.round, 6);
+  eq(player(r, 'fig0').traitorUntil, 0, 'the clock ran out');
+  eq(player(r, 'fig0').traitor, true, 'but the ban on allying is for good');
+  eq(await rentDue(room, 26, 'fig0'), { amount: 35, zero: false, mods: [] });
+  eq(ev(r, 'traitor'), { type: 'traitor', stage: 'expire', figure: 'fig0' });
+});
+
+// ---------------------------------------------------------------------------
+
+section('diplomacy guards & state');
+
+const OWN_TURN_VERBS = [
+  ['ally_propose', { to: 'fig1' }],
+  ['ally_break', {}],
+  ['war_declare', { target: 'fig1' }],
+  ['peace_propose', { warId: 1, amount: 0 }],
+  ['backstab', {}],
+];
+
+await test('every own-turn verb bounces off a running auction', async () => {
+  const room = await newRoom();
+  await standOn(room, 'fig0', 27);
+  await call(room, 'auction_start', { playerId: 'p0', cell: 27 });
+  eq((await row(room)).game.phase, 'auction');
+  for (const [action, extra] of OWN_TURN_VERBS) {
+    await rejects(room, action, { playerId: 'p0', ...extra }, 'An auction is running');
+  }
+});
+
+await test('every own-turn verb bounces off a pending casino bet', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 13, money: 1000 } },
+    current_order: 0,
+    game: {
+      phase: 'casino', doubles: 0, auction: null, trade: null,
+      casino: { cell: 13, figure: 'fig0', min: 150, max: 1000 },
+    },
+  });
+  eq((await row(room)).game.phase, 'casino');
+  for (const [action, extra] of OWN_TURN_VERBS) {
+    await rejects(room, action, { playerId: 'p0', ...extra }, 'The casino is waiting');
+  }
+});
+
+await test('answering a proposal is still legal while the room is locked', async () => {
+  const room = await newRoom();
+  await arrange(room, { current_order: 0, game: { phase: 'act', doubles: 0, auction: null, trade: null } });
+  await call(room, 'ally_propose', { playerId: 'p0', to: 'fig1' });
+  await standOn(room, 'fig0', 27);
+  await call(room, 'auction_start', { playerId: 'p0', cell: 27 });
+  const r = await call(room, 'ally_accept', { playerId: 'p1', from: 'fig0' });
+  eq(r.game.alliances.length, 1, 'the handshake went through');
+  eq(r.game.phase, 'auction', 'and the auction is untouched');
+});
+
+await test('nothing diplomatic happens after the game is over', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    current_order: 0,
+    game: { phase: 'over', doubles: 0, auction: null, trade: null, winner: 'fig0' },
+  });
+  for (const [action, extra] of OWN_TURN_VERBS) {
+    await rejects(room, action, { playerId: 'p0', ...extra }, 'The game is over');
+  }
+  await rejects(room, 'ally_accept', { playerId: 'p1', from: 'fig0' }, 'The game is over');
+});
+
+await test('a bankrupt player has no diplomacy left', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { bankrupt: true, money: 0 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null },
+  });
+  await rejects(room, 'ally_propose', { playerId: 'p0', to: 'fig1' }, 'You are bankrupt');
+  await rejects(room, 'backstab', { playerId: 'p0' }, 'You are bankrupt');
+});
+
+await test('a fresh seat carries the three diplomacy flags', async () => {
+  const room = await newRoom();
+  const r = await row(room);
+  for (const p of r.players) {
+    eq([p.traitor, p.traitorUntil, p.backstabUsed], [false, 0, false], `${p.figure}`);
+  }
+  eq(r.game.round, 1, 'and the table starts on round 1');
+  eq(r.game.alliances, []);
+  eq(r.game.allyOffers, []);
+  eq(r.game.wars, []);
+  eq(r.game.winners, []);
+});
+
+await test('new_game clears the alliances, the offers, the wars, the round and the brands', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { traitor: true, traitorUntil: 9, backstabUsed: true } },
+    current_order: 0,
+    game: {
+      phase: 'act', doubles: 0, auction: null, trade: null, round: 7,
+      alliances: [{ a: 'fig0', b: 'fig1', since: 2 }],
+      allyOffers: [{ from: 'fig2', to: 'fig3' }],
+      wars: [{ id: 3, declarer: 'fig2', target: 'fig3', startRound: 4, endsRound: 9, peace: null }],
+      winners: ['fig0'],
+    },
+  });
+  const r = await call(room, 'new_game', { position: SEED_BOARD });
+  eq(r.game.round, 1);
+  eq(r.game.alliances, []);
+  eq(r.game.allyOffers, []);
+  eq(r.game.wars, []);
+  eq(r.game.winners, []);
+  eq(r.game.winner, null);
+  for (const p of r.players) {
+    eq([p.traitor, p.traitorUntil, p.backstabUsed], [false, 0, false], `${p.figure} reset`);
+  }
+});
+
+await test('a row from before this migration keeps working and grows the new keys', async () => {
+  const room = await newRoom();
+  // strip every key this migration added, the way an in-flight room from
+  // yesterday would have it
+  const before = await row(room);
+  const legacyGame = { ...before.game };
+  for (const k of ['round', 'alliances', 'allyOffers', 'wars', 'winners']) delete legacyGame[k];
+  const legacyPlayers = before.players.map((p) => {
+    const q = { ...p };
+    delete q.traitor;
+    delete q.traitorUntil;
+    delete q.backstabUsed;
+    return q;
+  });
+  await db.query(
+    `update public.test set game = $2::jsonb, "Players" = $3::jsonb where uuid = $1`,
+    [room, JSON.stringify(legacyGame), JSON.stringify(legacyPlayers)],
+  );
+  const stale = await row(room);
+  assert(!('alliances' in stale.game), 'the row really is missing the keys');
+  assert(!('traitor' in stale.players[0]), 'and so are the players');
+
+  // rent still works out of a state with no game.alliances at all
+  eq(await rentDue(room, 26, 'fig0'), { amount: 0, zero: false, mods: [] }, 'unowned, so 0');
+
+  const r = await call(room, 'skip_turn', {});
+  eq(r.game.round, 1, 'the counter appeared, defaulted to 1');
+  eq(r.game.alliances, []);
+  eq(r.game.allyOffers, []);
+  eq(r.game.wars, []);
+  eq(r.game.winners, []);
+  // the player flags are only written by join / new_game / backstab, so a
+  // legacy seat stays bare until then - and every read of them coalesces
+  await arrange(room, { current_order: 0, game: { phase: 'act' } });
+  const r2 = await call(room, 'ally_propose', { playerId: 'p0', to: 'fig1' });
+  eq(r2.game.allyOffers, [{ from: 'fig0', to: 'fig1' }], 'a bare seat can still ally');
+});
+
+await test('the round ticks on a real end_turn, and a doubles re-roll is not a new round', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig3: { inJail: false, jailTurns: 0 } },
+    current_order: 3,
+    game: { phase: 'act', doubles: 1, dice: [2, 2], auction: null, trade: null, round: 1 },
+  });
+  // the last seat rolled a double: the turn stays with them, so the lap is not
+  // over and neither is the round
+  let r = await call(room, 'end_turn', { playerId: 'p3' });
+  eq(r.current_order, 3, 'still their turn');
+  eq(r.game.round, 1, 'and still the same round');
+  assert(types(r).includes('again'), 'the doubles event fired');
+
+  await arrange(room, { current_order: 3, game: { phase: 'act', doubles: 0 } });
+  r = await call(room, 'end_turn', { playerId: 'p3' });
+  eq(r.current_order, 0, 'back to the top of the order');
+  eq(r.game.round, 2, 'which is what ends a round');
+});
+
+await test('the round wraps to the first player who is still in the game, not to seat 0', async () => {
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { bankrupt: true, money: 0 } },
+    current_order: 3,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1, winner: null },
+  });
+  const r = await call(room, 'end_turn', { playerId: 'p3' });
+  eq(r.current_order, 1, 'seat 0 is out, so seat 1 opens the lap');
+  eq(r.game.round, 2, 'and arriving there is what ends the round');
+});
+
+await test('a legacy row that already had a winner grows a matching winners array', async () => {
+  const room = await newRoom();
+  const before = await row(room);
+  const legacy = { ...before.game, winner: 'fig2' };
+  delete legacy.winners;
+  await db.query(`update public.test set game = $2::jsonb where uuid = $1`,
+    [room, JSON.stringify(legacy)]);
+  const r = await call(room, 'skip_turn', {});
+  eq(r.game.winner, 'fig2', 'the old field is left alone');
+  eq(r.game.winners, ['fig2'], 'and the array is derived from it');
+  eq(r.game.phase, 'over', 'a row with a winner is an over row');
+});
+
+await test('a war and an alliance survive an ordinary turn and ride along in game', async () => {
+  const room = await newRoom();
+  await allyUp(room, 'fig1', 'fig2', 1);
+  await arrange(room, {
+    players: { fig0: { money: 2000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, round: 1 },
+  });
+  await call(room, 'war_declare', { playerId: 'p0', target: 'fig1' });
+  const r = await call(room, 'skip_turn', {});
+  eq(r.game.wars.length, 1, 'the war is still on the row');
+  eq(r.game.alliances.length, 1);
+  eq(r.game.round, 1, 'and one hand-off is not a round');
+});
+
+// ---------------------------------------------------------------------------
+// 12. Regression smoke: a few hundred random legal-ish actions
 // ---------------------------------------------------------------------------
 
 section('smoke');
@@ -2199,6 +4053,24 @@ const OK_MESSAGES = [
   'You do not have that much cash', 'They do not have that much cash',
   'You do not own ', 'They do not own ', 'has buildings in its colour set',
   'does not exist', 'This offer is incomplete', 'Player is not in this room',
+  'The casino is waiting', 'The casino is not waiting for you',
+  'Pick slots, roulette or wheel', 'Pick red, black or green',
+  'The bet must be a whole number', 'casino_play needs a bet', 'Bet at least',
+  // diplomacy
+  'You can only propose an alliance on your turn', 'You cannot ally with yourself',
+  'You are already in an alliance', 'They are already in an alliance',
+  'There is already an offer between you', 'There is no offer to answer',
+  'There is no offer to cancel', 'You are not in an alliance',
+  'You can only break an alliance on your turn', 'You are a traitor',
+  'They are a traitor', 'You are on opposite sides of a war',
+  'That would put you in two wars at once', 'You can only declare war on your turn',
+  'You cannot declare war on your ally', 'You cannot declare war on yourself',
+  'Somebody here is already at war', 'You only have one backstab in you',
+  'You can only backstab on your turn', 'You can only offer peace on your turn',
+  'There is no such war', 'Only the two sides can make peace',
+  'There is no peace offer to answer', 'A peace payment cannot be negative',
+  'The payment must be a whole number', 'They can no longer pay what they promised',
+  'You cannot do that right now',
 ];
 
 function known(message) {
@@ -2269,7 +4141,24 @@ await test('a few hundred random actions keep the invariants (six players)', asy
     let action;
     let payload;
 
-    if (phase === 'auction' && g.auction) {
+    if (phase === 'casino' && g.casino) {
+      // Landing on the casino is mandatory, so the walk has exactly two legal
+      // replies: play, or (rarely) let the table skip a phone that went away.
+      const better = before.players.find((p) => p.figure === g.casino.figure);
+      if (!better || rnd() < 0.08) {
+        action = 'skip_turn'; payload = {};
+      } else {
+        const game = pick(['slots', 'roulette', 'wheel']);
+        const span = Math.max(g.casino.max - g.casino.min, 0);
+        action = 'casino_play';
+        payload = {
+          playerId: better.playerId,
+          game,
+          bet: g.casino.min + Math.floor(rnd() * (span + 1)),
+          colour: pick(['red', 'black', 'green']),
+        };
+      }
+    } else if (phase === 'auction' && g.auction) {
       const mover = before.players.find((p) => p.figure === g.auction.turn);
       const next = Math.max((g.auction.bid || 0) + 10, 10);
       if (!mover) {
@@ -2305,6 +4194,39 @@ await test('a few hundred random actions keep the invariants (six players)', asy
       }
     } else if (!cur || cur.bankrupt || alive.length < 2) {
       action = 'skip_turn'; payload = {};
+    } else if (rnd() < 0.18) {
+      // Diplomacy. Every verb here is either an own-turn verb (and `cur` is
+      // whose turn it is) or an answer to something already on the table, so
+      // the walk produces a stream of plausible-but-not-always-legal calls -
+      // which is the point: the refusals are as much of the contract as the
+      // acceptances, and `known()` has to recognise every one of them.
+      const other = pick(alive.filter((p) => p.figure !== cur.figure));
+      const mine = (g.allyOffers || []).find((o) => o.to === cur.figure);
+      const myWar = (g.wars || []).find(
+        (w) => w.declarer === cur.figure || w.target === cur.figure);
+      const allied = (g.alliances || []).find(
+        (a) => a.a === cur.figure || a.b === cur.figure);
+      const r = rnd();
+      if (mine && r < 0.45) {
+        action = r < 0.3 ? 'ally_accept' : 'ally_decline';
+        payload = { playerId: cur.playerId, from: mine.from };
+      } else if (myWar && myWar.peace && myWar.peace.from !== cur.figure && r < 0.58) {
+        action = r < 0.5 ? 'peace_accept' : 'peace_decline';
+        payload = { playerId: cur.playerId, warId: myWar.id };
+      } else if (myWar && r < 0.68) {
+        action = 'peace_propose';
+        payload = { playerId: cur.playerId, warId: myWar.id, amount: 10 * Math.floor(rnd() * 5) };
+      } else if (allied && r < 0.74) {
+        action = 'backstab'; payload = { playerId: cur.playerId };
+      } else if (allied && r < 0.80) {
+        action = 'ally_break'; payload = { playerId: cur.playerId };
+      } else if (other && r < 0.92) {
+        action = 'ally_propose'; payload = { playerId: cur.playerId, to: other.figure };
+      } else if (other) {
+        action = 'war_declare'; payload = { playerId: cur.playerId, target: other.figure };
+      } else {
+        action = 'skip_turn'; payload = {};
+      }
     } else if (phase === 'roll') {
       const r = rnd();
       if (r < 0.1 && !cur.inJail) {
@@ -2394,6 +4316,27 @@ await test('a few hundred random actions keep the invariants (six players)', asy
       `step ${step}: phase ${ph} with auction ${JSON.stringify(after.game.auction)}`,
     );
     assert('auction' in after.game && 'trade' in after.game, 'keys always present');
+    for (const k of ['round', 'alliances', 'allyOffers', 'wars', 'winners']) {
+      assert(k in after.game, `game.${k} is always present`);
+    }
+    assert(after.game.round >= 1, 'the round counter never goes backwards past 1');
+    // one alliance per player, and never with somebody who is not there
+    const seats = new Set(after.players.map((p) => p.figure));
+    const paired = new Set();
+    for (const a of after.game.alliances) {
+      for (const f of [a.a, a.b]) {
+        assert(seats.has(f), `alliance names ${f}, who is not in the room`);
+        assert(!paired.has(f), `${f} is in two alliances`);
+        paired.add(f);
+      }
+      const pa = after.players.find((p) => p.figure === a.a);
+      const pb = after.players.find((p) => p.figure === a.b);
+      assert(!pa.bankrupt && !pb.bankrupt, 'a bankrupt player is still allied');
+      assert(!pa.traitor && !pb.traitor, 'a traitor is still allied');
+    }
+    for (const w of after.game.wars) {
+      assert(seats.has(w.declarer) && seats.has(w.target), 'a war names a ghost');
+    }
     if (after.game.auction) {
       const a = after.game.auction;
       assert(a.in.every((f) => a.order.includes(f)), '`in` is a subset of `order`');
@@ -2404,7 +4347,11 @@ await test('a few hundred random actions keep the invariants (six players)', asy
   }
 
   assert(applied > 200, `only ${applied} actions went through`);
-  for (const t of ['auction_start', 'bid', 'drop', 'trade']) {
+  // Only events the walk STEERS towards are required here. Whether 600 random
+  // steps ever land on cell 13 or cell 28 is luck, and sections 9 and 10 pin
+  // those two down exactly; making them mandatory here would only buy a test
+  // that fails on some seeds and passes on others.
+  for (const t of ['auction_start', 'bid', 'drop', 'trade', 'ally']) {
     assert(seen.has(t), `the random walk never produced a ${t} event`);
   }
   // eslint-disable-next-line no-console
