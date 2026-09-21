@@ -154,6 +154,48 @@
   color: var(--muted);
 }
 
+/* ---- diplomacy strip ------------------------------------------------------
+ * The standing strip (spec §3): current wars, current alliances, Round N — all
+ * in the header, all quiet (13px, --muted by default), all gone at once when
+ * there is nothing to say (TvSide.jsx renders no element at all in that case,
+ * so this never costs a row of the header's own `auto` track). The LOUD
+ * version of the same news is TvCenter's centre-stage banner, which only owns
+ * the screen for a few seconds; this is where the room checks back after. */
+.diploStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.diploRound {
+  flex: none;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.diploWar,
+.diploAlly {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.diploWar svg {
+  flex: none;
+  color: var(--neg);
+}
+
+.diploAlly svg {
+  flex: none;
+  color: var(--pos);
+}
+
 /* ---- players ------------------------------------------------------------ */
 
 .players {
@@ -285,6 +327,39 @@
   color: var(--pos);
 }
 
+/* Alliance / war / traitor (spec §1). A row of its own under the subtitle —
+ * see the "Diplomacy" note at the top of TvSide.jsx for why this is not more
+ * tags crammed into .plLine above. */
+.plDiplo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* The pairing cue the brief asks for ("a shared link/bracket or matching
+ * ally badge with the partner's token"): the chip carries the ALLY's OWN
+ * token, colour and all, so two player cards sharing a partner read as a
+ * pair without the viewer having to cross-reference two names. */
+.tagAlly {
+  gap: 5px;
+  background: var(--pos-bg);
+  color: var(--pos);
+}
+
+.tagWar {
+  background: var(--neg-bg);
+  color: var(--neg);
+}
+
+/* The one status that never goes quiet: SOLID, not a tint, so it still reads
+ * as the more serious of the two even sitting right beside a war chip. */
+.tagTraitor {
+  background: var(--neg);
+  color: var(--surface);
+}
+
 /* Never wraps, never shrinks: five-digit money (12 500$) keeps its line and the
  * name beside it gives up its characters first. */
 .cash {
@@ -403,7 +478,7 @@
 
 /* One colour group. Part of a set: the group's colour as one brick per cell,
  * the owned ones lit, on a sunk chip. The whole set: the chip itself goes solid
- * in the group's colour and carries a crown (or the railroad / utility glyph)
+ * in the group's colour and carries a crown (or the railroad / weed-farm glyph)
  * and the buildings. */
 .slot {
   display: flex;
@@ -446,19 +521,15 @@
 
 /* Two classes so these beat bits.module.css's own .pips rules regardless of
  * which module the bundler emits first. The pips are painted in --on-g, which
- * is whichever of black/white stays readable on the set's colour. */
+ * is whichever of black/white stays readable on the set's colour.
+ *
+ * 11px, not the 5 the old squares used: a lucide `Home` outline needs real
+ * pixels to read as a house rather than as a blob, and 11 is what a 26px slot
+ * can carry with its padding. The same number is PIP_W / HOTEL_W in TvSide.jsx,
+ * which is what decides how many slots fit the one line a card is allowed. */
 .slot .slotPips {
   color: var(--on-g);
-}
-
-.slot .slotPips i {
-  width: 5px;
-  height: 5px;
-}
-
-.slot .slotPips b {
-  width: 16px;
-  height: 5px;
+  --pip: 11px;
 }
 
 /* Groups that did not fit the line. Only ever reached by a player holding a
