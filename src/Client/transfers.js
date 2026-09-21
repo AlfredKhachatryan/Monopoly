@@ -60,8 +60,16 @@ export const REASON_TEXT = {
   // because they arrived on an event this file did not use to know about.
   allyUpkeep: "alliance upkeep",
   commission: "ally commission",
-  backstab: "a backstab",
-  debtShare: "a shared debt",
+  backstab: "in a backstab",
+  debtShare: "toward a shared debt",
+  // The declaration fee and an accepted peace payment are BOTH ordinary `pay`
+  // events with no headline event of their own carrying the amount (a war's
+  // `declare` stage has no `amount` field, and its `peace` stage is a `war`-
+  // type event this file does not read at all — see transfersFrom below), so
+  // unlike the four reasons above these two are never in danger of a double
+  // announcement and never skipped.
+  warFee: "war fee",
+  peace: "peace payment",
 };
 
 /** Every money movement in one batch of events, in the order they happened. */
@@ -74,6 +82,24 @@ export function transfersFrom(events) {
     const amount = num(e.amount);
     const id = `${i}`;
     if (e.type === "pay" && amount) {
+      // Three of the five diplomacy money moves (SPEC-DIPLOMACY.md, and the
+      // server's own doubling-up convention — see the REASON_TEXT comment
+      // above) log the SAME movement twice on purpose: once as this plain
+      // ledger `pay` and once as a dedicated headline event later in this same
+      // batch (`allyUpkeep`, `debtShare`, `backstab` below). Reading both sides
+      // would hand the caller two transfers for one payment — not just a
+      // doubled toast, but for debtShare and backstab (both ends real figures,
+      // never the bank) a SECOND transfer with the same `from`+reason trips
+      // groupTransfers' "more than one of these" check, and the announcement
+      // reads as "X paid everyone" when actually nobody but the one ally/one
+      // backstabber was ever paid — this is the exact bug behind "Backstabber
+      // pays to all 375". So skip the ledger row here and let the dedicated
+      // case below be the only source. warFee and peace are NOT in this list:
+      // a war's `declare` event carries no amount at all, and its `peace`
+      // event is a `type:'war'` row this function does not read (see the
+      // bottom of the loop) — for those two the ledger `pay` is the only place
+      // the amount ever appears, so it must come through.
+      if (e.reason === "allyUpkeep" || e.reason === "debtShare" || e.reason === "backstab") continue;
       out.push({
         id,
         from: e.figure ?? BANK,
@@ -83,6 +109,12 @@ export function transfersFrom(events) {
         cell: e.cell ?? null,
       });
     } else if (e.type === "collect" && amount) {
+      // Commission's own ledger twin (mono_credit's ordinary `collect`,
+      // reason 'commission') is the fourth of those doubled-up movements —
+      // same reasoning as the `pay` skip just above, minus the grouping risk
+      // (it is always bank-to-ally, so `from` is null and groupTransfers never
+      // sees a repeated key), but still a plain duplicate toast without this.
+      if (e.reason === "commission") continue;
       out.push({
         id,
         from: BANK,
