@@ -1,9 +1,11 @@
 /* The "4D Split" phone controller.
  *
  * Two halves. The top one is an aura: a radial wash of --tint, the colour of
- * the space you are standing on, carrying your name, your cash, whose turn it
- * is and the last three things that happened. The bottom one is a white panel
- * pinned to the floor of the screen with everything you can actually press.
+ * the space you are standing on, carrying a slim bar (your name, your cash,
+ * whose turn it is), that space as a large deed card, and the one latest thing
+ * that happened. The bottom one is a white panel pinned to the floor of the
+ * screen with everything you can actually press — and, since the deed card
+ * moved up into the aura, nothing else.
  *
  * --tint / --on-tint are written inline on the root by ClientScreen; every rule
  * here reads them, so landing on a new colour re-themes the whole controller
@@ -175,32 +177,40 @@
 
 /* ------------------------------------------------------------------- aura */
 
-/* Two blocks, not three: everything that identifies you (banners, name, cash,
- * turn) is one thing at the top, and the events hang off the bottom edge.
- * With the banners as their own grid child, `space-between` used to strand the
- * name and cash halfway down the screen with a void above and below. */
+/* Three rows. Everything that identifies you (banners, then the bar: name,
+ * cash, turn) is ONE block at the top — with the banners as their own grid
+ * child, `space-between` used to strand the name and cash halfway down the
+ * screen with a void above and below. The deed card has the flexible row in the
+ * middle, which is the row that used to be that void. The latest event is one
+ * line along the bottom edge.
+ *
+ * The side padding is 16px where the panel's is 20px, on purpose: the card is
+ * the widest thing on the screen with the most to say, and 8px is a whole
+ * digit of a rent table on a 360px phone. */
 .aura {
   /* The containing block for the money layer's overflow (PayFx.jsx hangs off
    * .auraTop below): a transfer must not reflow a single pixel of the panel
    * underneath, and must not escape the aura either. */
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  padding: calc(env(safe-area-inset-top, 0px) + 8px) 20px 16px;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 16px 10px;
 }
 
 .auraTop {
   /* `relative` for the money layer (PayFx.jsx), which hangs from this block's
-   * bottom edge into the empty middle of the aura. */
+   * bottom edge. That used to be the empty middle of the aura; it is now the
+   * top of the deed card, which the toast covers for the two seconds it lives
+   * — never the cash above it, which is the number the toast is about. */
   position: relative;
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -279,20 +289,98 @@
   color: var(--neg);
 }
 
-.dSplit {
+/* The bar: name, cash and turn on ONE line, and under it the order of play and
+ * the Free Parking pot. This was a two-column block ~90px tall — a 40px cash
+ * number on the left, and the turn label, the pot and the tokens stacked on the
+ * right — and every one of those pixels now belongs to the deed card. Nothing
+ * was dropped to get there; it was all just set smaller and side by side.
+ *
+ * Line one is a flex row on a shared BASELINE, so a 15px name, a 26px number
+ * and an 18px turn label sit on one line of text rather than three boxes
+ * centred on each other. The cash is the only thing on it that may not shrink:
+ * the name and the turn label both ellipsise, in proportion, before a digit of
+ * the balance is lost. */
+.bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
 }
 
-.dLeft {
+.barMain {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   min-width: 0;
+}
+
+.barSub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+/* Turn order + my diplomacy status, as one wrapping group opposite the pot
+ * pill — see Aura.jsx. Wrapping here (rather than on `.barSub` fighting the
+ * pot pill for the second line) keeps the pot pill anchored to the right
+ * for as long as there is any room at all, and only pushes it below once
+ * this side has genuinely run out of it. */
+.barLeft {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* My ally / my wars / my Traitor brand. Same pill shape as .potPill (a
+ * neutral plate that reads on every group colour), coloured by tone so "at
+ * war" is legible as a warning at a glance rather than requiring the word to
+ * be read first. */
+.statChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--neu-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat_ally {
+  background: var(--pos-bg);
+  color: var(--pos);
+  box-shadow: none;
+}
+
+.stat_war {
+  background: var(--neg-bg);
+  color: var(--neg);
+  box-shadow: none;
+}
+
+/* the loading placeholders for the name and the cash, side by side like the
+ * things they stand for */
+.barSkel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .dName {
   display: flex;
   align-items: center;
+  flex: 0 1 auto;
   flex-wrap: nowrap;
   gap: 6px;
   min-width: 0;
@@ -341,44 +429,80 @@
   white-space: nowrap;
 }
 
-.dLeft strong {
+.cashBox strong {
   display: block;
   font-family: var(--f-display);
-  font-size: 40px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
 
-.dRight {
-  display: grid;
-  gap: 8px;
-  justify-items: end;
-  text-align: right;
-  min-width: 0;
-}
-
+/* Pushed to the far end of the line by its auto margin, so the name and cash
+ * read as one thing on the left and the turn as another on the right. */
 .dTurn {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
   font-family: var(--f-display);
-  font-size: 26px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1.1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100%;
 }
 
 /* A crimson dot in front of the turn label when the turn is mine. */
 .app[data-mine] .dTurn::before {
   content: "";
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 8px;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
   border-radius: 50%;
   background: var(--crim);
-  vertical-align: 3px;
+  vertical-align: 2px;
+}
+
+/* The Free Parking pot, at the far end of the bar's second line.
+ *
+ * It is a permanent fact about the room — fines have been piling up on cell 21
+ * since the game started — so it belongs with the other permanent facts in the
+ * aura rather than in the feed, which scrolls away. It is rendered ONLY while
+ * the pot has something in it, which is also exactly when the server would
+ * emit a payout event, so an empty pot costs no pixels and tells no lies.
+ *
+ * `.barSub` is a space-between row, so this needs nothing but its own pill
+ * shape; it lands opposite the row of tokens. It sits on the opaque neutral
+ * the banners use, which keeps it legible on every group colour without
+ * introducing a hue of its own. */
+.potPill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--neu-bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.potPill span {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.potPill strong {
+  font-family: var(--f-display);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .bump {
@@ -399,15 +523,18 @@
 .cashBox {
   position: relative;
   display: inline-block;
+  flex: none;
   isolation: isolate;
 }
 
 .cashBox::before {
   content: "";
   position: absolute;
-  inset: -4px -14px -2px;
+  /* 8px a side, not the 14 it had when the number stood alone in a column: on
+   * the bar the name is 10px to its left, and the wash is opaque. */
+  inset: -3px -8px -2px;
   z-index: -1;
-  border-radius: 16px;
+  border-radius: 12px;
   opacity: 0;
   background: var(--neu-bg);
 }
@@ -441,24 +568,21 @@
   }
 }
 
-/* `flex-wrap` + `max-width: 100%` matter once a room holds more than four:
- * `.dRight` stretches to its grid column (it is a grid item of `.dSplit`
- * with `min-width: 0`), but `.order` itself is only aligned to that column's
- * end (`justify-items: end` on `.dRight`), not stretched to its width — so
- * without a width cap of its own it grew past the column at six players and
- * overlapped the name/cash on the left. `.aura` has `overflow: hidden`
- * (needed for the money-transfer layer), which would have clipped that
- * overflow into invisible tokens rather than an obvious bug, exactly the
- * "silently drops a player" failure mode this was built to avoid. Wrapping
- * onto a second line costs nothing today (four still fit on one line) and
- * keeps every token on screen at six. */
+/* `flex-wrap` + `min-width: 0` matter once a room holds more than four. The
+ * tokens used to live in a right-aligned column beside the cash, where six of
+ * them grew past the column and overlapped the name — and `.aura` has
+ * `overflow: hidden` (needed for the money-transfer layer), which clipped that
+ * overflow into invisible tokens rather than an obvious bug: exactly the
+ * "silently drops a player" failure this was built to avoid. They now have
+ * most of a line to themselves (six 20px tokens are 150px of a 328px bar), but
+ * the pot pill shares it, so the guard stays: they wrap before they clip. */
 .order {
   display: flex;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
   gap: 6px;
-  max-width: 100%;
+  min-width: 0;
 }
 
 .order li {
@@ -480,37 +604,23 @@
   opacity: 0.35;
 }
 
-/* Bottom-aligned, and it owns the flexible row, so a short phone shortens the
- * void above the rows instead of pushing a half-row under the panel.
+/* The latest line: ONE event row and the way into the log, side by side.
  *
- * `max-height: 100%` + clip is the guard that makes "shortens" true at EVERY
- * height, not only the ones with a breakpoint below. This is a grid item in a
- * `minmax(0, 1fr)` row with `align-self: end`: when the row collapsed, the
- * item kept its natural height and hung UPWARD out of its cell, straight over
- * .auraTop — measured 116px of event rows drawn across the player's name and
- * cash at 390px of viewport height (and identical at 430x390, so it was never
- * about width). Capped to the cell, the events give way instead. The
- * breakpoints below then make sure what gives way is whole rows, never half
- * of one. */
-.evsWrap {
-  align-self: end;
-  display: grid;
-  grid-template-rows: auto auto;
-  gap: 2px;
-  min-height: 0;
-  min-width: 0;
-  max-height: 100%;
-  overflow: hidden;
-  overflow: clip;
-}
-
-/* "Latest" and the log button share one line above the rows: the affordance
- * gets a real 44px hit area without costing a 44px band of its own. */
-.evsHead {
+ * This was a block of three rows under a "Latest / Full log" header, bottom-
+ * aligned in the aura's flexible row, with a `max-height` clip and two
+ * breakpoints' worth of `nth-child` rules to make sure that what gave way on a
+ * short phone was whole rows and never half of one. All of that existed
+ * because the block was tall and the row it lived in could collapse. One row
+ * in an `auto` track has neither problem: it is 44px at every viewport, the
+ * flexible row above it belongs to the deed card, and the card is the thing
+ * that gives way (see "deed card" below). The other two events are one tap
+ * away, in a sheet that shows them with room to wrap. */
+.latest {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
+  min-height: 44px;
 }
 
 .evsLab {
@@ -527,9 +637,17 @@
 }
 
 .evs {
+  flex: 1 1 auto;
   display: grid;
-  gap: 6px;
-  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+/* Nothing has happened yet: the list is still in the DOM, because a live
+ * region has to exist BEFORE the change it is meant to announce, but it must
+ * not take half the line away from the words that say so. */
+.evs:empty {
+  display: none;
 }
 
 .evsMore {
@@ -560,266 +678,660 @@
   box-shadow: 0 -16px 40px -24px var(--shadow);
 }
 
-/* -------------------------------------------------------------------- path */
+/* --------------------------------------------------------------- deed card */
 
-.path {
-  display: grid;
-  gap: 6px;
-}
-
-.pathDots {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 40px;
-  padding: 0 4px;
-  background: linear-gradient(var(--line), var(--line)) center / calc(100% - 16px) 2px no-repeat;
-}
-
-.pd {
-  display: block;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--dot, var(--tint));
-  box-shadow: 0 0 0 3px var(--surface);
-  transition: background-color 300ms ease-out;
-}
-
-.pdOwned {
-  box-shadow:
-    0 0 0 3px var(--surface),
-    0 0 0 5px var(--muted);
-}
-
-.pdCur {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  box-shadow:
-    0 0 0 3px var(--surface),
-    0 0 0 5px var(--ink);
-}
-
-.pTok {
-  box-shadow: 0 0 0 2px #fff;
-}
-
-/* The wrapper the hop keyframes play on — and the reason your token used to sit
- * off-centre in its ring.
+/* The space you are standing on (Ticket.jsx), in the aura's flexible row.
  *
- * It was `display: block` around <Tok>, which is `display: inline-grid`. An
- * inline-level box sits on its line's BASELINE, so this element was not 26px
- * tall like the token inside it: it was 32.19px, the token plus the line box's
- * descender space underneath. `.pdCur` then centred THAT, which put the token's
- * own centre 3.10px above the ring's — measured, at both 360 and 390 — and the
- * cell-colour disc behind it showed as a crescent along the bottom edge only.
- * Three things that have to be concentric (ink ring, colour disc, token) were
- * not, which is exactly what the owner saw on a real phone.
+ * There was a "path" section here: seven dots for the three spaces behind you,
+ * you, and the three ahead, with your token hopping in the middle one. It is
+ * gone, along with PathStrip.jsx — the owner's words were "remove the nearest
+ * card info, use the space for the card I'm standing on" — and the ticket that
+ * used to sit under it, a 118px slab of --tint with three numbers on it, is
+ * now this card.
  *
- * Grid + `line-height: 0` fixes it twice over: the token is blockified into a
- * grid item so no baseline is involved at all, and there is no line box left to
- * leave a descender even if one were. */
-.hop {
+ * ---- how it fits --------------------------------------------------------
+ *
+ * The row this lives in is whatever the panel leaves: ~520px on a tall phone
+ * on somebody else's turn, ~330px on a 360x640 phone with a Buy / Auction
+ * choice up, ~130px on a landscape phone in the middle of an auction. No set
+ * of viewport breakpoints can know that number, because it depends on what the
+ * PANEL is showing, not on the screen. So the box is a size container and the
+ * card asks IT how tall it is. Five forms, each the tallest that is guaranteed
+ * to fit its range even with a two-line name AND a Build pill (the sums are
+ * beside each query below):
+ *
+ *   A  >= 465   the whole schedule as a table, one row per line
+ *   B  310-465  the same table folded into two columns           (the default)
+ *   C  240-310  only the row in force and its two neighbours, as three chips
+ *   D  140-240  no table; owner and headline share a line
+ *   E  <  140   one line: colour, name, owner, headline
+ *
+ * 310 is not a round number by accident: a 360x640 phone with a Buy / Auction
+ * choice up — the moment the table matters most — leaves this box 322px, and
+ * form B was trimmed until it fitted under that with room to spare.
+ *
+ * What gives way is always the schedule first and the footnote second. The
+ * name, the owner and the headline number are `flex: none` in every form and
+ * are never clipped while the box is at least as tall as form E (~50px).
+ *
+ * A browser without container queries gets form B at every height. The table
+ * is the one flexible, clipping child of the card, so there the table is cut
+ * short rather than anything above it — the same priority, less gracefully.
+ *
+ * `container-type: size` needs the box's height to come from OUTSIDE it, and
+ * it does: this is a stretched grid item in a `minmax(0, 1fr)` row. The card
+ * inside is centred at its natural height and capped to the box. */
+.deedBox {
+  container-type: size;
   display: grid;
-  place-items: center;
-  line-height: 0;
-  animation: hop 300ms ease-out;
-}
-
-@keyframes hop {
-  0% {
-    transform: translateY(-10px) scale(0.8);
-    opacity: 0;
-  }
-  60% {
-    transform: translateY(2px);
-    opacity: 1;
-  }
-  100% {
-    transform: none;
-  }
-}
-
-.pathLab {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.pathSide {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  max-width: 46%;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
   min-width: 0;
 }
 
-.pathName {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pathRight {
-  margin-left: auto;
-}
-
-.pathSpacer {
-  flex: 1 1 auto;
-}
-
-.lvlMini {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 4px;
-  color: var(--ink);
-}
-
-/* ------------------------------------------------------------------ ticket */
-
+/* On --surface, not on the tint. The old ticket was painted in --tint with
+ * --on-tint text, and that pair now runs from near-white steel (railroads,
+ * #c3d0de) to deep oxblood (tax, #66232f): fine for three bold numbers, and
+ * hopeless for a seven-row table with a highlighted row and muted labels in
+ * two themes. Only the band wears the colour. Everything below it is --ink and
+ * --muted on --surface, which the tokens already guarantee in light and dark. */
 .ticket {
-  display: grid;
-  border-radius: 20px;
-  background: var(--tint);
-  color: var(--on-tint);
-  transition:
-    background-color 300ms ease-out,
-    color 300ms ease-out;
-  /* every Mark inside the ticket is a frosted hole in the tint, not its own colour */
-  --mark-bg: rgba(255, 255, 255, 0.22);
-  --mark-fg: currentColor;
-  /* the hotel pip's separator ring is meant to read against --surface; on the
-   * tinted ticket there is no surface behind it, so the ring goes away */
-  --pips-ring: transparent;
-}
-
-.ticket :focus-visible {
-  outline-color: var(--on-tint);
-}
-
-.tTop {
+  align-self: center;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px 12px;
-}
-
-.tMark {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-}
-
-.tHead {
-  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 18px 36px -24px var(--shadow),
+    inset 0 0 0 1px var(--line);
 }
 
-.grpRow {
+/* A space with nothing to own — Jail, Chance, the Casino — has a name and one
+ * sentence, and at its natural height that is a 120px sliver adrift in the
+ * middle of the aura. It takes a card's worth of room instead, and the sentence
+ * gets the body of the card to itself (.tNote below). */
+.ticket[data-plain] {
+  min-height: min(100%, 230px);
+}
+
+/* The band: the space's own colour, its mark, its group, and what this card is
+ * ("You are here" / "Up for auction"). --band / --on-band are written inline by
+ * Ticket.jsx from accentFor() / readableOn(), so the text on it is black or
+ * white by CALCULATION, per cell — never a fixed colour that happens to work
+ * on most of them. The fallbacks are the aura's pair, which is the same pair
+ * computed from the same cell. */
+.tBand {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
+  padding: 5px 12px 5px 8px;
+  background: var(--band, var(--tint));
+  color: var(--on-band, var(--on-tint));
+  transition:
+    background-color 300ms ease-out,
+    color 300ms ease-out;
+  /* The Mark inside the band is a frosted hole in it, not its own colour — its
+   * own colour IS the band's. Mixed from the band's readable ink rather than
+   * from white, because a white frost on the steel band is invisible. */
+  --mark-bg: color-mix(in srgb, currentColor 16%, transparent);
+  --mark-fg: currentColor;
 }
 
 .grp {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Hierarchy from size, weight and tracking only. `opacity` on band text dimmed
+ * white labels against half the group tints until they failed AA. */
+.tFlag {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tBody {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  min-width: 0;
+  padding: 10px 16px 12px;
+}
+
 .pname {
+  flex: none;
   font-family: var(--f-display);
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
+  text-align: center;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
+/* Owner: label, token, name — then, pushed to the far end, what is built here
+ * and the pill that builds more. */
+.tOwner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 28px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.tOwnerLab,
+.tHeadline span {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tOwnerName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "Unowned" is the absence of a name and should not be set like one. */
+.tOwnerNone {
+  color: var(--muted);
+}
+
+/* bits.module.css sizes the glyphs from --pip (12px, for a TV tile and a sheet
+ * row). Here they are a line of the deed in their own right. */
+.tPips {
+  flex: none;
+  --pip: 18px;
+  gap: 3px;
+}
+
+/* A full 44px target on a 28px line. The negative block margin lets the pill
+ * overhang that line by 5px above and below, into the gaps around it (nothing
+ * there is a control), so a card that can be built on is 6px taller than one
+ * that cannot instead of 16px — which at 360x640 was the difference between
+ * keeping the rent table and losing it. Any more overhang and the pill's edge
+ * touches the top of the headline number. */
 .tBuild {
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 44px;
+  margin-block: -5px;
   padding: 0 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--sunk);
   box-shadow: inset 0 0 0 1.5px currentColor;
+  color: var(--ink);
   font-size: 14px;
   font-weight: 800;
 }
 
-/* The tear-off line, with a notch punched out of each side. */
-.tPerf {
-  position: relative;
-  height: 2px;
-  margin: 0 16px;
-  background: linear-gradient(90deg, currentColor 50%, transparent 0) 0 0 / 10px 2px repeat-x;
-  opacity: 0.55;
+/* The one number: what it costs while nobody owns it, what it charges once
+ * somebody does, the crop on the farm, the fine, the bonus, the pot. */
+.tHeadline {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
 
-.tPerf::before,
-.tPerf::after {
-  content: "";
-  position: absolute;
-  top: -9px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--surface);
+.tHeadline span {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
-.tPerf::before {
-  left: -26px;
+.tHeadline strong {
+  flex: none;
+  font-family: var(--f-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
-.tPerf::after {
-  right: -26px;
+/* Diplomacy's mod chips — why the headline rent above is what it is, when it
+ * is not just the schedule's base number. Small and secondary on purpose: the
+ * big number already said the amount, this only explains it, and it must
+ * still fit on the shortest card next to a four-row table. Wraps rather than
+ * clipping — losing "Alliance +25%" to an ellipsis would be worse than the
+ * card being one line taller. */
+.tMods {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -4px;
 }
 
-.tStub {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 12px 16px 14px;
-}
-
-.tStub strong {
-  display: block;
-  font-size: 18px;
+.tModChip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--sunk);
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* The schedule. Form B: column-major in two columns of four, so it still reads
+ * top to bottom — Rent, Colour set, 1, 2 | 3, 4, Hotel — in half the height.
+ * A railroad's four rows and the farm's three make a single column by the same
+ * rule, at the same height or less.
+ *
+ * This is the card's ONLY flexible child: `flex: 0 1 auto` + clip. If a form's
+ * sums are ever wrong by a few pixels (a font that did not load, a user's
+ * larger text size), what is lost is the bottom edge of this table and not the
+ * headline above it. */
+.tTable {
+  flex: 0 1 auto;
+  display: grid;
+  grid-template-rows: repeat(4, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  column-gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.tTable li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tTable li span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Hierarchy from size, weight and tracking only. `opacity` here dimmed white
- * label text against half the group tints until it failed AA. */
-.tStub span {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.tTable li strong {
+  flex: none;
+  color: var(--ink);
+  font-weight: 800;
 }
 
-.tNote {
-  padding: 12px 16px 14px;
-  font-size: 16px;
+/* The row in force. A sunk plate AND an ink ring: --sunk on --surface is a 3%
+ * step in the light theme, which is a hint and not a highlight, and the band
+ * colour cannot be borrowed for it — on a railroad it is near-white. Ink on
+ * surface is the one pair that is unmistakable on every card in both themes. */
+.tTable li[data-cur] {
+  background: var(--sunk);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+  color: var(--ink);
+}
+
+/* A footnote to numbers that are already there — the farm's "who harvests this
+ * and how". "Crop 1250$" on a space that charges its visitors nothing is
+ * unreadable on its own, so the rule goes directly beneath it. Smaller and
+ * quieter than .tNote, which is a whole space's only line. */
+.tFine {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 700;
+  line-height: 1.35;
+}
+
+/* A space with no deed gets one sentence, and the whole body of the card to
+ * say it in — centred in the room the table would have had, at a size that
+ * looks like it was meant to be there rather than left over. It is the
+ * flexible child on these cards (they have no table), and a drawn card's text
+ * can run to four lines, so it clips rather than pushing the name out. */
+.tNote {
+  flex: 1 1 auto;
+  display: grid;
+  align-content: center;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* Form B (the rules above), for the record:
+ *   band 36 + pad 10 + name 30|60 + owner 28 + headline 38
+ *   + table 4 x 23 + 9 + pad 12 + 3 gaps of 6
+ *   = 272 with a one-line name, 302 with two, 308 with a Build pill as well.
+ *
+ * Form A — 465px and up. One row per line, everything a size larger.
+ *   band 42 + pad 16 + name 35|69 + owner 30 + headline 46
+ *   + table 7 x 28 + 9 + pad 18 + 3 gaps of 10
+ *   = 423 with a one-line name, 457 with two, 461 with a Build pill as well. */
+@container (min-height: 465px) {
+  .tBand {
+    min-height: 42px;
+  }
+
+  .grp {
+    font-size: 13px;
+  }
+
+  .tBody {
+    gap: 10px;
+    padding: 16px 18px 18px;
+  }
+
+  .pname {
+    font-size: 30px;
+  }
+
+  .tOwner {
+    min-height: 30px;
+    font-size: 16px;
+  }
+
+  .tHeadline strong {
+    font-size: 42px;
+  }
+
+  .tTable {
+    grid-template-rows: none;
+    grid-auto-flow: row;
+  }
+
+  .tTable li {
+    padding: 4px 10px;
+    font-size: 14px;
+  }
+
+  .tFine {
+    font-size: 14px;
+  }
+
+  .tNote {
+    font-size: 21px;
+  }
+}
+
+/* Form C — under 310px. The schedule shrinks to the row in force and its two
+ * neighbours (Ticket.jsx marks them `data-near`), set as three chips on one
+ * line: what it charges now, what it charged before the last house, what the
+ * next one makes it. The farm's footnote holds to two lines.
+ *   band 32 + pad 10 + name 25|51 + owner 26 + headline 31
+ *   + chips 48 + pad 12 + 3 gaps of 6
+ *   = 202 with a one-line name, 228 with two, 236 with a Build pill as well. */
+@container (max-height: 309.98px) {
+  .tBand {
+    min-height: 32px;
+    padding-block: 4px;
+  }
+
+  .tBody {
+    gap: 6px;
+    padding: 10px 14px 12px;
+  }
+
+  .pname {
+    font-size: 22px;
+  }
+
+  .tOwner {
+    min-height: 26px;
+    font-size: 14px;
+  }
+
+  .tHeadline strong {
+    font-size: 28px;
+  }
+
+  .tTable {
+    grid-template-rows: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: row;
+    column-gap: 6px;
+    padding-top: 6px;
+  }
+
+  .tTable li:not([data-near]) {
+    display: none;
+  }
+
+  .tTable li {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 3px 4px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .tTable li span {
+    max-width: 100%;
+  }
+
+  .tTable li strong {
+    font-size: 14px;
+    letter-spacing: 0;
+  }
+
+  .tFine {
+    font-size: 12px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .tNote {
+    font-size: 16px;
+  }
+}
+
+/* Form D — under 240px. No schedule and no footnote. The owner and the
+ * headline share one line, the headline stacked (label over number) at its
+ * right-hand end; a space with no deed keeps its sentence, smaller.
+ *   band 28 + pad 8 + name 23|46 + gap 4 + line 38 + pad 10
+ *   = 111 with a one-line name, 134 with two (the pill is shorter than the
+ *   stacked headline beside it, so it costs nothing here). */
+@container (max-height: 239.98px) {
+  .tBand {
+    min-height: 28px;
+    padding-block: 2px;
+  }
+
+  .tBody {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: 4px 12px;
+    padding: 8px 14px 10px;
+  }
+
+  .pname {
+    grid-column: 1 / -1;
+    font-size: 20px;
+  }
+
+  .tOwner {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .tHeadline {
+    grid-column: 2;
+    grid-row: 2;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+  }
+
+  .tHeadline span {
+    font-size: 9px;
+  }
+
+  .tHeadline strong {
+    font-size: 22px;
+  }
+
+  /* no owner beside it, so the number takes the line and sits under the name */
+  .ticket[data-plain] .tHeadline {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .tTable,
+  .tFine {
+    display: none;
+  }
+
+  /* Pinned to the flexible third row, headline or no headline: auto-placed,
+   * a card with no headline (Jail, Chance) put its sentence in the empty
+   * second row, hard under the name, with the whole stretchy row left as a
+   * hole beneath it. */
+  .tNote {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    font-size: 14px;
+    line-height: 1.3;
+  }
+}
+
+/* Form E — under 140px: a landscape phone during an auction, or any phone
+ * with two banners up and the casino open. One line. The band turns on its
+ * side and becomes the mark on a block of the space's colour; the group and
+ * the flag are dropped (the mark and the colour say the first, the auction
+ * panel right below says the second); then name, owner, number. ~50px. */
+@container (max-height: 139.98px) {
+  .ticket {
+    flex-direction: row;
+    border-radius: 16px;
+  }
+
+  .ticket[data-plain] {
+    min-height: 0;
+  }
+
+  .tBand {
+    min-height: 0;
+    padding: 0 8px;
+  }
+
+  .grp,
+  .tFlag {
+    display: none;
+  }
+
+  .tBody {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+  }
+
+  /* The name holds 5em of this line against everything else on it. Without
+   * that floor it is the only `flex: 1` item among fixed ones, and a Build
+   * pill beside a stacked headline squeezed it to NOTHING — a card with a
+   * colour, an owner and a rent, and no name. What gives way instead is the
+   * owner's name (the token beside it says who) and the pill's word. */
+  .pname {
+    flex: 1 1 0;
+    min-width: 5em;
+    font-size: 16px;
+    text-align: left;
+  }
+
+  .tOwner {
+    flex: 0 1 auto;
+    gap: 6px;
+  }
+
+  .tBuild {
+    padding: 0 13px;
+  }
+
+  .tBuildTxt {
+    display: none;
+  }
+
+  .tOwnerLab {
+    display: none;
+  }
+
+  .tPips {
+    --pip: 14px;
+  }
+
+  .tHeadline,
+  .ticket[data-plain] .tHeadline {
+    flex: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+  }
+
+  /* "RENT · OWNER IS IN JAIL" is the one label longer than its number; here it
+   * wraps under itself rather than being ellipsised into "RENT · OW…", which
+   * would leave a 0$ with no reason attached. */
+  .tHeadline span {
+    max-width: 96px;
+    line-height: 1.15;
+    text-align: right;
+    white-space: normal;
+  }
+
+  .tHeadline strong {
+    font-size: 18px;
+  }
+
+  .tNote {
+    display: none;
+  }
 }
 
 /* ------------------------------------------------------------------- dice */
@@ -1851,14 +2363,14 @@
   animation: breathe 1600ms ease-in-out infinite;
 }
 
-.skelPath {
-  height: 40px;
-  border-radius: 20px;
-}
-
+/* Where the deed card is about to be: in the aura's flexible row, centred the
+ * way the card is, and on the aura rather than on a surface — hence the ink
+ * mix the name and cash placeholders use, and not --sunk. */
 .skelTicket {
-  height: 118px;
-  border-radius: 20px;
+  align-self: center;
+  height: min(100%, 260px);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
   animation-delay: 160ms;
 }
 
@@ -1870,16 +2382,16 @@
 }
 
 .skelCash {
-  width: 148px;
-  height: 36px;
-  margin-top: 6px;
-  border-radius: 12px;
+  width: 96px;
+  height: 26px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--ink) 12%, transparent);
 }
 
 .skelTurn {
-  width: 116px;
-  height: 24px;
+  margin-left: auto;
+  width: 96px;
+  height: 20px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--ink) 12%, transparent);
 }
@@ -1926,7 +2438,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bump,
-  .hop,
   .pulse,
   .skel {
     animation: none;
@@ -1956,56 +2467,41 @@
 
 /* ------------------------------------------------------- short viewports */
 
-/* Short phones (360×640 and friends): two event rows, never a clipped third —
- * and enough taken out of everything else that those two rows actually fit
- * above the panel instead of sliding under it. Nothing drops below the 44px
- * minimum hit size. */
+/* Short phones (360×640 and friends). This block used to be about event rows
+ * — "two, never a clipped third" — and about shaving the path and the ticket.
+ * None of those exist any more. What is left is the FIXED part of the screen
+ * giving up pixels: the bar, the aura's padding and the panel's buttons. Every
+ * one of them goes to the deed card, which does not need a rule here at all —
+ * it measures the row it ends up with and picks its own form (see "deed card").
+ * At 360×640 that is form B or C: the full table folded in two on somebody
+ * else's turn, the row in force and its neighbours while a Buy / Auction
+ * choice has the panel at its tallest. Nothing drops below the 44px minimum
+ * hit size. */
 @media (max-height: 700px) {
   .aura {
     gap: 8px;
-    padding: calc(env(safe-area-inset-top, 0px) + 6px) 20px 10px;
+    padding: calc(env(safe-area-inset-top, 0px) + 6px) 16px 6px;
   }
 
   .auraTop {
-    gap: 8px;
+    gap: 6px;
   }
 
-  .dLeft strong {
-    font-size: 30px;
+  .bar {
+    gap: 4px;
+  }
+
+  .cashBox strong {
+    font-size: 22px;
   }
 
   .dTurn {
-    font-size: 20px;
-  }
-
-  .evs > *:nth-child(3) {
-    display: none;
+    font-size: 16px;
   }
 
   .panel {
     gap: 8px;
     padding-top: 12px;
-  }
-
-  .pathDots {
-    height: 34px;
-  }
-
-  .pdCur {
-    width: 34px;
-    height: 34px;
-  }
-
-  .tTop {
-    padding: 10px 14px 8px;
-  }
-
-  .tStub {
-    padding: 8px 14px 10px;
-  }
-
-  .tNote {
-    padding: 8px 14px 10px;
   }
 
   .dicebox {
@@ -2074,64 +2570,44 @@
 }
 
 /* Very short viewports: a landscape phone (844x390, 667x375) or a small
- * portrait phone once the browser chrome is counted (390x500). Below the
- * height where two whole event rows still fit — measured: the rows block is
- * 124px, and at 500px of viewport it only gets 85px — the rows and the
- * "Latest" label go away entirely rather than being served as a sliver. Two
- * rows or none, never half of one; .evsWrap's `max-height: 100%` above
- * guarantees the "none" case can never turn back into an overlap.
+ * portrait phone once the browser chrome is counted (390x500).
  *
- * "Full log" stays: it is the way to the history the rows were showing, so it
- * is the last thing that should disappear. It keeps its full 44px target and
- * moves to the right-hand end of the line it now has to itself.
+ * The latest line STAYS, at its full 44px. When it was a block of three rows
+ * this is where the rows went away and only "Full log" survived; one row costs
+ * no more than that lone button did, so there is nothing left to take out.
  *
  * The rest is the same trade the max-height: 700px block above makes, one
- * step further: the identity block folds onto single lines and the panel gives
- * up padding, so what is left actually fits instead of being clipped. */
+ * step further: the bar sets smaller, the panel gives up padding, and the deed
+ * card — which at 390x500 gets about 200px — drops to form D (no table, owner
+ * and headline on one line) by itself. */
 @media (max-height: 520px) {
   .aura {
     gap: 4px;
-    padding: calc(env(safe-area-inset-top, 0px) + 4px) 20px 6px;
+    padding: calc(env(safe-area-inset-top, 0px) + 4px) 16px 2px;
   }
 
   .auraTop {
-    gap: 6px;
+    gap: 4px;
   }
 
-  /* name and cash on one baseline, turn and tokens on one line */
-  .dLeft {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    min-width: 0;
+  .bar {
+    gap: 2px;
   }
 
-  .dLeft strong {
-    font-size: 22px;
+  .cashBox strong {
+    font-size: 18px;
   }
 
   .dName {
-    font-size: 12px;
-  }
-
-  .dRight {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
+    font-size: 13px;
   }
 
   .dTurn {
-    font-size: 15px;
+    font-size: 14px;
   }
 
-  .evs,
-  .evsLab {
-    display: none;
-  }
-
-  .evsHead {
-    justify-content: flex-end;
+  .potPill {
+    padding-block: 0;
   }
 
   .bn {
@@ -2143,24 +2619,6 @@
   .panel {
     gap: 6px;
     padding-top: 8px;
-  }
-
-  .pathDots {
-    height: 26px;
-  }
-
-  .pdCur {
-    width: 26px;
-    height: 26px;
-  }
-
-  .tTop {
-    padding: 6px 14px 4px;
-  }
-
-  .tStub,
-  .tNote {
-    padding: 6px 14px 8px;
   }
 
   .dicebox {
@@ -2245,11 +2703,44 @@
 
 /* ------------------------------------------------- landscape phones + auction */
 
+/* A landscape phone has width to burn and no height at all, so the aura stops
+ * stacking: the bar's two lines become one (name, cash and turn on the left,
+ * tokens and pot on the right), and the deed card and the latest line sit SIDE
+ * BY SIDE in the row under it instead of one above the other. That is 70px of
+ * a 390px screen handed back to the card. The width test keeps this off the
+ * small PORTRAIT phones the block above also serves (390x500), where half the
+ * width is no place for a card. */
+@media (max-height: 520px) and (min-width: 560px) {
+  /* 3:2, not half and half: the card's one-line form carries four things and
+   * the latest line carries one. */
+  .aura {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 12px;
+  }
+
+  .auraTop {
+    grid-column: 1 / -1;
+  }
+
+  .bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .latest {
+    align-self: center;
+  }
+}
+
 /* A landscape phone (844×390, 667×375) during an auction is the tightest the
- * controller ever gets: the panel carries the path, the ticket for the space
- * being sold, three auction rows and the nav, and the aura is left with a
- * single line for the player's own name and cash. Measured at 844×390 that
- * line was clipped to nothing.
+ * controller ever gets. It used to be tighter: the panel carried the path, the
+ * ticket for the space being sold, three auction rows and the nav, and the aura
+ * was left with a single line for the player's own name and cash — measured at
+ * 844×390, that line was clipped to nothing. The path is gone and the ticket
+ * is the deed card in the aura now, so the panel is only the auction and the
+ * nav; the card gets ~120px here and shows its one-line form (E).
  *
  * So the chips stop being DRAWN — and only that. The clip below is the same
  * one `.sr` uses, so every chip's sentence ("Koli: bid 110$, leading", "Ero:
