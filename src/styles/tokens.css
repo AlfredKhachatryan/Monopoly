@@ -2,6 +2,10 @@
  *
  * The :root block below is the dark palette the Board and the Login page are
  * built on (they use styled-components and read a few of these directly).
+ * Dark is its DEFAULT and stays the default: a shared TV in a dark room is the
+ * normal case for this game, so the board only goes light when somebody asks
+ * for it. The light counterpart lives in "the manual override layer" at the
+ * bottom of the file, under html[data-theme="light"].
  *
  * The one idea worth knowing about the phone Client: --tint is not fixed.
  * ClientScreen sets it on its root element to the colour of the cell the player
@@ -11,13 +15,30 @@
  */
 
 :root {
-  /* surfaces, darkest to lightest */
-  --bg: #100e17;
+  /* The page this palette paints is dark and has no light default, so the
+   * browser's own chrome — scrollbars, the Login inputs, a <select> — has to be
+   * told, or it keeps painting its light-mode widgets on top of a near-black
+   * page. Same trap as the one documented on [data-client] below, except here
+   * there is nothing to follow: the answer is simply "dark", and the override
+   * layer at the bottom of the file flips it with the rest of the palette. */
+  color-scheme: dark;
+
+  /* surfaces, darkest to lightest.
+   * --bg was #100e17, a purple-black. Per spec §7 it is now a NEUTRAL charcoal:
+   * the eight street-group hues are the only saturated thing on the board and a
+   * violet ground tilted every one of them, warm groups worst of all. Anything
+   * that wants purple should say so; the ground must not. */
+  --bg: #0f1115;
   --surface: #17151f;
   --surface-2: #1f1c2a;
   --surface-3: #2a2637;
   --line: #ffffff14;
   --line-strong: #ffffff26;
+
+  /* A wash laid OVER content (blur backdrops, the dimmer behind a selected
+   * figure). It is not a surface — it has to darken in dark mode and lighten in
+   * light mode, which is the opposite of what --surface does. */
+  --scrim: #20202062;
 
   /* text */
   --text: #f4f2f8;
@@ -100,6 +121,12 @@
  * --tint / --on-tint are written inline on the same element by ClientScreen,
  * from accentFor(cell) / readableOn(accent), so the whole controller re-themes
  * on a move with no re-render of anything below it.
+ *
+ * Since 2026-09-20 this is no longer "no in-app switch": the OS preference is
+ * still the DEFAULT, but a manual Light/Dark choice can be layered on top of it
+ * from the Game sheet or the board. See "the manual override layer" at the
+ * bottom of this file — nothing in this block or in the @media block below it
+ * changed, because "System" has to keep meaning exactly what it means today.
  * ------------------------------------------------------------------------- */
 
 [data-client] {
@@ -209,4 +236,429 @@ body.client-active {
     --die-bc: #99a3b1;
     --die-edge: #4c5663;
   }
+}
+
+/* ===========================================================================
+ * THE MANUAL OVERRIDE LAYER  (spec §10)
+ *
+ * Three states, one attribute, on <html>:
+ *
+ *   System   no attribute at all          everything above this line applies
+ *                                         unchanged: [data-client] is light and
+ *                                         the prefers-color-scheme block flips
+ *                                         it. This is why nothing above was
+ *                                         edited — "System" is not a third
+ *                                         palette, it is the ABSENCE of a
+ *                                         choice, so the only honest way to
+ *                                         implement it is to leave the media
+ *                                         queries alone and add nothing.
+ *   Light    <html data-theme="light">
+ *   Dark     <html data-theme="dark">
+ *
+ * src/Hooks/useTheme.js writes and removes the attribute and persists the
+ * choice under localStorage "monopoly.theme" (the key is only written for an
+ * explicit light/dark; System REMOVES it, so "no key" and "no attribute" mean
+ * the same thing in both layers). index.html re-applies it in a blocking inline
+ * script before the first paint, so a dark-mode player never sees a white flash.
+ *
+ * SPECIFICITY — the one thing that has to be right.
+ * The existing rules are `[data-client]` (0,1,0) and, inside the media query,
+ * `[data-client]` again (0,1,0). A media query adds NOTHING to specificity, so
+ * an override written as a plain `[data-client][data-theme="light"]`… would tie
+ * with the dark block and win on source order alone — true as the file stands,
+ * and one re-ordering of imports away from silently breaking. Every override
+ * below is therefore written so that it outranks what it overrides outright:
+ *
+ *   html[data-theme="light"]                 (0,1,1)  beats :root         (0,1,0)
+ *   [data-theme="light"] [data-client]        (0,2,0)  beats [data-client] (0,1,0)
+ *
+ * so the manual choice wins in BOTH directions — forcing light under a dark OS
+ * and forcing dark under a light OS — whatever order the bundler emits.
+ *
+ * The :root blocks are written `html[data-theme="…"]` and NOT
+ * `:root[data-theme="…"]` for one concrete reason: lightningcss (vite build)
+ * rewrites the second to a bare `[data-theme="…"]`, which drops it from (0,2,0)
+ * to (0,1,0) — a tie with :root that survives only on source order. `html` is a
+ * type selector, the minifier leaves it alone, and (0,1,1) beats :root outright.
+ *
+ * The cost of not touching the @media block is that the light and dark values
+ * of the ~20 primitive [data-client] tokens are written twice: once for System
+ * and once for the forced state. THEY MUST STAY IDENTICAL. Everything that can
+ * be DERIVED from a primitive is derived instead (see the alias block below),
+ * so the lists that have to be kept in sync are as short as they can be.
+ * ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+ * Board-side tokens, part 1: the aliases.
+ *
+ * The TV board puts `data-client=""` on its root (BoardScreen.jsx), so it reads
+ * THIS scope, not the :root scope — tv.module.css only ever asks for --ground,
+ * --ink, --surface, --muted, --sunk, --line, --focus, --shadow, --neu-bg.
+ * The :root palette has a richer vocabulary (--text-dim, --glass, --shadow-1)
+ * that the board had no light-mode answer for.
+ *
+ * Rather than duplicate a second full palette here, every one of those names is
+ * re-pointed at the [data-client] primitive that already flips in all three
+ * states. var() resolves per element and per state, so these are written ONCE
+ * and are correct in System-light, System-dark, forced light and forced dark
+ * with no further maintenance. Adding a value to the override blocks below is
+ * only ever necessary for something that cannot be expressed this way.
+ * ------------------------------------------------------------------------- */
+
+[data-client] {
+  --bg: var(--ground);
+  --surface-2: var(--sunk);
+  --surface-3: var(--neu-bg);
+  --line-strong: color-mix(in srgb, var(--line) 62%, var(--ink));
+
+  --text: var(--ink);
+  --text-dim: var(--muted);
+  --text-faint: color-mix(in srgb, var(--muted) 62%, transparent);
+
+  /* --ink is near-black in light and near-white in dark, so "a little ink over
+   * the surface" is the correct glass in both — it inverts by itself. */
+  --glass: color-mix(in srgb, var(--ink) 7%, transparent);
+  --glass-strong: color-mix(in srgb, var(--ink) 12%, transparent);
+  --glass-edge: color-mix(in srgb, var(--ink) 18%, transparent);
+
+  --shadow-1: 0 2px 10px color-mix(in srgb, var(--shadow) 45%, transparent);
+  --shadow-2: 0 8px 30px var(--shadow);
+
+  /* A wash laid OVER the board, so it follows the ground, not the surface. */
+  --scrim: color-mix(in srgb, var(--ground) 62%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+ * Board-side tokens, part 2: the one value that cannot be derived.
+ *
+ * Spec §7: an ownable nobody has bought yet recedes. On the dark board that
+ * means dimmer — `saturate(.5) brightness(.65)` — but on a LIGHT board dimming
+ * a colour makes it HEAVIER, not lighter, and the unowned tiles would end up
+ * shouting louder than the owned ones. Receding on white means washing out.
+ * So this is a genuine per-theme value and has to be stated in each of the four
+ * states below. It is the only one that does.
+ *
+ * Owned tiles get no filter at all, and neither do non-ownables — dimming means
+ * "nobody has bought this yet", so it may only ever land on something buyable.
+ * ------------------------------------------------------------------------- */
+
+[data-client] {
+  /* REWRITTEN 2026-09-20. This used to be `saturate(.4) brightness(1.16)` and it
+   * was the single biggest reason the owner called the board "pale and grayish":
+   * brightness ABOVE 1 does not make a colour recede, it pushes it towards
+   * WHITE, so on a fresh board — where all 22 ownables are unowned — every group
+   * band and every mark was washed out at once and the board had almost no
+   * colour left in it.
+   *
+   * The light answer is now opacity, not brightness. opacity() in a filter lets
+   * the tile's own --surface show through, which on a light page reads as
+   * "further away" for exactly the same reason brightness(1.16) was reaching
+   * for, except it cannot overshoot into white and it keeps the hue intact at
+   * any strength. .62 is deliberately gentle: an unowned board must still look
+   * like a colourful board. */
+  --dim-unowned: saturate(0.8) opacity(0.62);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-client] {
+    /* Was `saturate(.5) brightness(.65)`. Same complaint from the other side:
+     * a third of the light and half the saturation gone is not "recessive", it
+     * is grey. Gentle now — the tile still steps back, the hue survives. */
+    --dim-unowned: saturate(0.85) brightness(0.8);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Forced LIGHT — the client and the board.
+ * Restates the base [data-client] palette at a specificity that beats the
+ * prefers-color-scheme block. Keep in sync with the [data-client] block at the
+ * top of this file.
+ * ------------------------------------------------------------------------- */
+
+[data-theme="light"] [data-client],
+[data-client][data-theme="light"] {
+  /* The same trap the base block documents, from the other side: the page is
+   * now light BY CHOICE, so the browser has to stop consulting the OS, or a
+   * dark-mode phone keeps painting a black scrollbar on a white sheet. */
+  color-scheme: light;
+
+  --surface: #ffffff;
+  --sunk: #f1f3f6;
+  --ink: #0e1116;
+  --muted: #535c69;
+  --line: #e1e5eb;
+  --ground: #f4f6f8;
+
+  --glow-base: #ffffff;
+  --glow-mix: 55%;
+
+  --pos: #177a45;
+  --pos-bg: #e2f4e9;
+  --neg: #b42323;
+  --neg-bg: #fbe4e4;
+  --neu-bg: #eceff3;
+  --ev-bg: color-mix(in srgb, #ffffff 82%, transparent);
+
+  --shadow: rgba(14, 17, 22, 0.45);
+  --focus: #0e1116;
+
+  --die-bg: #ffffff;
+  --pip: #0e1116;
+  --die-bc: #aab4c2;
+  --die-edge: #59636f;
+
+  --dim-unowned: saturate(0.8) opacity(0.62);
+}
+
+/* ---------------------------------------------------------------------------
+ * Forced DARK — the client and the board.
+ * Restates the @media (prefers-color-scheme: dark) block above. Keep in sync.
+ * ------------------------------------------------------------------------- */
+
+[data-theme="dark"] [data-client],
+[data-client][data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface: #171a20;
+  --sunk: #222730;
+  --ink: #eef1f5;
+  --muted: #a3abb7;
+  --line: #2c3139;
+  --ground: #0d0f13;
+
+  --glow-base: #0d0f13;
+  --glow-mix: 45%;
+
+  --pos: #3ddc84;
+  --pos-bg: rgba(61, 220, 132, 0.15);
+  --neg: #ff6b6b;
+  --neg-bg: rgba(255, 107, 107, 0.16);
+  --neu-bg: #272c35;
+  --ev-bg: color-mix(in srgb, #171a20 80%, transparent);
+
+  --shadow: rgba(0, 0, 0, 0.8);
+  --focus: #eef1f5;
+
+  --die-bg: #eef1f5;
+  --pip: #0d0f13;
+  /* was #eef1f5 — identical to --die-bg, i.e. no hairline at all */
+  --die-bc: #99a3b1;
+  --die-edge: #4c5663;
+
+  --dim-unowned: saturate(0.85) brightness(0.8);
+}
+
+/* ===========================================================================
+ * THE TV BOARD IS ALWAYS DARK.
+ *
+ * BoardScreen.jsx puts BOTH `data-client=""` and `data-tv=""` on its root. The
+ * first buys it the whole shared vocabulary above; this block then pins the
+ * half of it that must not follow the operating system.
+ *
+ * WHY. Everything above this line is written for the PHONE, where following the
+ * OS is correct: it is one person's device, held at arm's length, and it should
+ * look like the rest of their phone. The board is the opposite thing — a shared
+ * screen across a room, usually a TV, usually with the lights down, read by
+ * six people at once. It was following the OS too, which meant that on any
+ * machine set to light mode the whole board rendered on #f4f6f8 near-white.
+ * That is what "too pale and grayish" was: not a taste problem, a bug. The
+ * phone is deliberately NOT pinned and still follows the OS exactly as before.
+ *
+ * The palette is also richer than the old dark one. --ground went from a
+ * neutral #0d0f13 to a deep blue-black #0b0d14 and --surface from #171a20 to
+ * #141822: a faint blue cast under the tiles makes the eight street hues sit ON
+ * something rather than float on soot, and it costs nothing in contrast (--ink
+ * on --surface is still >14:1).
+ *
+ * SPECIFICITY — the whole reason this block is shaped the way it is.
+ *
+ *   [data-tv]                        (0,1,0)  ties with [data-client] and with
+ *                                             the @media block, and wins on
+ *                                             source order. Both are in THIS
+ *                                             file, above this line, so that
+ *                                             order is not the bundler's to
+ *                                             change. Covers "System".
+ *   html[data-theme="dark"] [data-tv] (0,2,1) beats the forced-dark
+ *                                             [data-theme="dark"] [data-client]
+ *                                             (0,2,0), which would otherwise
+ *                                             hand the board back the OLD dark
+ *                                             values. Same declarations, so it
+ *                                             is a second selector on the same
+ *                                             block rather than a second copy.
+ *
+ * and the escape hatch, below: html[data-theme="light"] [data-tv] (0,2,1),
+ * which beats this block outright in both its arms. Forcing light from the
+ * board's own ThemeControl still works.
+ *
+ * `html[data-theme=…]` and never `:root[data-theme=…]`: lightningcss (the vite
+ * build) rewrites the second to a bare `[data-theme=…]`, collapsing (0,2,1) to
+ * (0,1,1). The file says this once already, further up; it is repeated here
+ * because this is the block where getting it wrong turns the board white.
+ * ========================================================================= */
+
+[data-tv],
+html[data-theme="dark"] [data-tv] {
+  /* Not `light dark`. The page is pinned, so the browser must stop consulting
+   * the OS: without this a light-mode machine paints a white scrollbar and
+   * light form widgets on a near-black board. */
+  color-scheme: dark;
+
+  /* The four the rest of the board is built out of. */
+  --ground: #0b0d14;
+  --surface: #141822;
+  --sunk: #1b2030;
+  --ink: #f4f2f8;
+
+  /* Derived from those four in the same spirit as the dark block above: --muted
+   * is --ink drained towards the ground, --line and --neu-bg sit between
+   * --surface and --sunk so a hairline and a chip are both visible without
+   * either becoming a box. Everything ELSE the board reads (--bg, --surface-2,
+   * --surface-3, --line-strong, --text*, --glass*, --shadow-1/2, --scrim) is
+   * already derived from these names in the alias block above and needs no
+   * entry here — that is the point of the aliases. */
+  --muted: #a6adc0;
+  --line: #2a3040;
+  --neu-bg: #222839;
+  --ev-bg: color-mix(in srgb, #141822 80%, transparent);
+
+  /* The centre glow mixes the focused cell's --tint into --glow-base, so this
+   * has to be the ground it is actually drawn on or the glow has a halo. */
+  --glow-base: #0b0d14;
+  --glow-mix: 45%;
+
+  /* Money colours: the DARK pair, always. This is the half of the palette that
+   * broke most visibly on a light-mode machine — the light --pos (#177a45) is a
+   * dark green and was being painted on a near-black card. */
+  --pos: #3ddc84;
+  --pos-bg: rgba(61, 220, 132, 0.15);
+  --neg: #ff6b6b;
+  --neg-bg: rgba(255, 107, 107, 0.16);
+
+  --shadow: rgba(0, 0, 0, 0.85);
+  --focus: #f4f2f8;
+
+  --die-bg: #eef1f5;
+  --pip: #0b0d14;
+  --die-bc: #99a3b1;
+  --die-edge: #4c5663;
+
+  --dim-unowned: saturate(0.85) brightness(0.8);
+}
+
+/* The escape hatch. (0,2,1), so it beats both arms of the pin above.
+ *
+ * It is a third copy of the light primitives and that is a real cost — see the
+ * "THEY MUST STAY IDENTICAL" note further up, which now covers three lists and
+ * not two. The alternative was to leave forced-light to the existing
+ * `[data-theme="light"] [data-client]` (0,2,0), which does happen to beat the
+ * (0,1,0) arm of the pin today — but not the (0,2,1) arm, and only for the
+ * token names the two blocks happen to share. A TV-only token added to the pin
+ * later would then have no light answer at all and would silently stay dark.
+ * One explicit block that outranks the pin outright is the only version of this
+ * that cannot rot. */
+html[data-theme="light"] [data-tv] {
+  color-scheme: light;
+
+  --surface: #ffffff;
+  --sunk: #f1f3f6;
+  --ink: #0e1116;
+  --muted: #535c69;
+  --line: #e1e5eb;
+  --ground: #f4f6f8;
+
+  --glow-base: #ffffff;
+  --glow-mix: 55%;
+
+  --pos: #177a45;
+  --pos-bg: #e2f4e9;
+  --neg: #b42323;
+  --neg-bg: #fbe4e4;
+  --neu-bg: #eceff3;
+  --ev-bg: color-mix(in srgb, #ffffff 82%, transparent);
+
+  --shadow: rgba(14, 17, 22, 0.45);
+  --focus: #0e1116;
+
+  --die-bg: #ffffff;
+  --pip: #0e1116;
+  --die-bc: #aab4c2;
+  --die-edge: #59636f;
+
+  --dim-unowned: saturate(0.8) opacity(0.62);
+}
+
+/* ---------------------------------------------------------------------------
+ * Forced LIGHT — the :root palette (the legacy .itemCard board in main.css, the
+ * Login page, and anything reading a :root token outside a [data-client] tree).
+ *
+ * There is deliberately no html[data-theme="dark"] counterpart for the
+ * colours: :root IS the dark palette, so "forced dark" is already exactly what
+ * the top of this file says, and restating it would be a second copy to keep in
+ * sync for nothing. Only color-scheme is repeated, because it is one line and
+ * it makes the intent readable at the point of use.
+ *
+ * The values mirror the [data-client] light palette one for one — ground,
+ * surface, ink — so a light board and a light phone are the same light, and the
+ * charcoal/white pair stays neutral in both directions (spec §7).
+ * ------------------------------------------------------------------------- */
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --surface-3: #e2e7ee;
+  --line: #0f111514;
+  --line-strong: #0f111526;
+
+  --scrim: #ffffff8f;
+
+  --text: #0e1116;
+  --text-dim: #0e1116a6;
+  --text-faint: #0e111666;
+
+  /* Ink over paper, where the dark palette has white over black. */
+  --glass: #0e111612;
+  --glass-strong: #0e11161f;
+  --glass-edge: #0e11162e;
+
+  --shadow-1: 0 2px 10px #0e11161f;
+  --shadow-2: 0 8px 30px #0e11162e;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * <body> under a forced theme.
+ *
+ * Neither body class can read --ground: it is declared on the client/TV root,
+ * which is a DESCENDANT of <body>, so the literals below are the --ground
+ * values copied by hand. They are only ever seen for one frame of rubber-band
+ * overscroll, and getting them from a custom property would mean publishing
+ * --ground on :root and leaking the client palette onto Login.
+ *
+ * body.tv-active is declared in Board/tv.module.css; `html[data-theme] body.x`
+ * is (0,2,1) and beats its (0,1,0) rule from any source order, so the board's
+ * letterbox follows the manual choice too.
+ *
+ * THE TV IS THE EXCEPTION NOW. Its letterbox is pinned to the board's --ground
+ * (#0b0d14) whenever the TV is mounted, exactly like the [data-tv] block above
+ * pins everything else, so it is declared ONCE, in tv.module.css, with no media
+ * query — and this file no longer states a dark value for it, because there is
+ * nothing left to override. Only the forced-LIGHT line below still mentions
+ * body.tv-active, and it is the one case where the board is not dark.
+ * The two files are not fighting any more: tv.module.css owns the default,
+ * this file owns the single explicit exception.
+ * ------------------------------------------------------------------------- */
+
+html[data-theme="light"] body.client-active,
+html[data-theme="light"] body.tv-active {
+  background: #f4f6f8;
+}
+
+html[data-theme="dark"] body.client-active {
+  background: #0d0f13;
 }

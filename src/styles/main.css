@@ -1,8 +1,27 @@
+/* This file is loaded FIRST (src/main.jsx), before styles/tokens.css and before
+ * every CSS module, and it is the only global stylesheet the legacy .itemCard
+ * board and the Login page have. Everything here is either layout or a colour
+ * that now comes from a token — nothing in it may hardcode a colour again, or
+ * that colour is frozen in dark mode forever (spec §10).
+ *
+ * `* { color: … }` was `#fff`. A universal selector lands on every element
+ * directly, so it beats inheritance and cannot be themed from an ancestor; the
+ * only way to make it follow a theme is for the DECLARATION itself to be a
+ * token. --text is near-white in dark (#f4f2f8, so this is the same paint it
+ * always was) and near-black under [data-theme="light"].
+ *
+ * tokens.css still undoes this rule once, inside [data-client], for the reason
+ * written there: the phone controller and the TV board want inheritance, not a
+ * universal selector, and they say so at a specificity every component rule can
+ * still override. */
 * {
   padding: 0;
   margin: 0;
-  color: #fff;
+  color: var(--text);
 }
+/* Predates tokens.css and is overridden by it (tokens.css is imported after
+ * this file and declares --accent at the same specificity). Left alone rather
+ * than deleted: it is not a colour anything paints with, it is a stale default. */
 :root {
   --accent: #ff4655;
 }
@@ -10,9 +29,12 @@
   background-color: #191528;
   color: white;
 } */
+/* Was #191528, the purple-black. Per spec §7 the ground is a neutral charcoal
+ * so the street-group hues read true, and it is now --bg, which flips with the
+ * theme. */
 body {
-  background-color: #191528;
-  color: #000;
+  background-color: var(--bg);
+  color: var(--text);
   font-family: "Nunito", sans-serif;
 }
 .cont {
@@ -28,7 +50,9 @@ body {
   grid-column-gap: 3px;
   grid-row-gap: 3px;
   max-width: 95%;
-  box-shadow: 0 0 20px 0px hsl(303deg 49% 56% / 18%);
+  /* was a violet glow, hsl(303deg 49% 56% / 18%) — the same purple cast §7
+   * takes off the ground, so it goes with it */
+  box-shadow: var(--shadow-2);
   position: relative;
 }
 .item {
@@ -178,7 +202,7 @@ body {
   padding: 10px 20px;
 }
 .BaseInfo {
-  outline: 1px solid white;
+  outline: 1px solid var(--line-strong);
   grid-area: 5 / 8 / 6 / 5;
   margin: 10px;
 }
@@ -214,16 +238,18 @@ footer {
   bottom: 0;
   font-size: 14px;
   font-weight: 600;
-  background-color: #110e1b;
+  background-color: var(--surface);
 
-  /* Background and Blur */
-  background: rgba(17, 14, 27, 0.85);
+  /* Background and Blur. Was rgba(17,14,27,.85) — the same purple-black the
+   * ground dropped; it is a translucent --surface now, so it follows the theme
+   * and the blur behind it still reads. */
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   border-radius: 8px 8px 0px 0px;
 
-  border: 1px solid rgba(17, 14, 27, 0.3);
+  border: 1px solid var(--line);
 
   /* Box Shadow */
-  box-shadow: 0px 5px 15px 0px #1a1d2082, 0 0 5px 1px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-1);
   z-index: 4;
   /* Glowing Border Animation */
   /* animation: glow 15s infinite alternate; */
@@ -261,8 +287,8 @@ footer {
   font-size: 20px;
 }
 .duotoneColor {
-  --fa-primary-color: #d92650;
-  --fa-secondary-color: #ffffff;
+  --fa-primary-color: var(--accent);
+  --fa-secondary-color: var(--text);
   --fa-secondary-opacity: 1;
 }
 
@@ -271,9 +297,9 @@ footer {
   width: 1.5em;
   height: 10em;
   border-radius: 0px 5px 5px 0px;
-  background-color: #d92650;
+  background-color: var(--accent);
   /* background-color: #4F8C5F; */
-  color: white;
+  color: var(--on-accent);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -309,7 +335,10 @@ footer {
 }
 .bgInner {
   content: "";
-  background-color: #20202062;
+  /* A wash over the blob artwork, not a surface: --scrim darkens in dark mode
+   * and lightens in light mode, which is what "knock this back" means on
+   * either ground. Was #20202062. */
+  background-color: var(--scrim);
   width: 100%;
   height: 100%;
   position: absolute;
@@ -378,7 +407,7 @@ footer {
   left: -2px;
   /* background-color: rgb(42 35 67 / 35%); */
   /* backdrop-filter: blur(3px); */
-  background-color: #121212;
+  background-color: var(--bg);
   z-index: -1;
 }
 .innerBoard::after {
@@ -396,17 +425,20 @@ footer {
   position: absolute;
 }
 
+/* The moving diagonal stripe behind the legacy board. Two tones one step apart
+ * — the ground and the surface sitting on it — so the stripe keeps the same
+ * weak contrast in both themes instead of the fixed #121212 / #1a1a1a pair. */
 .boardBG {
-  background: #121212;
+  background: var(--bg);
   background: linear-gradient(
     135deg,
-    #121212 25%,
-    #1a1a1a 25%,
-    #1a1a1a 50%,
-    #121212 50%,
-    #121212 75%,
-    #1a1a1a 75%,
-    #1a1a1a
+    var(--bg) 25%,
+    var(--surface) 25%,
+    var(--surface) 50%,
+    var(--bg) 50%,
+    var(--bg) 75%,
+    var(--surface) 75%,
+    var(--surface)
   );
   background-size: 40px 40px;
   z-index: -1;
@@ -447,10 +479,10 @@ footer {
   position: absolute;
   left: calc(-85vw - 15px);
   top: -1em;
-  background-color: #1e1e1efa;
+  background-color: color-mix(in srgb, var(--surface-2) 98%, transparent);
   transition: 0.15s linear;
   z-index: 6;
-  box-shadow: 0 0 15px 5px #000000c4;
+  box-shadow: var(--shadow-2);
   border-radius: 0px 5px 5px 0px;
   padding: 1em 10px;
   overflow: scroll;
@@ -462,12 +494,12 @@ footer {
   width: 6em !important;
   min-width: 6em !important;
   height: 6em !important;
-  box-shadow: 0 0 15px 5px #000000c4;
+  box-shadow: var(--shadow-2);
 }
 .sideBarRight {
   left: 85vw;
   z-index: 7;
-  box-shadow: 0 0 15px 5px #00000063;
+  box-shadow: var(--shadow-1);
 }
 .sideBarCards {
   left: unset;
@@ -486,7 +518,7 @@ footer {
 .borderTest {
   /* background-color: rgb(42 35 67 / 35%); */
   /* backdrop-filter: blur(3px); */
-  background-color: #f5f5f5;
+  background-color: var(--text);
 }
 .borderLeft {
   position: relative;
@@ -496,7 +528,7 @@ footer {
   position: absolute;
   width: 2px;
   height: 100%;
-  background-image: linear-gradient(to bottom, #f5f5f5 50%, transparent 50%);
+  background-image: linear-gradient(to bottom, var(--text) 50%, transparent 50%);
   background-size: 100% 15px;
   animation: moveBorder 1s linear infinite;
   top: 0;
@@ -510,7 +542,7 @@ footer {
   position: absolute;
   width: 100%;
   height: 2px;
-  background-image: linear-gradient(to right, #f5f5f5 50%, transparent 50%);
+  background-image: linear-gradient(to right, var(--text) 50%, transparent 50%);
   background-size: 15px 100%;
   animation: moveBorder 1s linear infinite;
   transition: background-position 1s;
@@ -522,7 +554,7 @@ footer {
   position: absolute;
   width: 100%;
   height: 2px;
-  background-image: linear-gradient(to right, #f5f5f5 50%, transparent 50%);
+  background-image: linear-gradient(to right, var(--text) 50%, transparent 50%);
   background-size: 15px 100%;
   animation: moveBorder 1s linear infinite;
   transition: background-position 1s;
@@ -544,7 +576,7 @@ footer {
   content: "";
   position: absolute;
   width: calc(100%);
-  background-color: #00000080;
+  background-color: var(--scrim);
   filter: blur(15px);
   height: 100%;
   z-index: -1;
@@ -565,7 +597,7 @@ footer {
   position: absolute;
   inset: 0;
   z-index: 5;
-  background: #121212cc;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
   backdrop-filter: blur(3px);
   font-size: 3em;
   font-weight: 700;

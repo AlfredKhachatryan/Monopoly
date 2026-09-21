@@ -3,6 +3,7 @@ import { LogOut, RefreshCw, Volume2, VolumeX } from "lucide-react";
 import Sheet from "../Sheet";
 import EventRow from "../EventRow";
 import { describeEvent } from "../EventView";
+import ThemeControl from "../../Components/ThemeControl";
 import sh from "../sheet.module.css";
 
 // How many rows the log opens with. A real six-player game runs to well past
@@ -146,6 +147,19 @@ export default function GameSheet({
           <LogOut size={17} />
           Leave the game
         </button>
+      </div>
+
+      {/* Appearance sits AFTER Room and before Debug: it is a preference, not
+          an action, and nothing in it can affect the game — so it has no
+          business above "Leave the game", which is the one row in this sheet
+          that does. System is the default and stays the default; the switch
+          only exists for the player whose phone is in dark mode at a table lit
+          like a kitchen, and for the room that wants the TV to match. The
+          choice is this browser's, not this player's: it is not sent anywhere
+          and every phone in the game answers it for itself. */}
+      <div className={sh.section}>
+        <div className={sh.sectionTitle}>Appearance</div>
+        <ThemeControl variant="sheet" label="Theme" />
       </div>
 
       {debug && board && (

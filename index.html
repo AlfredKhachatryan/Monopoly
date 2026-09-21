@@ -20,6 +20,23 @@
     />
     <link rel="manifest" href="/manifest.json" />
     <title>Monopoly</title>
+    <!-- Theme, before the first paint (spec §10).
+         src/Hooks/useTheme.js owns this preference; this is the same three
+         lines run early enough to matter. A render-blocking script in <head>
+         runs before the body is laid out, so <html data-theme> is already in
+         place when styles/tokens.css is first applied and nobody sees a white
+         flash on the way into a dark game, or the reverse.
+         "system" is stored as the ABSENCE of the key and applied as the
+         ABSENCE of the attribute, so the prefers-color-scheme media queries
+         stay in charge unless somebody has actually chosen. Wrapped, because
+         Safari in private mode throws on localStorage.getItem. -->
+    <script>
+      try {
+        var t = localStorage.getItem("monopoly.theme");
+        if (t === "light" || t === "dark")
+          document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
