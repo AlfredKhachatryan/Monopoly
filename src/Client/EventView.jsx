@@ -97,6 +97,10 @@ const REASON_SHORT = {
   pot: "Free Parking pot",
   farm: "Harvest",
   casino: "Casino",
+  // The war fee's ledger `pay` row is now drawn (see the comment above the
+  // suppression list in the `pay` case) and needs a chip label of its own,
+  // same as every other reason in this map.
+  warFee: "War fee",
 };
 
 const JAIL_WHY = {
@@ -111,6 +115,81 @@ const LEAVE_HOW = {
   pay: " by paying the fine",
   card: " with a card",
 };
+
+// ---------------------------------------------------------------------------
+// The card fold, in ONE place
+// ---------------------------------------------------------------------------
+// A card draw is TWO events in the log, not one (see the `card` case below for
+// the whole story). Folding them back into a single row is a rule about the
+// EVENT STREAM, not about one event, so `describeEvent` cannot do it on its
+// own — and for a long time nothing owned it: the rule was hand-copied into
+// `src/Board/TvSide.jsx`'s row builder and again into `src/Board/TvCenter.jsx`
+// as a private `cardAmount()`, while every OTHER caller of describeEvent — the
+// phone's "latest" preview in ClientScreen, the full log in GameSheet — had no
+// fold at all and drew both rows. That is the duplicate the owner saw on the
+// phone; the copies are how the TV's two halves could disagree about what one
+// card was worth.
+//
+// So the rule lives here now, beside the case that documents it, and every
+// list runs the same one.
+//
+//   events   a run of events in order: one action's batch, or a slice of
+//            game.log (log entries carry `seq`; raw batch events do not, and
+//            both are handled)
+//   skip     indices whose row must NOT be drawn — they are the card's own
+//            money and the card's row now carries it
+//   amount   index of a card event -> the signed total it moved, to be handed
+//            to describeEvent as `cardAmount` on a COPY of that event
+//
+// What is deliberately NOT folded: a `passGo` credit, and the rent or tax a
+// card's own MOVE landed the player in. Those are separate things that
+// happened, with their own cells and their own reasons, and a card that says
+// "Advance to the nearest railroad" has not told you what the rent there was.
+export function foldCardMoney(events) {
+  const list = Array.isArray(events) ? events : [];
+  const skip = new Set();
+  const amount = new Map();
+  for (let i = 0; i < list.length; i++) {
+    const card = list[i];
+    if (!card || card.type !== "card") continue;
+    let total = 0;
+    for (let j = i + 1; j < list.length; j++) {
+      const e = list[j];
+      if (!e) break;
+      // A second card in the same action is its own story, and an event from
+      // a different action is a different action. `seq` only exists on log
+      // entries, so a raw batch simply runs to its end or to the next card.
+      if (e.type === "card") break;
+      if (card.seq !== undefined && e.seq !== card.seq) break;
+      const n = Number(e.amount);
+      if (!Number.isFinite(n)) continue;
+      const byCard = e.reason === "card" || e.reason === "repairs";
+      if (e.type === "collect" && e.figure === card.figure && byCard) {
+        total += n;
+        skip.add(j);
+      } else if (e.type === "pay" && e.figure === card.figure && byCard) {
+        total -= n;
+        skip.add(j);
+      } else if (e.type === "pay" && e.to === card.figure && e.reason === "card") {
+        // "Collect $10 from every player": other people paying the drawer.
+        total += n;
+        skip.add(j);
+      }
+    }
+    if (total) amount.set(i, total);
+  }
+  return { skip, amount };
+}
+
+// What one card moved, for a caller that only wants the number (the board
+// centre's card face, the phone's card overlay). `card` is the event itself,
+// which must be an element of `events`.
+export function cardAmountOf(events, card) {
+  const list = Array.isArray(events) ? events : [];
+  const i = list.indexOf(card);
+  if (i < 0) return 0;
+  return foldCardMoney(list).amount.get(i) ?? 0;
+}
 
 // `ctx` = { players, board, meFig }
 export function describeEvent(ev, ctx) {
@@ -186,14 +265,20 @@ export function describeEvent(ev, ctx) {
       if (ev.reason === "auction" || ev.reason === "casino") return null;
       // Diplomacy's money follows the same convention (alliance_war.sql): each
       // movement is logged twice on purpose — once as its own headline event
-      // (`allyUpkeep`, `debtShare`, `war` declare / peace, `backstab`) and once
-      // as the plain `pay` that lets a balance be rebuilt from the log. The
-      // headline row carries the amount, so the ledger row is not drawn. These
-      // five reason strings are the server's, verbatim.
+      // (`allyUpkeep`, `debtShare`, `backstab`) and once as the plain `pay`
+      // that lets a balance be rebuilt from the log. Where the headline row
+      // ALSO carries the amount, the ledger row is redundant and not drawn.
+      // `warFee` is deliberately left OUT of this list: the war's own headline
+      // event (`{type:'war', stage:'declare', ...}`) carries no `amount` field
+      // at all (see SPEC-DIPLOMACY.md's Events list), so this ledger `pay` is
+      // the only row that ever says the 500$ fee was paid — dropping it here
+      // the way the other four are dropped would silence it completely rather
+      // than fold it into a richer row. `peace`, by contrast, stays dropped:
+      // its headline (`{type:'war', stage:'peace', ..., amount}`) already
+      // carries the amount and is drawn by the `war` case below.
       if (
         ev.reason === "allyUpkeep" ||
         ev.reason === "debtShare" ||
-        ev.reason === "warFee" ||
         ev.reason === "peace" ||
         ev.reason === "backstab"
       )
@@ -246,9 +331,15 @@ export function describeEvent(ev, ctx) {
     // their rows, and hand the signed total back here on the event as
     // `cardAmount`. Nothing on the wire carries that field — neither the
     // migration nor the mock ever writes it — so a caller that has not folded
-    // anything (the phone's aura preview, the full log in GameSheet) gets
-    // exactly the badge-less card row it has always got, with no badge slot
-    // appearing out of nowhere under it.
+    // anything gets exactly the badge-less card row it has always got, with no
+    // badge slot appearing out of nowhere under it.
+    //
+    // `foldCardMoney` at the top of this file IS that fold, and every list
+    // that draws these rows now runs it: the TV's Latest column
+    // (src/Board/TvSide.jsx) and the phone's "latest" preview
+    // (src/Client/ClientScreen.jsx). The full log in GameSheet deliberately
+    // does not — it is the ledger, and a ledger is allowed to show both
+    // movements. The decision stays the caller's; only the RULE is shared.
     //
     // Signed and coloured whoever drew it, which is where this case departs
     // from the badge rule at the top of the file. That rule can afford to be

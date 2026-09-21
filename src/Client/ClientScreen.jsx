@@ -20,6 +20,7 @@ import {
   accentFor,
   canBuild,
   cellKind,
+  isBuyable,
   isProperty,
   nameOfFig,
   ownedBy,
@@ -34,7 +35,7 @@ import Aura from "./Aura";
 import Ticket from "./Ticket";
 import ActRow from "./ActRow";
 import PayFx from "./PayFx";
-import { useReveal, REVEAL } from "./useReveal";
+import { useReveal, useCardBeat, REVEAL } from "./useReveal";
 import { announceBatch } from "./transfers";
 import AuctionPanel from "./AuctionPanel";
 import CasinoPanel from "./CasinoPanel";
@@ -44,7 +45,7 @@ import CardOverlay from "./CardOverlay";
 import OfferOverlay from "./OfferOverlay";
 import DiplomacyOverlay from "./DiplomacyOverlay";
 import { fmt, jailLine } from "./format";
-import { describeEvent } from "./EventView";
+import { cardAmountOf, describeEvent, foldCardMoney } from "./EventView";
 import MineSheet from "./sheets/MineSheet";
 import PlayersSheet from "./sheets/PlayersSheet";
 import GameSheet from "./sheets/GameSheet";
@@ -278,12 +279,31 @@ export function Client() {
   // the most interesting thing that happens all turn and the other five should
   // not be looking at a dead screen while it does.
   const [casinoFx, setCasinoFx] = useState(null);
+  // Three one-shot diplomacy moments (complaints B and C), all set the same
+  // way `myJailing`/the doubles beat already are below: read ONLY off
+  // `reveal.feed`, which useGameRoom only ever populates for a batch that just
+  // arrived live (see its own header comment) — never for the first load or a
+  // silent resync. That is what makes these "once per event" for free: a
+  // reload or a reconnect mid-game replays nothing, because there is nothing
+  // in `reveal.feed` to replay it FROM.
+  //   backstabAlert   { figure, amount } — set on MY phone only when I am the
+  //                   VICTIM (complaint B: unmissable, full-screen, once)
+  //   allyFormedCard  { other } — set on the phones of BOTH new allies
+  //   warStartedCard  { opponents, draggedInBy } — set on every phone now on
+  //                   either side of a freshly declared war, including a
+  //                   dragged-in ally who declared nothing themselves
+  const [backstabAlert, setBackstabAlert] = useState(null);
+  const [allyFormedCard, setAllyFormedCard] = useState(null);
+  const [warStartedCard, setWarStartedCard] = useState(null);
 
   const seenFeed = useRef(0);
   const prevTurn = useRef(null);
   const cueTimer = useRef(null);
-  const deckTimer = useRef(null);
   const noticeTimer = useRef(null);
+  // Everything in the feed effect below that has to wait out a card's read
+  // beat. Collected so one batch's pending beats are all cancelled together
+  // when the next batch arrives, or when the screen goes away.
+  const beatTimers = useRef([]);
   const fxSeq = useRef(0);
   const fxTimer = useRef(null);
   // The doubles counter as of the batch being reacted to. A ref, because the
@@ -306,6 +326,30 @@ export function Client() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rollBeat]);
 
+  // ---- the card read beat -------------------------------------------------
+  // The server resolves the whole action at once, so the row that says "you
+  // drew a card" also says where the card sent you and what it cost. Dealt
+  // straight through, the card face arrived on top of a screen that had
+  // already spent the money — "it is being instant". `useCardBeat`
+  // (useReveal.js) is the shared schedule: the face is dealt once the piece
+  // has arrived, the table gets REVEAL.CARD_READ_MS with it, and only then is
+  // anything the card caused allowed to speak. The TV runs the same schedule
+  // over the same events, so the room is never told two stories at once.
+  //
+  // The overlay is only ever shown to the player who DREW it (that has always
+  // been true here — everyone else reads it off the board), so the callback
+  // checks the batch's actor rather than the hook doing it.
+  const beat = useCardBeat(reveal.feed, (c) => {
+    if (reveal.feed?.actor !== playerId) return;
+    const drawn = c.event;
+    setDeckCard({
+      kind: drawn.deck === "chance" ? "Chance" : "Community Chest",
+      deck: drawn.deck === "chance" ? "chance" : "chest",
+      text: drawn.text,
+      amount: cardAmountOf(reveal.feed?.events ?? [], drawn),
+    });
+  });
+
   // ---- react to incoming events -----------------------------------------
   // `reveal.feed` is the same batch useGameRoom produced, handed over at the
   // moment the dice are down (immediately, for a batch with no roll in it). So
@@ -319,6 +363,24 @@ export function Client() {
     if (events.length === 0) return;
     const mineFeed = feedNow.actor === playerId;
 
+    // Everything below that is a CONSEQUENCE of a card waits for the card to
+    // have been read — the banner that says a card sent you to Jail, the Free
+    // Parking and harvest banners a "move to" card can trigger, the sound the
+    // consequence makes. `beat.hold` is the shared schedule's end-of-the-last-
+    // read-beat (src/Client/useReveal.js) and is 0 for every batch without a
+    // card, so `after(...)` runs those lines synchronously, in exactly the
+    // order and at exactly the moment they always ran.
+    beatTimers.current.forEach(clearTimeout);
+    beatTimers.current = [];
+    const hold = beat.hold;
+    const after = (ms, fn) => {
+      if (!(ms > 0)) {
+        fn();
+        return;
+      }
+      beatTimers.current.push(setTimeout(fn, ms));
+    };
+
     const roll = events.find((e) => e.type === "roll");
     if (roll) {
       setLastRoll({ by: roll.figure, sum: roll.d1 + roll.d2, doubles: roll.doubles });
@@ -330,41 +392,9 @@ export function Client() {
         setLandedAt(landed.cell);
         setPassed(false);
       }
-      const card = events.find((e) => e.type === "card");
-      if (card) {
-        // The card face wants the amount it moved, and the server sends that as
-        // its own collect/pay events in the same batch — plural. "Pay each
-        // player 50$" is three pays, repairs is one pay with its own reason,
-        // and "collect 10$ from every player" is other people paying me. Taking
-        // only the first match showed −50$ for a −150$ card and nothing at all
-        // for the other two, so everything the card moved is summed.
-        let amount = 0;
-        for (const e of events.slice(events.indexOf(card) + 1)) {
-          if (e?.type === "card") break; // a second card in one batch is its own story
-          const n = Number(e?.amount);
-          if (!Number.isFinite(n)) continue;
-          const byCard = e.reason === "card" || e.reason === "repairs";
-          if (e.type === "collect" && e.figure === card.figure && byCard) amount += n;
-          else if (e.type === "pay" && e.figure === card.figure && byCard) amount -= n;
-          else if (e.type === "pay" && e.to === card.figure && e.reason === "card") amount += n;
-        }
-        if (!Number.isFinite(amount)) amount = 0;
-        clearTimeout(deckTimer.current);
-        // Flip the card once the dice are down AND the piece has arrived. This
-        // used to be a flat 900ms from the moment the row landed, which was a
-        // guess at "the dice are probably finished"; now the row itself only
-        // arrives when they are, so the wait left is just the move.
-        deckTimer.current = setTimeout(
-          () =>
-            setDeckCard({
-              kind: card.deck === "chance" ? "Chance" : "Community Chest",
-              deck: card.deck === "chance" ? "chance" : "chest",
-              text: card.text,
-              amount,
-            }),
-          roll ? REVEAL.CARD_MS : 0,
-        );
-      }
+      // The card face itself is scheduled by `useCardBeat` further up — one
+      // dealt-then-read beat per card in the batch, off the same schedule the
+      // TV runs, so both screens deal the same card at the same moment.
     }
 
     // ---- the casino, replayed -------------------------------------------
@@ -387,9 +417,13 @@ export function Client() {
     // never say "you won nothing".
     const myPot = events.find((e) => e.type === "pot" && e.figure === me?.figure);
     if (myPot) {
-      setNotice({ tone: "good", text: `Free Parking — you take the whole pot, ${fmt(myPot.amount)}` });
-      clearTimeout(noticeTimer.current);
-      noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+      // `after`: a "move to Free Parking" card must be read before the banner
+      // tells the table what it won. Immediate whenever no card is involved.
+      after(hold, () => {
+        setNotice({ tone: "good", text: `Free Parking — you take the whole pot, ${fmt(myPot.amount)}` });
+        clearTimeout(noticeTimer.current);
+        noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+      });
     }
 
     // The farm paid its owner. Same shape, same reason: `amount` is 0 on a
@@ -398,12 +432,59 @@ export function Client() {
       (e) => e.type === "farm" && e.stage === "harvest" && e.figure === me?.figure,
     );
     if (myHarvest && !myPot) {
-      setNotice({
-        tone: "good",
-        text: `Harvest — the farm pays you ${fmt(myHarvest.amount)}`,
+      after(hold, () => {
+        setNotice({
+          tone: "good",
+          text: `Harvest — the farm pays you ${fmt(myHarvest.amount)}`,
+        });
+        clearTimeout(noticeTimer.current);
+        noticeTimer.current = setTimeout(() => setNotice(null), 5000);
       });
-      clearTimeout(noticeTimer.current);
-      noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+    }
+
+    // ---- diplomacy: the three one-shot moments (complaints B and C) ------
+    // All three read straight off THIS batch's events, the same "live feed
+    // only" rule as everything else in this effect — see the state comment
+    // above for why that is what keeps them from replaying on a reload.
+
+    // The backstab alert (complaint B): only the VICTIM gets it. The
+    // backstabber's own confirmation is the money toast + the log row
+    // (already correct after transfers.js's duplicate-transfer fix); a
+    // bystander gets the ordinary log row and TV banner, nothing more.
+    const backstabbedMe = events.find((e) => e.type === "backstab" && e.victim === me?.figure);
+    if (backstabbedMe) setBackstabAlert({ figure: backstabbedMe.figure, amount: backstabbedMe.amount });
+
+    // The formed-alliance card (complaint C, "show 1 time after accepting"):
+    // both new allies get it, from the SAME `ally`/`stage:'form'` event —
+    // whichever side of it I am not is the ally the card is about.
+    const allyFormedWithMe = events.find(
+      (e) => e.type === "ally" && e.stage === "form" && me?.figure && (e.a === me.figure || e.b === me.figure),
+    );
+    if (allyFormedWithMe) {
+      setAllyFormedCard({ other: allyFormedWithMe.a === me.figure ? allyFormedWithMe.b : allyFormedWithMe.a });
+    }
+
+    // The war-started card (complaint C): everyone the declaration just put
+    // on either side gets it once, including an ally dragged in who declared
+    // nothing themselves — `sideA`/`sideB` already carry the dragged-in ally,
+    // straight from the spec's own war-declare event shape, so no separate
+    // lookup into `game.wars` is needed to know who that is.
+    const warDeclaredWithMe = events.find((e) => {
+      if (e.type !== "war" || e.stage !== "declare" || !me?.figure) return false;
+      return (e.sideA || []).includes(me.figure) || (e.sideB || []).includes(me.figure);
+    });
+    if (warDeclaredWithMe) {
+      const mySide = (warDeclaredWithMe.sideA || []).includes(me.figure)
+        ? warDeclaredWithMe.sideA
+        : warDeclaredWithMe.sideB;
+      const oppSide = mySide === warDeclaredWithMe.sideA ? warDeclaredWithMe.sideB : warDeclaredWithMe.sideA;
+      const principal = mySide === warDeclaredWithMe.sideA ? warDeclaredWithMe.declarer : warDeclaredWithMe.target;
+      setWarStartedCard({
+        opponents: oppSide || [],
+        // I declared/was targeted myself when I AM that side's principal;
+        // otherwise my own ally's name is what explains how I got here.
+        draggedInBy: principal !== me.figure ? principal : null,
+      });
     }
 
     // Accepting an offer that no longer adds up is not an error — the server
@@ -458,19 +539,24 @@ export function Client() {
       else if (myJailing) kind = "jail";
 
       if (kind) {
-        const id = (fxSeq.current += 1);
-        setDiceFx({ id, kind });
-        clearTimeout(fxTimer.current);
-        fxTimer.current = setTimeout(() => setDiceFx(null), DICE_FX_MS[kind]);
-        if (!sound.muted) {
-          try {
-            navigator.vibrate?.(DICE_FX_VIBE[kind]);
-          } catch {
-            /* a browser that declares vibrate and then refuses it */
+        // A jail a CARD caused waits for the card to have been read; a doubles
+        // run is about the roll and carries no card at all, so `hold` is 0
+        // there and the beat fires exactly where it always did.
+        after(kind === "jail" ? hold : 0, () => {
+          const id = (fxSeq.current += 1);
+          setDiceFx({ id, kind });
+          clearTimeout(fxTimer.current);
+          fxTimer.current = setTimeout(() => setDiceFx(null), DICE_FX_MS[kind]);
+          if (!sound.muted) {
+            try {
+              navigator.vibrate?.(DICE_FX_VIBE[kind]);
+            } catch {
+              /* a browser that declares vibrate and then refuses it */
+            }
           }
-        }
-        const cue = DICE_FX_CUE[kind];
-        if (cue) sound.play(cue);
+          const cue = DICE_FX_CUE[kind];
+          if (cue) sound.play(cue);
+        });
       }
     }
 
@@ -480,21 +566,27 @@ export function Client() {
         card: "A card sent you to Jail",
         doubles: "Busted — three doubles, go to Jail",
       };
-      setNotice({
-        tone: myJailing.reason === "doubles" ? "warn" : "info",
-        text: JAIL_SENT_TEXT[myJailing.reason] || "Sent to Jail",
+      // "A card sent you to Jail" under the card that is still saying so is
+      // the sentence answering itself. It waits for the read beat; the other
+      // two reasons have no card and so wait for nothing.
+      after(hold, () => {
+        setNotice({
+          tone: myJailing.reason === "doubles" ? "warn" : "info",
+          text: JAIL_SENT_TEXT[myJailing.reason] || "Sent to Jail",
+        });
+        clearTimeout(noticeTimer.current);
+        noticeTimer.current = setTimeout(() => setNotice(null), 5000);
       });
-      clearTimeout(noticeTimer.current);
-      noticeTimer.current = setTimeout(() => setNotice(null), 5000);
     }
 
     // The roll cue has already played, at the start of the beat (the effect
-    // above). What is left is the consequence, and its moment is NOW: the dice
-    // are down, so the +950ms guess that used to stand in for "when they land"
-    // is gone.
+    // above). What is left is the consequence, and its moment is the moment the
+    // consequence actually happens: NOW for an ordinary batch — the dice are
+    // down, so the +950ms guess that used to stand in for "when they land" is
+    // gone — and the end of the read beat when a card is what caused it.
     const { main } = cuesFor(events, me?.figure);
     clearTimeout(cueTimer.current);
-    if (main) sound.play(main);
+    if (main) after(hold, () => sound.play(main));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal.feed, playerId, me?.figure, sound]);
 
@@ -515,8 +607,8 @@ export function Client() {
     () => () => {
       clearTimeout(cueTimer.current);
       clearTimeout(fxTimer.current);
-      clearTimeout(deckTimer.current);
       clearTimeout(noticeTimer.current);
+      beatTimers.current.forEach(clearTimeout);
     },
     [],
   );
@@ -758,16 +850,53 @@ export function Client() {
   // same way there and here — the action's seq plus the event's index within
   // that action — which is why `n` counts back to the start of the seq run
   // rather than using the position in the log.
+  //
+  // A drawn card is TWO events in the log — the draw, and the collect/pay
+  // mono_apply_card pushes right behind it with the same seq — and both of
+  // them describe perfectly well on their own, so this list used to show
+  // "You paid the bank 15$" sitting on top of "You drew: Speeding fine. Pay
+  // 15$.": two lines for one thing that happened once. `foldCardMoney`
+  // (src/Client/EventView.jsx) is the shared rule for that, the same one the
+  // TV's Latest column runs; the card's own money is dropped and its signed
+  // total rides on a COPY of the card event as `cardAmount`, which is
+  // describeEvent's agreed way in. Never the log's own object — `log` is the
+  // room hook's state, not ours to write on.
+  //
+  // `logKey` is untouched by the fold on purpose: it counts the event's
+  // position among ALL of its seq's events, because that is how GameSheet —
+  // which does not fold, being the ledger — numbers the same row.
+  //
+  // The newest batch is also only read out as far as the card beat has got —
+  // `beat.cut`, the same number the TV's Latest column uses — so this line
+  // cannot say "you went to jail on a card" while the card that says so is
+  // still being dealt. Infinite, and therefore free, for every batch without
+  // a card in it.
   const recent = useMemo(() => {
+    const { skip, amount } = foldCardMoney(log);
+    // Where the held-back batch starts in the log, so a log index can be
+    // compared with an index in the batch.
+    let base = -1;
+    if (Number.isFinite(beat.cut) && beat.seq != null) {
+      for (let i = 0; i < log.length; i++) {
+        if (log[i]?.seq === beat.seq) {
+          base = i;
+          break;
+        }
+      }
+    }
     const out = [];
     for (let i = log.length - 1; i >= 0 && out.length < 3; i--) {
-      if (!describeEvent(log[i], ctx)) continue;
+      if (skip.has(i)) continue;
+      if (base >= 0 && i >= base && i - base > beat.cut) continue;
+      const folded = amount.get(i) ?? 0;
+      const ev = folded ? { ...log[i], cardAmount: folded } : log[i];
+      if (!describeEvent(ev, ctx)) continue;
       let n = 0;
       for (let j = i - 1; j >= 0 && log[j].seq === log[i].seq; j--) n++;
-      out.push({ ev: log[i], key: i, logKey: `${log[i].seq ?? "e"}#${n}` });
+      out.push({ ev, key: i, logKey: `${log[i].seq ?? "e"}#${n}` });
     }
     return out;
-  }, [log, ctx]);
+  }, [log, ctx, beat.cut, beat.seq]);
 
   // Rows past the high-water mark animate in, and stay past it for as long as
   // the animation runs.
@@ -867,7 +996,13 @@ export function Client() {
     if (phase !== "act" && !landedHere) return null;
     if (!isProperty(standCell)) return null;
     const owner = ownerOf(standCell);
-    if (!owner) return { kind: "buy", price: priceOf(standCell) };
+    // isBuyable, not just "unowned": the Weed Farm is ownable but is only ever
+    // sold at auction (landing on it opens one for the whole table), so it must
+    // never produce a Buy offer. In practice the auction phase already hides
+    // this button there, but the rule is stated rather than inferred — the same
+    // reason the casino guard above gives.
+    if (!owner)
+      return isBuyable(standCell) ? { kind: "buy", price: priceOf(standCell) } : null;
     if (owner === me.figure) {
       const b = canBuild(board, me.figure, standCell.id, me.money);
       if (b.ok) return { kind: "build", ...b };
@@ -976,7 +1111,15 @@ export function Client() {
   const payRolled = !!reveal.feed?.events?.some((e) => e?.type === "roll");
   // The piece hops first, then the money speaks. A batch that did not come out
   // of a roll has nothing to wait for.
-  const payDelay = payRolled ? REVEAL.PIECE_MS : 60;
+  //
+  // …and a card speaks before both. `beat.hold` is the end of the last read
+  // beat in this batch (0 when no card was drawn, so every ordinary rent, tax
+  // and purchase is timed exactly as before), and it is the SAME number the TV
+  // is using on the same events — which is the whole point: the money moves at
+  // one moment in the room, not at one moment per screen. Without it the
+  // count-up in the aura ran while the card overlay was still being read, on
+  // the drawer's phone and on everybody else's.
+  const payDelay = Math.max(payRolled ? REVEAL.PIECE_MS : 60, beat.hold);
   const myMoneyMoved = payItems.some((a) => a.involvesMe);
   // A casino play is the one batch whose money must NOT speak first. The whole
   // point of the reels is that nobody knows the answer until they stop, and a
@@ -1347,16 +1490,46 @@ export function Client() {
   // pecking order: the card is the oldest news and wins, then the spin (which
   // dismisses itself within a few seconds), then an offer, which will still be
   // there afterwards because nothing about it expires on a timer.
-  const showCasinoFx = casinoFx != null && deckCard == null;
+  // The backstab alert (complaint B) outranks everything except the card:
+  // "the victim must not be able to miss it" is stronger than the usual
+  // "someone needs my answer" overlays below, because unlike those this one
+  // was not asked for and cannot be answered later from a banner — the money
+  // is already gone and the alliance is already over by the time it shows.
+  const showBackstabAlert = backstabAlert != null && deckCard == null;
+  const showCasinoFx = casinoFx != null && deckCard == null && !showBackstabAlert;
   const showOffer =
-    !!incomingOffer && deckCard == null && !showCasinoFx && !(sheet === "trade" && counterOf);
-  // A diplomacy proposal (alliance or peace) is the fourth alertdialog and
+    !!incomingOffer && deckCard == null && !showBackstabAlert && !showCasinoFx && !(sheet === "trade" && counterOf);
+  // A diplomacy proposal (alliance or peace) is the next alertdialog and
   // ranks just behind a trade offer: both are "someone needs my answer"
   // overlays reachable off-turn, and only one of the two can plausibly be
   // pending at once in practice, so losing a tie to the trade offer (the
   // older feature) costs nothing real.
-  const showDiplomacyOffer = !!diploOffer && deckCard == null && !showCasinoFx && !showOffer;
-  const blocked = sheet != null || deckCard != null || showOffer || showCasinoFx || showDiplomacyOffer;
+  const showDiplomacyOffer = !!diploOffer && deckCard == null && !showBackstabAlert && !showCasinoFx && !showOffer;
+  // The two "here is what just changed" cards (complaint C) are informational
+  // rather than a pending decision, so they lose to anything above that
+  // actually needs an answer — but still get shown, once, the moment nothing
+  // more urgent is on screen. Ally-formed before war-started on the rare
+  // chance both are somehow waiting at once (they never fire from the same
+  // batch — forming an alliance and declaring a war are different verbs).
+  const showAllyFormedCard =
+    allyFormedCard != null && deckCard == null && !showBackstabAlert && !showCasinoFx && !showOffer && !showDiplomacyOffer;
+  const showWarStartedCard =
+    warStartedCard != null &&
+    deckCard == null &&
+    !showBackstabAlert &&
+    !showCasinoFx &&
+    !showOffer &&
+    !showDiplomacyOffer &&
+    !showAllyFormedCard;
+  const blocked =
+    sheet != null ||
+    deckCard != null ||
+    showOffer ||
+    showCasinoFx ||
+    showDiplomacyOffer ||
+    showBackstabAlert ||
+    showAllyFormedCard ||
+    showWarStartedCard;
   useLayoutEffect(() => {
     if (!blocked) stageRef.current?.removeAttribute("inert");
   }, [blocked]);
@@ -1738,6 +1911,44 @@ export function Client() {
                 ? run("ally_decline", { from: diploOffer.from })
                 : run("peace_decline", { warId: diploOffer.war.id })
             }
+          />
+        )}
+
+        {/* The backstab alert (complaint B): full-screen, one "Understood"
+            button, and nothing to decide — see the ranking note above for why
+            it comes before even the casino spin and a trade offer. */}
+        {showBackstabAlert && (
+          <DiplomacyOverlay
+            offer={{ kind: "backstabbed", by: backstabAlert.figure, amount: backstabAlert.amount }}
+            players={players}
+            me={me}
+            onDismiss={() => setBackstabAlert(null)}
+          />
+        )}
+
+        {/* "Show 1 time after accepting" (complaint C): what just changed for
+            both new allies, once, the moment the screen is free to show it. */}
+        {showAllyFormedCard && (
+          <DiplomacyOverlay
+            offer={{ kind: "allyFormed", other: allyFormedCard.other }}
+            players={players}
+            me={me}
+            onDismiss={() => setAllyFormedCard(null)}
+          />
+        )}
+
+        {/* Same once-only treatment for a war that just started and involves
+            me — principal or dragged-in ally alike (complaint C). */}
+        {showWarStartedCard && (
+          <DiplomacyOverlay
+            offer={{
+              kind: "warStarted",
+              opponents: warStartedCard.opponents,
+              draggedInBy: warStartedCard.draggedInBy,
+            }}
+            players={players}
+            me={me}
+            onDismiss={() => setWarStartedCard(null)}
           />
         )}
 
