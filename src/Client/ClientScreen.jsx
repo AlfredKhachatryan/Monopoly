@@ -1,9 +1,9 @@
 // The phone screen — the "4D Split" controller.
 //
-// Two halves. The aura on top is what you read: your name and cash, whose turn
-// it is, the last three things that happened, and a wash of the colour of the
-// space you are standing on. The white panel at the bottom is what you press:
-// the seven spaces around you, the ticket for the space you are on, the dice
+// Two halves. The aura on top is what you read: a slim bar with your name, cash
+// and whose turn it is, the space you are standing on as a large deed card, the
+// one latest thing that happened, and a wash of that space's colour behind it
+// all. The white panel at the bottom is what you press and nothing else: the dice
 // and the one big action, and three panels behind a bottom nav.
 //
 // The turn flow is unchanged and still explicit: roll, see what happened, end
@@ -31,22 +31,25 @@ import {
 } from "../Hooks/rules";
 
 import Aura from "./Aura";
-import PathStrip from "./PathStrip";
 import Ticket from "./Ticket";
 import ActRow from "./ActRow";
 import PayFx from "./PayFx";
 import { useReveal, REVEAL } from "./useReveal";
 import { announceBatch } from "./transfers";
 import AuctionPanel from "./AuctionPanel";
+import CasinoPanel from "./CasinoPanel";
+import CasinoResult, { verdictAtMs } from "./CasinoResult";
 import BottomNav from "./BottomNav";
 import CardOverlay from "./CardOverlay";
 import OfferOverlay from "./OfferOverlay";
+import DiplomacyOverlay from "./DiplomacyOverlay";
 import { fmt, jailLine } from "./format";
 import { describeEvent } from "./EventView";
 import MineSheet from "./sheets/MineSheet";
 import PlayersSheet from "./sheets/PlayersSheet";
 import GameSheet from "./sheets/GameSheet";
 import TradeSheet from "./sheets/TradeSheet";
+import { allyOf, isTraitorNow, warSides, warsOf } from "../Hooks/diplomacy";
 
 import s from "./screen.module.css";
 
@@ -64,6 +67,15 @@ function readPlayerInfo() {
 // One sound per batch of events so a turn does not become a chord: the dice
 // rattle at once, the consequence when the dice have landed.
 const CUE_ORDER = ["win", "bankrupt", "jail", "buy", "build", "card", "moneyOut", "moneyIn", "land"];
+
+// How long the cash count-up waits on a casino batch is no longer a constant
+// here: it is verdictAtMs(game) from CasinoResult, the same function that times
+// the verdict itself. The literal that used to live here (2550, sized for a
+// 2400ms wheel) went stale when the wheel's spin grew to 5600ms, and the
+// balance was quietly finishing its count three seconds before the wheel
+// stopped. The casino frame is opaque, so nothing was spoiled — but the moment
+// the frame closed, the number had long since settled instead of landing WITH
+// the verdict, which is the whole point of holding it back.
 
 // ---- the doubles run, as a beat -------------------------------------------
 //
@@ -216,6 +228,10 @@ export function Client() {
       over: room.over,
       myTurn: room.myTurn,
       winner: room.winner,
+      // The allied-pair win (SPEC-DIPLOMACY.md §1): one or two players, kept
+      // alongside `winner` (still the first of them) rather than replacing
+      // it, so nothing already reading the singular field below breaks.
+      winners: room.winners,
       log: room.log,
     }),
     [
@@ -228,11 +244,12 @@ export function Client() {
       room.over,
       room.myTurn,
       room.winner,
+      room.winners,
       room.log,
     ],
   );
   const reveal = useReveal(snapshot, feed, { meFig: room.me?.figure ?? null });
-  const { board, players, game, me, current, phase, over, myTurn, winner, log } = reveal.view;
+  const { board, players, game, me, current, phase, over, myTurn, winner, winners, log } = reveal.view;
   const rolling = reveal.rolling;
 
   const [sheet, setSheet] = useState(null);
@@ -254,6 +271,13 @@ export function Client() {
   // row in the aura's preview. Null = open collapsed, which is every other way
   // in (the "Full log" button, the bottom nav).
   const [logFocus, setLogFocus] = useState(null);
+  // The casino play being replayed over the screen: the server's own
+  // `{type:'casino', stage:'result'}` event, held until CasinoResult has
+  // finished landing the machine on it and dismissed itself. EVERY phone in
+  // the room sets this, not only the one that bet — the spin and the swing are
+  // the most interesting thing that happens all turn and the other five should
+  // not be looking at a dead screen while it does.
+  const [casinoFx, setCasinoFx] = useState(null);
 
   const seenFeed = useRef(0);
   const prevTurn = useRef(null);
@@ -341,6 +365,45 @@ export function Client() {
           roll ? REVEAL.CARD_MS : 0,
         );
       }
+    }
+
+    // ---- the casino, replayed -------------------------------------------
+    // The server resolved the bet before this batch ever left it: the event
+    // carries the reels / the pocket / the segment, the multiplier and the
+    // payout. Nothing here rolls anything — it hands the finished result to
+    // CasinoResult, which animates the machine INTO that answer and then takes
+    // itself off the screen. `seq` is stamped on so the overlay can tell two
+    // otherwise identical plays apart (same game, same bet, same outcome).
+    //
+    // Fired from the feed and only from the feed, exactly like the doubles
+    // beat above: `reveal.feed` carries LIVE batches only, so a reload or a
+    // silent resync never replays a spin for a bet that was settled minutes
+    // ago. Everyone in the room gets it — there is no `mineFeed` guard.
+    const casinoResult = events.find((e) => e.type === "casino" && e.stage === "result");
+    if (casinoResult) setCasinoFx({ ...casinoResult, seq: feedNow.seq });
+
+    // Free Parking paid out. The pot event only exists when there was money in
+    // it (a pot of 0 emits nothing at all server-side), so this banner can
+    // never say "you won nothing".
+    const myPot = events.find((e) => e.type === "pot" && e.figure === me?.figure);
+    if (myPot) {
+      setNotice({ tone: "good", text: `Free Parking — you take the whole pot, ${fmt(myPot.amount)}` });
+      clearTimeout(noticeTimer.current);
+      noticeTimer.current = setTimeout(() => setNotice(null), 5000);
+    }
+
+    // The farm paid its owner. Same shape, same reason: `amount` is 0 on a
+    // `grow`, so only the harvest is worth a banner.
+    const myHarvest = events.find(
+      (e) => e.type === "farm" && e.stage === "harvest" && e.figure === me?.figure,
+    );
+    if (myHarvest && !myPot) {
+      setNotice({
+        tone: "good",
+        text: `Harvest — the farm pays you ${fmt(myHarvest.amount)}`,
+      });
+      clearTimeout(noticeTimer.current);
+      noticeTimer.current = setTimeout(() => setNotice(null), 5000);
     }
 
     // Accepting an offer that no longer adds up is not an error — the server
@@ -465,9 +528,102 @@ export function Client() {
   // below may assume more than "an object with a cell".
   const auction = game?.auction ?? null;
   const auctionOn = phase === "auction" && !!auction && auction.cell != null;
+  // The mandatory bet, read the same defensive way: `casino` may be null, may
+  // be missing entirely (a room written before the rebalance), or may be half
+  // shaped. `casinoOn` is the only thing anything below is allowed to test,
+  // and it requires the phase AND the block AND the player it names — the
+  // server itself falls back to phase 'act' when one is there without the
+  // other, so the client must not render a panel it would then refuse.
+  const casino = game?.casino ?? null;
+  const casinoOn = phase === "casino" && !!casino && casino.figure != null;
+  // The one phone that owes the house a bet. It gets a taller panel and, in
+  // exchange, gives up the ticket — see the render.
+  const myCasino = casinoOn && !!me && casino.figure === me.figure;
+  // Every fine paid to the bank since the game started, waiting on cell 21.
+  // A plain integer that is always present server-side; coerced anyway so a
+  // pre-rebalance room shows 0 rather than NaN.
+  const pot = Math.max(Math.round(Number(game?.pot) || 0), 0);
   const trade = game?.trade ?? null;
   const incomingOffer = !!trade && !!me && trade.to === me.figure ? trade : null;
   const outgoingOffer = !!trade && !!me && trade.from === me.figure ? trade : null;
+
+  // ---- diplomacy: my own status, and anything waiting on my answer --------
+  // Every derivation here goes through src/Hooks/diplomacy.js — the same
+  // pure-function contract the Players sheet and the TV both read — so this
+  // screen can never disagree with either of them about whether I am, right
+  // now, allied / at war / a branded Traitor.
+  const myAllyFig = me ? allyOf(game, me.figure) : null;
+  const myWars = me ? warsOf(game, me.figure) : [];
+  const myTraitorActive = me ? isTraitorNow(game, me) : false;
+
+  // An alliance proposal addressed to me, or one I sent that is still
+  // pending. `game.allyOffers` is an array (several players could each
+  // propose to me before I answer any of them) — only the first is surfaced
+  // as the blocking overlay below; the rest simply wait their turn, same as
+  // a second trade offer would have to.
+  const incomingAllyOffer = useMemo(() => {
+    const offers = Array.isArray(game?.allyOffers) ? game.allyOffers : [];
+    return (me && offers.find((o) => o?.to === me.figure)) || null;
+  }, [game?.allyOffers, me]);
+  const outgoingAllyOffer = useMemo(() => {
+    const offers = Array.isArray(game?.allyOffers) ? game.allyOffers : [];
+    return (me && offers.find((o) => o?.from === me.figure)) || null;
+  }, [game?.allyOffers, me]);
+
+  // A peace treaty the OTHER principal of one of my wars has put on the
+  // table. Only principals ever see this — an ally dragged into the war has
+  // nothing to answer, the two people who started it settle it.
+  const incomingPeace = useMemo(() => {
+    if (!me) return null;
+    const wars = Array.isArray(game?.wars) ? game.wars : [];
+    return (
+      wars.find(
+        (w) => w?.peace && w.peace.from !== me.figure && (w.declarer === me.figure || w.target === me.figure),
+      ) || null
+    );
+  }, [game?.wars, me]);
+  const outgoingPeace = useMemo(() => {
+    if (!me) return null;
+    const wars = Array.isArray(game?.wars) ? game.wars : [];
+    return wars.find((w) => w?.peace && w.peace.from === me.figure) || null;
+  }, [game?.wars, me]);
+
+  // Peace is time-critical — double rent keeps running on every turn it sits
+  // unanswered — so it is surfaced ahead of a fresh alliance proposal on the
+  // rare occasion both are waiting on me at once.
+  const diploOffer = incomingPeace
+    ? { kind: "peace", war: incomingPeace }
+    : incomingAllyOffer
+      ? { kind: "ally", from: incomingAllyOffer.from }
+      : null;
+
+  // Compact status for the aura's second line (Aura.jsx's `diploStatus`): my
+  // ally, my wars (opponent names for one, a count past that), my Traitor
+  // brand. Built once here rather than inside Aura so the same derivation
+  // this screen already did for `myAllyFig`/`myWars`/`myTraitorActive` is not
+  // repeated.
+  const diploStatus = useMemo(() => {
+    if (!me) return [];
+    const out = [];
+    if (myAllyFig) out.push({ key: "ally", text: nameOfFig(players, myAllyFig) });
+    if (myWars.length === 1) {
+      const sides = warSides(game, myWars[0]);
+      const mySide = sides.a.includes(me.figure) ? sides.a : sides.b;
+      const opp = sides.a.includes(me.figure) ? sides.b : sides.a;
+      out.push({
+        key: "war",
+        text: mySide.length > 1 ? `War · ${opp.map((f) => nameOfFig(players, f)).join(" & ")}` : `War · ${nameOfFig(players, opp[0])}`,
+      });
+    } else if (myWars.length > 1) {
+      out.push({ key: "war", text: `${myWars.length} wars` });
+    }
+    if (me.traitor) {
+      const left = Math.max((Number(me.traitorUntil) || 0) - (Number(game?.round) || 1), 0);
+      out.push({ key: "traitor", text: myTraitorActive ? `Traitor · ${left}` : "Traitor" });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, myAllyFig, myWars, myTraitorActive, players, game?.round]);
 
   // If the offer I am answering goes away — cancelled, expired, or replaced by
   // a newer one — the half-written counter goes with it, rather than being sent
@@ -493,6 +649,21 @@ export function Client() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auctionOn, auction?.turn, me?.figure]);
+
+  // Same rule for the casino, and it is even less negotiable: while the house
+  // is waiting the server refuses every other verb, so a sheet left open in
+  // front of the panel is a screen full of buttons that can only bounce. The
+  // panel lives inside the (possibly inert) stage and is otherwise
+  // unreachable. Only for the player who owes the bet — the other five have
+  // nothing to answer and keep whatever they had open.
+  useEffect(() => {
+    if (casinoOn && !!me && casino?.figure === me.figure) {
+      closeTrade();
+      setSheet(null);
+      setDeckCard(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [casinoOn, casino?.figure, me?.figure]);
 
   // An auction starting cancels any pending trade server-side — trading is
   // rejected outright while one runs. A trade sheet left open through that
@@ -524,7 +695,7 @@ export function Client() {
   }, [incomingOffer?.id, sheet]);
 
   // Where I stand, and what the screen is about. They are the same thing except
-  // during an auction, when the ticket, the tint and the path all move to the
+  // during an auction, when the deed card and the tint both move to the
   // space being sold — every phone in the room is looking at that space, not at
   // whatever square its owner happens to be standing on.
   const standCell = board && me ? board[me.position] : null;
@@ -685,6 +856,13 @@ export function Client() {
 
   const choice = (() => {
     if (auctionOn) return null;
+    // Nothing can be bought or built while the house is waiting — the server
+    // answers "The casino is waiting" to both. Standing on cell 13 already
+    // rules it out (the Casino is not ownable, so isProperty says no), but
+    // this is stated rather than inferred: the buy/build offer is driven by
+    // the PHASE now as much as by the cell, and an offer the server would
+    // refuse must never reach a button.
+    if (casinoOn) return null;
     if (!myTurn || passed || declinedHere || !standCell || !me) return null;
     if (phase !== "act" && !landedHere) return null;
     if (!isProperty(standCell)) return null;
@@ -800,7 +978,21 @@ export function Client() {
   // of a roll has nothing to wait for.
   const payDelay = payRolled ? REVEAL.PIECE_MS : 60;
   const myMoneyMoved = payItems.some((a) => a.involvesMe);
-  const cashDelay = myMoneyMoved ? payDelay + 260 : 0;
+  // A casino play is the one batch whose money must NOT speak first. The whole
+  // point of the reels is that nobody knows the answer until they stop, and a
+  // cash number that has already counted up to the win has answered it. So on
+  // a batch carrying a `casino` result the count-up waits for the machine
+  // instead of for the piece — for everyone at the table, because the losing
+  // bet leaves the same way for a spectator reading somebody else's swing.
+  const casinoResult = reveal.feed?.events?.find(
+    (e) => e?.type === "casino" && e.stage === "result",
+  );
+  const payCasino = !!casinoResult;
+  const cashDelay = myMoneyMoved
+    ? payCasino
+      ? verdictAtMs(casinoResult.game)
+      : payDelay + 260
+    : 0;
 
   // ---- caption -----------------------------------------------------------
   const caption = lastRoll
@@ -959,9 +1151,12 @@ export function Client() {
     // double is a light "you again"; the second gets the warning colour
     // because one more roll like this is a trip to Jail (see the "doubles"
     // reason on the `jail` event, and the busted notice below it).
-    else if (myTurn && !auctionOn && game.doubles === 1)
+    // The same is true at the casino, and more so: the roll is on the far side
+    // of a bet the player cannot decline, so "roll again" would be the screen
+    // promising something the server will refuse until the bet is settled.
+    else if (myTurn && !auctionOn && !casinoOn && game.doubles === 1)
       banner = { accent: true, text: "Doubles — roll again" };
-    else if (myTurn && !auctionOn && game.doubles >= 2)
+    else if (myTurn && !auctionOn && !casinoOn && game.doubles >= 2)
       banner = { warn: true, text: "Doubles again — one more and it's Jail" };
   }
 
@@ -995,6 +1190,33 @@ export function Client() {
         disabled: busy,
       },
     });
+  // My own alliance proposal, sitting on the table exactly the way an
+  // outgoing trade does — cancellable (ally_cancel is in the verb table), so
+  // it gets the same banner shape.
+  if (outgoingAllyOffer)
+    banners.push({
+      key: `ally-${outgoingAllyOffer.to}`,
+      tone: "info",
+      text: `Waiting for ${nameOfFig(players, outgoingAllyOffer.to)} to answer your alliance offer`,
+      action: {
+        text: "Cancel",
+        label: `Cancel your alliance offer to ${nameOfFig(players, outgoingAllyOffer.to)}`,
+        onClick: () => run("ally_cancel", { to: outgoingAllyOffer.to }),
+        disabled: busy,
+      },
+    });
+  // My own peace offer. No `peace_cancel` exists in the verb table (see
+  // SPEC-DIPLOMACY.md) — a principal who changes their mind simply waits it
+  // out or lets the other side decline — so this banner has no action.
+  if (outgoingPeace) {
+    const otherPrincipal =
+      outgoingPeace.declarer === me?.figure ? outgoingPeace.target : outgoingPeace.declarer;
+    banners.push({
+      key: `peace-${outgoingPeace.id}`,
+      tone: "info",
+      text: `Waiting for ${nameOfFig(players, otherPrincipal)} to answer your peace offer`,
+    });
+  }
 
   // ---- layout decisions --------------------------------------------------
   // A buy / build decision takes over the act row, exactly as in the prototype.
@@ -1011,26 +1233,30 @@ export function Client() {
   // per-state type sizes should reach into the auction panel.
   const state = auctionOn
     ? "auction"
-    : decideMode
-      ? "decide"
-      : primary?.waiting
-        ? "waiting"
-        : rolling || busy
-          ? "rolling"
-          : myTurn && phase === "roll"
-            ? "roll"
-            : "end";
+    : casinoOn
+      ? "casino"
+      : decideMode
+        ? "decide"
+        : primary?.waiting
+          ? "waiting"
+          : rolling || busy
+            ? "rolling"
+            : myTurn && phase === "roll"
+              ? "roll"
+              : "end";
 
   // On game over the headline in the aura already says who won; a second
   // "You win" in the turn slot was the same sentence twice. During an auction
   // whose turn it is stops being the point — the panel says who is to bid.
   const turnLabel = auctionOn
     ? "Auction"
-    : myTurn
-      ? "Your turn"
-      : current
-        ? `${current.name}'s turn`
-        : "Waiting";
+    : casinoOn
+      ? "Casino"
+      : myTurn
+        ? "Your turn"
+        : current
+          ? `${current.name}'s turn`
+          : "Waiting";
 
   // May I put an offer on the table right now, and if not, why not? The sheet
   // shows the reason instead of a dead Send button. Answering an offer is
@@ -1042,13 +1268,25 @@ export function Client() {
   // flash "One moment…" whenever it happened to open while busy was still
   // true from the previous action. Send is disabled by `busy` directly.
   const canPropose =
-    !!me && !me.bankrupt && !over && myTurn && !auctionOn && !trade && (phase === "roll" || phase === "act");
+    !!me &&
+    !me.bankrupt &&
+    !over &&
+    myTurn &&
+    !auctionOn &&
+    // `phase === 'roll' || 'act'` already excludes 'casino', but the flag is
+    // spelled out so the reason below has something to key off.
+    !casinoOn &&
+    !trade &&
+    (phase === "roll" || phase === "act");
   let whyNot = null;
   if (!canPropose) {
     if (!me) whyNot = "You are not in this room";
     else if (over) whyNot = "The game is over";
     else if (me.bankrupt) whyNot = "You are out of the game";
     else if (auctionOn) whyNot = "An auction is running";
+    // The server's own wording, so the sheet and a rejected call say the
+    // same thing.
+    else if (casinoOn) whyNot = "The casino is waiting";
     else if (outgoingOffer)
       whyNot = `Waiting for ${nameOfFig(players, outgoingOffer.to)} to answer`;
     else if (incomingOffer)
@@ -1069,6 +1307,24 @@ export function Client() {
     [over, players],
   );
 
+  // The trophy line and the closing sentence, in one place: an allied pair
+  // wins TOGETHER (SPEC-DIPLOMACY.md §1, `winners` — see useGameRoom.js),
+  // which needs its own wording ("You and Ero win together") rather than the
+  // singular `winner.name`. `winners` is [] until the game actually ends, so
+  // this falls back to the single-winner phrasing (and then to "Game over")
+  // exactly as before for every room that never formed an alliance.
+  const iWon = (winners || []).some((p) => p.figure === me?.figure);
+  const winTitle =
+    winners && winners.length > 1
+      ? iWon
+        ? `You and ${winners.find((p) => p.figure !== me?.figure)?.name ?? "your ally"} win together!`
+        : `${winners.map((p) => p.name).join(" and ")} win together`
+      : winner
+        ? winner.figure === me?.figure
+          ? "You win!"
+          : `${winner.name} wins`
+        : "Game over";
+
   // Tab and a screen reader must not walk into the screen underneath an open
   // sheet or the card overlay.
   //
@@ -1087,8 +1343,20 @@ export function Client() {
   // It also steps aside for its own Counter: the trade sheet opened from it is
   // the answer being written, and two dialogs about the same offer is one too
   // many. Close the sheet without sending and the offer is there again.
-  const showOffer = !!incomingOffer && deckCard == null && !(sheet === "trade" && counterOf);
-  const blocked = sheet != null || deckCard != null || showOffer;
+  // The casino replay is the third alertdialog, and it slots into the same
+  // pecking order: the card is the oldest news and wins, then the spin (which
+  // dismisses itself within a few seconds), then an offer, which will still be
+  // there afterwards because nothing about it expires on a timer.
+  const showCasinoFx = casinoFx != null && deckCard == null;
+  const showOffer =
+    !!incomingOffer && deckCard == null && !showCasinoFx && !(sheet === "trade" && counterOf);
+  // A diplomacy proposal (alliance or peace) is the fourth alertdialog and
+  // ranks just behind a trade offer: both are "someone needs my answer"
+  // overlays reachable off-turn, and only one of the two can plausibly be
+  // pending at once in practice, so losing a tie to the trade offer (the
+  // older feature) costs nothing real.
+  const showDiplomacyOffer = !!diploOffer && deckCard == null && !showCasinoFx && !showOffer;
+  const blocked = sheet != null || deckCard != null || showOffer || showCasinoFx || showDiplomacyOffer;
   useLayoutEffect(() => {
     if (!blocked) stageRef.current?.removeAttribute("inert");
   }, [blocked]);
@@ -1112,7 +1380,7 @@ export function Client() {
   //                            that drops a counter whose offer has gone away
   //   startAuction / openTrade / closeTrade / counterOffer / sendTrade /
   //   sendCounter              the new run() wrappers, all of them thin
-  //   `standCell` vs `cell`    the ticket, the tint and the path move to the
+  //   `standCell` vs `cell`    the deed card and the tint move to the
   //                            auctioned space while an auction runs; `choice`,
   //                            Buy and Build keep reading the space I stand on
   //   `choice`                 returns null during an auction
@@ -1179,6 +1447,36 @@ export function Client() {
   //   ActRow                   takes `dice` (the values), `roll` and a size
   // The turn effect, every other run()/setPassed/navigate/sound.play and every
   // other `disabled` condition are untouched.
+  //
+  // And everything the Casino, the Weed Farm and the Free Parking pot added
+  // (2026-09-20 — supabase/migrations/20260920170000_casino_farm_rebalance.sql):
+  //   `casino` / `casinoOn`    game.casino, tolerated null / missing / partial,
+  //                            paired with the server's new phase 'casino'
+  //   `pot`                    game.pot, a plain integer, coerced for a room
+  //                            written before it existed
+  //   CasinoPanel              takes the act row exactly as AuctionPanel does,
+  //                            for EVERY phone; one verb, casino_play, and no
+  //                            decline — landing there is mandatory
+  //   `casinoFx` + CasinoResult the server's own result event, replayed over
+  //                            the screen on every phone. It ANIMATES INTO the
+  //                            answer that already arrived; nothing local ever
+  //                            decides an outcome. Set from `reveal.feed`, so
+  //                            a reload or a silent resync never replays a spin
+  //   `showCasinoFx`/`blocked` the third alertdialog, ranked behind the card
+  //                            and ahead of an incoming offer
+  //   `cashDelay`              holds the aura's count-up for the whole spin on
+  //                            a casino batch, so the number cannot spoil it
+  //   `choice` / `canBuild` / MineSheet `busy` / `canPropose`
+  //                            all refuse while the house is waiting, with the
+  //                            server's own wording where one is shown
+  //   doubles banner           suppressed during a casino bet, same as during
+  //                            an auction
+  //   `state` / `turnLabel`    new "casino" value; the aura reads "Casino"
+  //   pot / harvest notices    a 5s "good" banner when Free Parking or the
+  //                            farm pays ME; neither can fire on a zero, the
+  //                            server emits nothing in that case
+  //   Aura `pot` / Ticket `pot` the standing pot in the aura and, on cell 21,
+  //                            on the ticket itself
   if (!uuid || !playerId) return <Navigate to="/Login" replace />;
 
   return (
@@ -1217,14 +1515,49 @@ export function Client() {
               setSheet("game");
             }}
             cashDelay={cashDelay}
+            pot={pot}
+            diploStatus={diploStatus}
+            /* The deed card, in the aura's flexible row. It steps aside for
+               the one player who is betting, and for nobody else. The space it
+               would describe is cell 13, and the casino panel below is the
+               same description with the odds and the slider attached — two
+               headers for one space, on the one screen that has the least room
+               for them (the panel is ~312px against the act row's ~130).
+               Everyone else keeps their card: it is showing the space THEY are
+               standing on, which the panel says nothing about.
+
+               During an auction `cell` is the space being SOLD, not the one
+               under this player's token, and the label says so on the card's
+               band. The path strip that used to refocus on that space is gone
+               (see the panel below); the card is now the only thing that has
+               to make the switch, and it is big enough to make it plainly. */
+            card={
+              !myCasino ? (
+                <Ticket
+                  cell={cell}
+                  board={board}
+                  players={players}
+                  me={me}
+                  game={game}
+                  canBuild={buildHere && !auctionOn && !casinoOn}
+                  onBuild={() => openHand(cell && ownerOf(cell) === me?.figure ? cell.id : null)}
+                  lastCard={lastCardText}
+                  /* Free Parking's headline is the live pot, so the card
+                     needs the number. Every other space ignores it. */
+                  pot={pot}
+                  label={auctionOn ? "Up for auction" : undefined}
+                />
+              ) : null
+            }
             payFx={
               <PayFx
                 items={payItems}
                 token={reveal.releaseSeq}
                 delay={payDelay}
-                /* The card and an incoming offer own the screen while they are
-                   up; the toast waits its turn rather than arguing with them. */
-                blocked={deckCard != null || showOffer}
+                /* The card, an incoming offer and the casino replay own the
+                   screen while they are up; the toast waits its turn rather
+                   than arguing with them. */
+                blocked={deckCard != null || showOffer || showCasinoFx}
                 players={players}
                 meFig={me?.figure ?? null}
                 vibrate={!sound.muted}
@@ -1234,47 +1567,32 @@ export function Client() {
             {over ? (
               <div className={s.over}>
                 <Trophy size={44} color="var(--tint)" />
-                <div className={s.overTitle}>
-                  {winner
-                    ? winner.figure === me?.figure
-                      ? "You win!"
-                      : `${winner.name} wins`
-                    : "Game over"}
-                </div>
+                <div className={s.overTitle}>{winTitle}</div>
               </div>
             ) : loading ? (
-              <p className={s.loading}>Loading the game…</p>
+              /* Two children on purpose: the aura has a flexible row and a
+                 bottom row, and these take one each — a card-shaped
+                 placeholder where the card is about to be, and the words where
+                 the latest line is about to be. */
+              <>
+                <span className={`${s.skel} ${s.skelTicket}`} aria-hidden="true" />
+                <p className={s.loading}>Loading the game…</p>
+              </>
             ) : null}
           </Aura>
 
           <section className={s.panel} aria-label="Your move">
-            {!over && !loading && (
-              <>
-                <PathStrip
-                  board={board}
-                  position={auctionOn ? auction.cell : me?.position}
-                  me={me}
-                  standing={!auctionOn || me?.position === auction.cell}
-                />
-                <Ticket
-                  cell={cell}
-                  board={board}
-                  players={players}
-                  me={me}
-                  canBuild={buildHere && !auctionOn}
-                  onBuild={() => openHand(cell && ownerOf(cell) === me?.figure ? cell.id : null)}
-                  lastCard={lastCardText}
-                  label={auctionOn ? "Up for auction" : undefined}
-                />
-              </>
-            )}
-
-            {loading && (
-              <>
-                <span className={`${s.skel} ${s.skelPath}`} aria-hidden="true" />
-                <span className={`${s.skel} ${s.skelTicket}`} aria-hidden="true" />
-              </>
-            )}
+            {/* Buttons only. The panel used to open with the path strip (seven
+                dots: three spaces behind you, you, three ahead) and the ticket
+                for the space you stand on. The strip is gone — what is NEAR you
+                turned out to matter far less than what you are ON, and it was
+                paid for with the height the ticket needed — and the ticket is
+                now the deed card up in the aura. What is left is what you can
+                press, so the panel is as short as the move on offer and the
+                aura takes every pixel it gives back. (While the room loads
+                that is the act row's own disabled "Loading" button, so the
+                two placeholders that stood here for the strip and the ticket
+                have nothing left to stand for; the card's is in the aura.) */}
 
             {/* The panel was a sliver above the nav once the game ended. It now
                 carries the closing words and the table, from data already here —
@@ -1282,8 +1600,10 @@ export function Client() {
             {over && (
               <div className={s.finals}>
                 <p className={s.finalsBody}>
-                  {winner?.figure === me?.figure
-                    ? "Everyone else went bankrupt. Well played."
+                  {iWon
+                    ? winners.length > 1
+                      ? "You and your ally are the last ones standing. Well played."
+                      : "Everyone else went bankrupt. Well played."
                     : "Start another one from the board screen."}
                 </p>
                 <div>
@@ -1323,6 +1643,20 @@ export function Client() {
                 onBid={(amount) => run("auction_bid", { amount })}
                 onDrop={() => run("auction_drop")}
               />
+            ) : casinoOn ? (
+              /* The casino takes the act row exactly the way an auction does,
+                 and for the same reason: until the bet is settled the server
+                 refuses every other verb, so there is no other move in the
+                 room to offer. Everyone sees it — the player to place the bet,
+                 and the other five as a statement of what is happening. There
+                 is no decline: landing here is mandatory. */
+              <CasinoPanel
+                casino={casino}
+                players={players}
+                me={me}
+                busy={busyOrDisconnected}
+                onPlay={(payload) => run("casino_play", payload)}
+              />
             ) : (
               (actPrimary || actPass) && (
                 <ActRow
@@ -1355,6 +1689,20 @@ export function Client() {
 
         <CardOverlay card={deckCard} onClose={() => setDeckCard(null)} />
 
+        {/* The spin, on every phone in the room. It animates the result the
+            server already returned and dismisses itself; `onClose` is the tap
+            / Escape / auto-dismiss, and it is the only thing that clears it.
+            Mounted unconditionally and handed a null event when there is
+            nothing to show — exactly like CardOverlay above — because the exit
+            animation lives inside its own AnimatePresence and unmounting the
+            component would cut it off mid-fade. */}
+        <CasinoResult
+          event={showCasinoFx ? casinoFx : null}
+          players={players}
+          meFig={me?.figure ?? null}
+          onClose={() => setCasinoFx(null)}
+        />
+
         {/* An offer waits; a card does not. Both are alertdialogs, so only one
             of them may be up at a time. */}
         {showOffer && (
@@ -1370,6 +1718,29 @@ export function Client() {
           />
         )}
 
+        {/* An alliance proposed to me, or a peace treaty from the other
+            principal of one of my wars — dealt the same way an incoming trade
+            is, and reachable off-turn for the same reason (ally_accept/decline
+            and peace_accept/decline are all "any time" verbs). */}
+        {showDiplomacyOffer && (
+          <DiplomacyOverlay
+            offer={diploOffer}
+            players={players}
+            me={me}
+            busy={busyOrDisconnected}
+            onAccept={() =>
+              diploOffer.kind === "ally"
+                ? run("ally_accept", { from: diploOffer.from })
+                : run("peace_accept", { warId: diploOffer.war.id })
+            }
+            onDecline={() =>
+              diploOffer.kind === "ally"
+                ? run("ally_decline", { from: diploOffer.from })
+                : run("peace_decline", { warId: diploOffer.war.id })
+            }
+          />
+        )}
+
         <MineSheet
           open={sheet === "mine"}
           onClose={() => setSheet(null)}
@@ -1377,9 +1748,10 @@ export function Client() {
           me={me}
           players={players}
           focus={focusCard}
-          /* No building while an auction runs: the server rejects it, so the
-             button must not be live either. */
-          busy={busyOrDisconnected || auctionOn}
+          /* No building while an auction runs, and none while the casino is
+             waiting: the server rejects both, so the button must not be live
+             either. */
+          busy={busyOrDisconnected || auctionOn || casinoOn}
           onBuild={(id) => run("build", { cell: id })}
         />
         <PlayersSheet
@@ -1389,11 +1761,21 @@ export function Client() {
           players={players}
           current={current}
           winner={winner}
+          winners={winners}
           meFig={me?.figure}
           /* The pill hands back a figure; the trade sheet opens with that
              player already chosen. Whether an offer is allowed at all is the
              sheet's business (canPropose / whyNot), not the pill's. */
           onTrade={over || !me || me.bankrupt ? undefined : (fig) => openTrade({ draft: { to: fig } })}
+          me={me}
+          game={game}
+          myTurn={myTurn}
+          phase={phase}
+          busy={busyOrDisconnected}
+          /* Same "over or not seated or already out" gate as onTrade above —
+             a read-only roster in every one of those states, same as before
+             diplomacy existed. */
+          onDiplomacy={over || !me || me.bankrupt ? undefined : (verb, payload) => run(verb, payload)}
         />
         <TradeSheet
           open={sheet === "trade"}

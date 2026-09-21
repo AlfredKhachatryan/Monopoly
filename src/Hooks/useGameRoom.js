@@ -331,6 +331,18 @@ export function useGameRoom(uuid, playerId) {
     over,
     myTurn,
     winner: game.winner ? playerByFig(players, game.winner) : null,
+    // An allied pair wins together (SPEC-DIPLOMACY.md §1): `game.winners` is
+    // an array of ONE or TWO figures once the game is over, and `game.winner`
+    // stays populated with the first of them for whatever still reads that
+    // singular field. `winners` here is the full list, resolved to player
+    // rows the same way `winner` already is — [] for a room that predates the
+    // field or has not ended, so a caller can test `.length` without also
+    // checking `over` first.
+    winners: Array.isArray(game.winners)
+      ? game.winners.map((f) => playerByFig(players, f)).filter(Boolean)
+      : game.winner
+        ? [playerByFig(players, game.winner)].filter(Boolean)
+        : [],
     dice: Array.isArray(game.dice) ? game.dice : null,
     diceSum: Array.isArray(game.dice) ? game.dice[0] + game.dice[1] : 7,
     log: Array.isArray(game.log) ? game.log : [],
