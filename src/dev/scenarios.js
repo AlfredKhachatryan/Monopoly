@@ -13,11 +13,18 @@
 // from supabase/migrations/20260920100000_six_players.sql.
 //
 // Board layout reference (src/Hooks/baseState.jsx, 1-indexed):
-//   streets   2,4 (#D92650) · 7,9,10 (#eb75e7) · 12,14,15 (#F5786C)
-//             17,19,20 (#1F8F5D) · 22,24,25 (#1F8FFF) · 27,29,30 (#F56CC6)
-//             32,34,35 (#6F6CF5) · 38,40 (#DE951F)
-//   railroads 6, 16, 26, 36        utilities 13 (Light), 28 (Water)
-//   tax       5 ($200), 39 ($400 Luxury Tax)
+//   streets   2,4 (#e02749) · 7,9,10 (#0fb5b5) · 12,14,15 (#f2762a)
+//             17,19,20 (#24a75a) · 22,24,25 (#2b7fff) · 27,29,30 (#e451c4)
+//             32,34,35 (#e8b224) · 38,40 (#7b5cff)
+//   railroads 6, 16, 26, 36
+//   casino    13  -- NEVER ownable: the bank is the house, so no scenario may
+//                  ever set board[13].bought. Landing there opens a mandatory
+//                  bet (phase 'casino' + game.casino).
+//   farm      28  -- ownable and tradable like any deed, but it charges no
+//                  rent: it carries `income`, a counter that grows by $150
+//                  every time a NON-owner lands on it and is harvested whole
+//                  by the owner landing on it themselves.
+//   tax       5 ($200), 39 ($400 Luxury Tax) -- both feed game.pot
 //   chance    8, 23, 37            community 3, 18, 33
 //   jail 11 (visit/in-jail) · GTJ 31 · parking 21 · start 1
 //
@@ -104,10 +111,15 @@ function buildBoard(extra) {
   board[14].houses = 1;
   board[15].houses = 1;
 
-  // Ero (fig0): a railroad, a utility, one street of the pink set.
+  // Ero (fig0): a railroad, the Weed Farm, one cheap red street. It used to be
+  // cell 13 rather than 28 -- but 13 is the Casino now and NOTHING may ever
+  // own it (rules.js's isProperty and priceOf both refuse it, and the server
+  // never writes a `bought` key there), so the holding moved to the farm, which
+  // is ownable and is the more interesting of the two to have in somebody's
+  // hand: every other player landing on it grows a counter they cannot touch.
   own(2, "fig0");
   own(6, "fig0");
-  own(13, "fig0");
+  own(28, "fig0");
 
   // Koli (fig2): two of the three light-pink streets, a railroad.
   own(7, "fig2");
@@ -147,6 +159,8 @@ function baseRow({
   dice = null,
   winner = null,
   boardMutator = null,
+  pot = 0,
+  casino = null,
 } = {}) {
   const players = basePlayers(playerOverrides);
   const board = buildBoard(boardMutator);
@@ -166,10 +180,32 @@ function baseRow({
       events: [],
       lastCard: null,
       winner,
+      // Always an array (mirrors the SQL's own row shape and
+      // mockSupabase.js's finalize()): [] until somebody has won, or a
+      // backfilled [winner] for a scenario that only set the legacy field,
+      // same defensive read a room from before the diplomacy migration gets.
+      winners: winner ? [winner] : [],
       // Present and null rather than absent, same as a real room's row --
       // see mockSupabase.js's finalize().
       auction: null,
       trade: null,
+      // The Free Parking pot and the pending casino bet, both of which a real
+      // row always carries: the SQL seeds `pot` onto every existing room and
+      // writes `casino` on every action. A scenario that left them off would
+      // be previewing a row shape the server cannot produce.
+      pot,
+      casino,
+      // The diplomacy layer's own always-present keys (SPEC-DIPLOMACY.md):
+      // every game counts rounds from 1 even if it never touches an
+      // alliance or a war, and alliances/allyOffers/wars are always arrays,
+      // never missing or null. A scenario that wants to show one of these
+      // states sets `row.game.X = ...` after calling baseRow(), same as
+      // `row.game.auction`/`row.game.trade` already do elsewhere in this
+      // file.
+      round: 1,
+      alliances: [],
+      allyOffers: [],
+      wars: [],
       // A little seeded history so the game log / ticker isn't empty on
       // first paint, same as a room several turns in would have.
       log: [
@@ -190,7 +226,7 @@ function baseRow({
 // basePlayers()'s fixed four.
 // ---------------------------------------------------------------------------
 
-function customRow({ players, board, boardMutator, currentOrder = 0, phase = "roll", doubles = 0, dice = null, winner = null }) {
+function customRow({ players, board, boardMutator, currentOrder = 0, phase = "roll", doubles = 0, dice = null, winner = null, pot = 0, casino = null }) {
   const finalBoard = board ? upgradeCells(board) : buildBoard(boardMutator);
   placeTokens(finalBoard, players);
   return {
@@ -208,14 +244,23 @@ function customRow({ players, board, boardMutator, currentOrder = 0, phase = "ro
       events: [],
       lastCard: null,
       winner,
+      winners: winner ? [winner] : [],
       auction: null,
       trade: null,
+      pot,
+      casino,
+      round: 1,
+      alliances: [],
+      allyOffers: [],
+      wars: [],
       log: players.map((p, i) => ({ type: "join", figure: p.figure, name: p.name, seq: i - players.length, by: p.playerId })),
     },
   };
 }
 
-// `tv-rich`: every one of the 28 ownable cells is owned, several full colour
+// `tv-rich`: every one of the 27 ownable cells is owned (22 streets, 4
+// railroads and the Weed Farm -- it was 28 while the two utilities existed,
+// and the Casino that replaced one of them can never be owned by anybody), several full colour
 // sets carry houses or a hotel (houses: 5 = hotel, same convention as the
 // `repairs` card handler above), long Cyrillic names stress the TV's text
 // truncation, one player sits in jail and one is bankrupt (and therefore
@@ -227,8 +272,9 @@ function buildRichBoard() {
     board[id].bought[fig] = true;
     if (houses != null) board[id].houses = houses;
   };
-  // Ero (fig0): the cheap red set with a house each, the pink set built to 3
-  // houses, two railroads, one utility.
+  // Ero (fig0): the cheap red set with a house each, the teal set built to 3
+  // houses, two railroads. No utility any more -- cell 13 is the Casino and is
+  // unownable by anyone.
   own(2, "fig0", 1);
   own(4, "fig0", 1);
   own(7, "fig0", 3);
@@ -236,8 +282,7 @@ function buildRichBoard() {
   own(10, "fig0", 3);
   own(6, "fig0");
   own(16, "fig0");
-  own(13, "fig0");
-  // Afo (fig1): the salmon set with a hotel, the green set bare, one railroad.
+  // Afo (fig1): the orange set with a hotel, the green set bare, one railroad.
   own(12, "fig1", 4);
   own(14, "fig1", 4);
   own(15, "fig1", 5); // hotel
@@ -245,8 +290,8 @@ function buildRichBoard() {
   own(19, "fig1");
   own(20, "fig1");
   own(26, "fig1");
-  // Gaya (fig3): blue with houses, magenta bare, purple with a couple of
-  // houses, both orange streets, one railroad, one utility.
+  // Gaya (fig3): azure with houses, magenta bare, gold with a couple of
+  // houses, both indigo streets, one railroad, and the Weed Farm.
   own(22, "fig3", 2);
   own(24, "fig3", 2);
   own(25, "fig3", 2);
@@ -440,22 +485,180 @@ export const SCENARIOS = {
     }),
   },
 
-  // Same question for the second utility: I own 13 (Light) and land on 28
-  // (Water).
-  "my-buy-utility": {
-    label: "my-buy-utility",
-    describe: "I already own utility 13 and land on the unowned utility 28.",
+  // The Weed Farm is bought exactly like any other deed -- the buy/auction
+  // choice, the price, the auction if nobody takes it. What is different is
+  // what the ticket says about it: a CROP, not a rent, and a note that a
+  // visitor pays nothing. Ero holds it by default, so it is cleared here.
+  "my-buy-farm": {
+    label: "my-buy-farm",
+    describe: "Land on the unowned Weed Farm (28): Buy $150 / Auction, and a crop instead of a rent.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 23 } },
+        boardMutator: (board) => {
+          board[28].bought.fig0 = false; // Ero's by default
+          board[28].income = 800; // several laps of visitors have watered it
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 28 },
+    }),
+  },
+
+  // ---- the casino (spec 5) ----------------------------------------------
+
+  // The panel, from the betting side. Rolled onto cell 13, so the row arrives
+  // as a LIVE update with the `casino` enter event in it -- which is what puts
+  // the phone in phase 'casino' with a real pending block rather than a
+  // hand-written one that could drift from what the server writes.
+  "casino-mine": {
+    label: "casino-mine",
+    describe: "I landed on the Casino: pick a game, set a bet, and there is no way out.",
+    build: () => ({
+      row: baseRow({ currentOrder: 1, phase: "roll", playerOverrides: { afo: { position: 8 } } }),
+      intro: { actorId: PLAYER_IDS.afo, target: 13 },
+    }),
+  },
+
+  // The same moment from a phone that is NOT betting. The mock's own casino
+  // bot settles it after ~1.1s (scheduleCasinoBotIfNeeded), so this scenario
+  // plays the whole spectator story by itself: the "Ero is placing a bet"
+  // panel, then the spin overlay, then the swing in the feed.
+  "casino-watch": {
+    label: "casino-watch",
+    describe: "Ero is at the Casino and I am watching: spectator panel, then the spin overlay.",
+    build: () => ({
+      row: baseRow({ currentOrder: 0, phase: "roll", playerOverrides: { ero: { position: 8 } } }),
+      intro: { actorId: PLAYER_IDS.ero, target: 13 },
+    }),
+  },
+
+  // A nearly-broke player. 15% of $70 is $10.50, which rounds UP to $20, so
+  // the slider runs $20..$70 and all-in is one short drag: the point of the
+  // scenario is that the panel still works at the bottom of the range and
+  // still states the real floor rather than quietly clamping to something
+  // the server would then reject.
+  "casino-broke": {
+    label: "casino-broke",
+    describe: "At the Casino with $70: the 15% floor rounds up to $20 and all-in is one drag away.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 8, money: 70 } },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 13 },
+    }),
+  },
+
+  // The retargeted Chance card (mc9, index 8 -- c4 in the SQL). It used to say
+  // "advance to the nearest utility"; there are no utilities, so it sends the
+  // player to the Casino instead and the mandatory-bet rule does the rest.
+  // One batch carries the card, a second move, a second land AND the casino
+  // enter event.
+  "casino-card": {
+    label: "casino-card",
+    describe: "Chance: the house misses you - the card moves me to the Casino and opens a bet.",
+    build: () => ({
+      row: baseRow({ currentOrder: 1, phase: "roll", playerOverrides: { afo: { position: 5 } } }),
+      intro: { actorId: PLAYER_IDS.afo, target: 8, forceCard: { deck: "chance", index: 8 } },
+    }),
+  },
+
+  // ---- the Weed Farm (spec 6) -------------------------------------------
+
+  // Landing on somebody else's farm: I pay NOTHING and the crop grows $150.
+  // The one rule players get wrong, so it is the one the ticket spells out.
+  "farm-visit": {
+    label: "farm-visit",
+    describe: "Land on Ero's farm: pay nothing, the crop grows +$150.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 23 } },
+        boardMutator: (board) => {
+          board[28].income = 650;
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 28 },
+    }),
+  },
+
+  // The payday. The owner has to physically land on it -- there is no passive
+  // per-lap income -- and the counter then restarts at $50.
+  "farm-harvest": {
+    label: "farm-harvest",
+    describe: "Land on MY farm: the whole $1400 crop is paid by the bank and it restarts at $50.",
     build: () => ({
       row: baseRow({
         currentOrder: 1,
         phase: "roll",
         playerOverrides: { afo: { position: 23 } },
         boardMutator: (board, own) => {
-          board[13].bought.fig0 = false; // Ero's by default
-          own(13, "fig1");
+          board[28].bought.fig0 = false; // Ero's by default
+          own(28, "fig1");
+          board[28].income = 1400;
         },
       }),
-      intro: { actorId: PLAYER_IDS.afo, target: 28 }, // Communal "Water", $150, unowned
+      intro: { actorId: PLAYER_IDS.afo, target: 28 },
+    }),
+  },
+
+  // ---- the Free Parking pot (spec 2) ------------------------------------
+
+  // A fat pot and a landing on cell 21 to collect it. The pot is money the
+  // table has already paid in fines, so this is the biggest single swing in
+  // the game that nobody chose.
+  "parking-pot": {
+    label: "parking-pot",
+    describe: "Land on Free Parking with $1250 in the pot: the whole thing is mine.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 16 } },
+        pot: 1250,
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 21 },
+    }),
+  },
+
+  // The other half of the same story: paying a fine puts it IN. Cell 5 is the
+  // $200 tax, and the pot chip in the aura goes up by exactly that.
+  "parking-pot-fills": {
+    label: "parking-pot-fills",
+    describe: "Land on the $200 tax: the pot chip goes from $300 to $500.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { position: 1 } },
+        pot: 300,
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 5 },
+    }),
+  },
+
+  // ---- jail blocks rent (spec 3) ----------------------------------------
+
+  // Koli owns cell 9 and is in jail, so landing on it costs nothing at all --
+  // not to Koli, not to the pot, not to the bank. Without the `rentFree` event
+  // the log would just show a landing and no charge, which reads as a bug.
+  "rent-free-jailed-owner": {
+    label: "rent-free-jailed-owner",
+    describe: "Land on Koli's street while Koli is in jail: no rent is charged and the log says why.",
+    build: () => ({
+      row: baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: {
+          afo: { position: 5 },
+          koli: { position: 11, inJail: true, jailTurns: 1 },
+        },
+      }),
+      intro: { actorId: PLAYER_IDS.afo, target: 9 },
     }),
   },
 
@@ -579,24 +782,14 @@ export const SCENARIOS = {
     }),
   },
 
-  // The utility twin of the same card kind (Chance mc9, index 8 -- c4 in the
-  // SQL), kept because it is the only place the server's `util_mult` override
-  // is reachable at all: Ero owns utility 13 and only that one, so ordinary
-  // rent would be 4x dice, and the card forces 10x instead. The dice are the
-  // ORIGINAL roll's, not a re-throw -- see the `nearest` case in
-  // mockSupabase.js's applyCard() for why.
-  "my-card-nearest-utility": {
-    label: "my-card-nearest-utility",
-    describe: "Chance 8 → nearest utility card → Ero's utility 13 at 10× dice, not 4×.",
-    build: () => ({
-      row: baseRow({
-        currentOrder: 1,
-        phase: "roll",
-        playerOverrides: { afo: { position: 5 } },
-      }),
-      intro: { actorId: PLAYER_IDS.afo, target: 8, forceCard: { deck: "chance", index: 8 } },
-    }),
-  },
+  // "my-card-nearest-utility" used to live here: Chance index 8 was "advance
+  // to the nearest utility... pay 10 times your dice", and the scenario
+  // existed to exercise the server's `util_mult` override. All three of those
+  // things are gone -- there are no utilities, there is no utility rent branch
+  // and there is no util_mult -- so the card was RETARGETED to the Casino
+  // (mc9, c4 in the SQL) and the scenario with it. It is "casino-card" above,
+  // at the same deck index, so any old driver script pointing at index 8 still
+  // fires the same card.
 
   "my-build": {
     label: "my-build",
@@ -1040,6 +1233,191 @@ export const SCENARIOS = {
   },
 
   // ---------------------------------------------------------------------
+  // Diplomacy: alliances, war and the backstab gambit
+  // (scratchpad/SPEC-DIPLOMACY.md). One state per bullet in the task brief,
+  // same convention as everywhere else in this file: a static row shows a
+  // STATE (an offer, a treaty, a brand); an `intro` shows an EVENT (a rent
+  // landing) by forcing a real roll ~600ms after load through the same
+  // performRoll()/land() code path a genuine roll uses, so the pay/rentFree/
+  // commission/debtShare events are byte-identical to what a live action
+  // would produce. `game.round`/`alliances`/`allyOffers`/`wars` are set
+  // directly on the built row (`row.game.X = ...`), same as `row.game.trade`
+  // / `row.game.auction` already are elsewhere in this file -- baseRow()
+  // itself does not know about the diplomacy layer.
+  // ---------------------------------------------------------------------
+
+  "ally-incoming-proposal": {
+    label: "ally-incoming-proposal",
+    describe: "Koli proposes an alliance; pending for me (any time) to accept or decline.",
+    build: () => {
+      const row = baseRow({ currentOrder: 2, phase: "act" });
+      row.game.allyOffers = [{ from: "fig2", to: "fig1" }];
+      return { row };
+    },
+  },
+
+  "ally-free-passage": {
+    label: "ally-free-passage",
+    describe: "Allied with Ero: landing on his street (Зайка, cell 2) costs nothing, ~600ms after load.",
+    build: () => {
+      const row = baseRow({ currentOrder: 1, phase: "roll" });
+      row.game.alliances = [{ a: "fig0", b: "fig1", since: 1 }];
+      return { row, intro: { delay: 600, actorId: ME_PLAYER_ID, target: 2 } };
+    },
+  },
+
+  "ally-tax-outsider": {
+    label: "ally-tax-outsider",
+    describe: "Allied with Ero, I land on Koli's street (an outsider): +25% ally tax, ~600ms after load.",
+    build: () => {
+      const row = baseRow({ currentOrder: 1, phase: "roll" });
+      row.game.alliances = [{ a: "fig0", b: "fig1", since: 1 }];
+      // Koli's Фирмини (cell 7): base rent floor(100/8)=12, no colour-set
+      // bonus (she only owns 7/9, not the third teal street 10) -- so the
+      // rent that actually lands is entirely the +25% tag, floor(12*1.25)=15.
+      return { row, intro: { delay: 600, actorId: ME_PLAYER_ID, target: 7 } };
+    },
+  },
+
+  "ally-upkeep-dissolve": {
+    label: "ally-upkeep-dissolve",
+    describe: "Allied with Ero, who has only $30: Gaya's end_turn wraps the round, upkeep dissolves it.",
+    build: () => ({
+      row: (() => {
+        const row = baseRow({
+          currentOrder: 3, // Gaya, the last seat -- her end_turn is the wrap
+          phase: "act",
+          playerOverrides: { ero: { money: 30 } },
+        });
+        row.game.round = 1;
+        row.game.alliances = [{ a: "fig0", b: "fig1", since: 1 }];
+        return row;
+      })(),
+    }),
+  },
+
+  "ally-debt-share": {
+    label: "ally-debt-share",
+    describe: "Allied with Ero, I'm down to $20 and land on Gaya's street: Ero covers the shortfall, ~600ms after load.",
+    build: () => {
+      const row = baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { money: 20 } },
+      });
+      row.game.alliances = [{ a: "fig0", b: "fig1", since: 1 }];
+      // Gaya's Minecraft (cell 22): base rent floor(220/8)=27, no set bonus
+      // (she owns 22 only), +25% ally tax (I'm allied, she isn't my ally) =
+      // floor(27*1.25)=33 -- $13 more than my $20, which is exactly the
+      // shortfall Ero's cash covers.
+      return { row, intro: { delay: 600, actorId: ME_PLAYER_ID, target: 22 } };
+    },
+  },
+
+  "war-double-rent": {
+    label: "war-double-rent",
+    describe: "At war with Koli (I declared): landing on her street pays double, ~600ms after load.",
+    build: () => {
+      const row = baseRow({ currentOrder: 1, phase: "roll" });
+      row.game.wars = [
+        { id: 1, declarer: "fig1", target: "fig2", startRound: 1, endsRound: 6, peace: null },
+      ];
+      // Koli's Чинар (cell 9): base rent floor(100/8)=12, no set bonus
+      // (she owns 7/9, not the third teal street 10), war doubles it to 24.
+      return { row, intro: { delay: 600, actorId: ME_PLAYER_ID, target: 9 } };
+    },
+  },
+
+  "war-dragged-ally": {
+    label: "war-dragged-ally",
+    describe: "Ero declared war on Koli; Koli's ally Gaya is dragged onto her side (computed live).",
+    build: () => {
+      const row = baseRow({ currentOrder: 1, phase: "roll" });
+      row.game.wars = [
+        { id: 1, declarer: "fig0", target: "fig2", startRound: 1, endsRound: 6, peace: null },
+      ];
+      row.game.alliances = [{ a: "fig2", b: "fig3", since: 1 }];
+      return { row };
+    },
+  },
+
+  "war-peace-incoming": {
+    label: "war-peace-incoming",
+    describe: "Ero sues for peace on our war, offering $200; mine (any time) to accept or decline.",
+    build: () => {
+      const row = baseRow({ currentOrder: 2, phase: "act" });
+      row.game.wars = [
+        {
+          id: 1,
+          declarer: "fig0",
+          target: "fig1",
+          startRound: 1,
+          endsRound: 6,
+          peace: { from: "fig0", amount: 200 },
+        },
+      ];
+      return { row };
+    },
+  },
+
+  "war-last-round": {
+    label: "war-last-round",
+    describe: "At war with Koli: round 5 of 5 -- the next round-wrap expires it.",
+    build: () => {
+      const row = baseRow({ currentOrder: 1, phase: "roll" });
+      row.game.round = 5;
+      row.game.wars = [
+        { id: 1, declarer: "fig1", target: "fig2", startRound: 1, endsRound: 6, peace: null },
+      ];
+      return { row };
+    },
+  },
+
+  "backstab-ready": {
+    label: "backstab-ready",
+    describe: "Allied with Ero ($1180 cash), my turn: the backstab gambit is available and unused.",
+    build: () => {
+      const row = baseRow({ currentOrder: 1, phase: "act" });
+      row.game.alliances = [{ a: "fig0", b: "fig1", since: 1 }];
+      return { row };
+    },
+  },
+
+  "traitor-rent": {
+    label: "traitor-rent",
+    describe: "Branded traitor from an earlier backstab: landing on Koli's street pays +25%, ~600ms after load.",
+    build: () => {
+      const row = baseRow({
+        currentOrder: 1,
+        phase: "roll",
+        playerOverrides: { afo: { traitor: true, traitorUntil: 10, backstabUsed: true } },
+      });
+      // Same cell 7 as ally-tax-outsider, but the +25% here is entirely the
+      // traitor brand -- I am not allied to anyone in this scenario.
+      return { row, intro: { delay: 600, actorId: ME_PLAYER_ID, target: 7 } };
+    },
+  },
+
+  "shared-win": {
+    label: "shared-win",
+    describe: "Afo and Ero, allied, are the last two standing -- a shared win.",
+    build: () => {
+      const row = baseRow({
+        currentOrder: 1,
+        phase: "over",
+        winner: "fig1",
+        playerOverrides: {
+          koli: { bankrupt: true, money: 0 },
+          gaya: { bankrupt: true, money: 0 },
+        },
+      });
+      row.game.alliances = [{ a: "fig0", b: "fig1", since: 1 }];
+      row.game.winners = ["fig1", "fig0"];
+      return { row };
+    },
+  },
+
+  // ---------------------------------------------------------------------
   // Six seats. The room at the cap: six names in the player strip, two
   // tokens sharing cell 6, and holdings for every figure including the two
   // new ones (fig4 Bat, fig5 Mummy).
@@ -1352,7 +1730,7 @@ export const SCENARIOS = {
 
   "tv-rich": {
     label: "tv-rich",
-    describe: "Worst case: all 28 ownable cells owned, full sets with houses/hotel, long Cyrillic names, one jailed, one bankrupt.",
+    describe: "Worst case: all 27 ownable cells owned, full sets with houses/hotel, long Cyrillic names, one jailed, one bankrupt.",
     build: () => ({
       row: customRow({ players: richPlayers(), board: buildRichBoard(), currentOrder: 1, phase: "roll" }),
     }),
