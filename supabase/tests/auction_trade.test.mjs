@@ -1672,8 +1672,11 @@ await test('landing on an unowned railroad while somebody else owns another is s
   eq(owner(r, 6), 'fig1', 'the other owner keeps theirs');
 });
 
-await test('the farm can be bought after a real roll; the casino can never be bought', async () => {
-  // 23 + (2,3) = 28, the Weed Farm. It is an ordinary 150$ deed.
+await test('the farm can never be bought — it auctions itself; nor can the casino', async () => {
+  // 23 + (2,3) = 28, the Weed Farm. Since 20260921160000_farm_auction.sql the
+  // landing itself puts the whole table in an auction, so there is no moment
+  // at which `buy` could be legal: not during it (the room is locked), and not
+  // after it (the refusal below is the cell's own, not the phase's).
   const room = await newRoom();
   await arrange(room, {
     players: { fig0: { position: 23, money: 2000, inJail: false, jailTurns: 0 } },
@@ -1683,10 +1686,18 @@ await test('the farm can be bought after a real roll; the casino can never be bo
   let r = await rollDice(room, 'p0', 2, 3);
   eq(player(r, 'fig0').position, FARM, 'landed on the farm');
   eq(money(r, 'fig0'), 2000, 'a visitor pays nothing to stand on it');
-  eq(types(r), ['roll', 'move', 'land', 'farm'], 'the landing waters the crop instead');
-  r = await call(room, 'buy', { playerId: 'p0', cell: String(FARM) });
-  eq(owner(r, FARM), 'fig0', 'the farm is an ordinary deed');
-  eq(money(r, 'fig0'), 1850, 'and costs the ordinary 150$');
+  eq(types(r), ['roll', 'move', 'land', 'farm', 'auction_start'],
+    'the landing waters the crop AND opens the auction');
+  eq(r.game.phase, 'auction');
+  await rejects(room, 'buy', { playerId: 'p0', cell: String(FARM) }, 'An auction is running');
+
+  // let it die unsold, then ask again with the room wide open
+  for (const pid of ['p1', 'p2', 'p3', 'p0']) await call(room, 'auction_drop', { playerId: pid });
+  r = await row(room);
+  eq(r.game.phase, 'act', 'the lander is back on their own turn');
+  eq(owner(r, FARM), null, 'and nobody bought it');
+  await rejects(room, 'buy', { playerId: 'p0', cell: String(FARM) },
+    'The farm is only ever sold at auction');
 
   // 8 + (2,3) = 13, the Casino. It has no price, so `buy` and `auction_start`
   // both bounce off the same "not for sale" guard every non-ownable cell uses.
@@ -1805,16 +1816,21 @@ await test('a railroad goes through an auction like any other space', async () =
   eq(await rentOf(room, 36), 35, 'the winner has one');
 });
 
-await test('the farm goes through an auction like any other space', async () => {
+await test('the farm goes through the same auction as any other space — it just starts itself', async () => {
   const room = await newRoom();
-  await standOn(room, 'fig0', FARM);
-  await call(room, 'auction_start', { playerId: 'p0', cell: FARM });
+  await arrange(room, {
+    players: { fig0: { position: 23, money: 2000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  await rollDice(room, 'p0', 2, 3); // 23 -> 28, which opens the auction
   await call(room, 'auction_bid', { playerId: 'p1', amount: 120 });
   await call(room, 'auction_drop', { playerId: 'p2' });
   await call(room, 'auction_drop', { playerId: 'p3' });
   const r = await call(room, 'auction_drop', { playerId: 'p0' });
   eq(owner(r, FARM), 'fig1', 'the bidder won the farm');
-  eq(r.position[String(FARM)].income, 50, 'and the counter came with it, untouched');
+  eq(r.position[String(FARM)].income, 200,
+    'and the counter came with it — including the 150 the opening landing added');
 });
 
 await test('bankruptcy hands every railroad and the farm over as individual cells', async () => {
@@ -2807,6 +2823,240 @@ await test('an unowned farm grows too: everybody is a non-owner', async () => {
   eq(owner(r, FARM), null, 'still nobody’s');
   eq(incomeOf(r), 200, 'and the crop grew anyway');
   eq(money(r, 'fig0'), 1000, 'standing on it is free');
+  // ...and, since 20260921160000_farm_auction.sql, that same landing put the
+  // deed itself up for sale. The crop grew FIRST: what the bidders are about
+  // to fight over is already 200$, not the 50$ it was a moment ago.
+  eq(r.game.phase, 'auction', 'the landing auctioned it');
+  eq(r.game.auction.cell, FARM);
+});
+
+// ---------------------------------------------------------------------------
+// The farm auctions itself (20260921160000_farm_auction.sql)
+// ---------------------------------------------------------------------------
+
+/**
+ * fig0 at 23 with 2000$, phase roll: a (2,3) puts them on the farm.
+ * `over.players.fig0` is merged INTO that default rather than replacing it, so
+ * a caller can change the money without silently losing the position.
+ */
+async function approachFarm(room, over = {}) {
+  const { fig0: lander = {}, ...others } = over.players || {};
+  await arrange(room, {
+    players: {
+      fig0: { position: 23, money: 2000, inJail: false, jailTurns: 0, ...lander },
+      ...others,
+    },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+    ...(over.owners ? { owners: over.owners } : {}),
+  });
+}
+
+await test('landing on the unowned farm opens an auction for the WHOLE table', async () => {
+  const room = await newRoom();
+  await approachFarm(room);
+  const r = await rollDice(room, 'p0', 2, 3);
+
+  eq(types(r), ['roll', 'move', 'land', 'farm', 'auction_start'],
+    'one action: the roll, the move, the landing, the watering and the auction');
+  eq(r.game.phase, 'auction');
+  eq(money(r, 'fig0'), 2000, 'the lander was charged nothing for opening it');
+  eq(incomeOf(r), 200, 'and the crop still grew by 150 on that very landing');
+  eq(owner(r, FARM), null, 'nobody owns it yet — that is what is being decided');
+
+  // The rotation is the ordinary one: the lander started it, so the lander
+  // bids LAST and everybody else gets a turn first. Identical in every field
+  // to what `auction_start` builds by hand on any other cell.
+  eq(r.game.auction.cell, FARM, 'cell');
+  eq(r.game.auction.startedBy, 'fig0', 'startedBy');
+  eq(r.game.auction.order, ['fig1', 'fig2', 'fig3', 'fig0'], 'order');
+  eq(r.game.auction.in, ['fig1', 'fig2', 'fig3', 'fig0'], 'everyone is in, the lander included');
+  eq(r.game.auction.turn, 'fig1', 'turn');
+  eq(r.game.auction.bid, 0, 'no opening bid: the 150$ price buys nobody anything');
+  eq(r.game.auction.leader, null, 'leader');
+  eq(r.game.auction.last, {}, 'last');
+  eq(ev(r, 'auction_start'), { type: 'auction_start', figure: 'fig0', cell: FARM });
+});
+
+await test('the winner takes the farm and the lander carries on with their turn', async () => {
+  const room = await newRoom();
+  await approachFarm(room);
+  await rollDice(room, 'p0', 2, 3);
+
+  const before = money(await row(room), 'fig2');
+  await call(room, 'auction_bid', { playerId: 'p1', amount: 100 });
+  await call(room, 'auction_bid', { playerId: 'p2', amount: 200 });
+  await call(room, 'auction_drop', { playerId: 'p3' });
+  await call(room, 'auction_drop', { playerId: 'p0' });
+  const r = await call(room, 'auction_drop', { playerId: 'p1' });
+
+  eq(r.game.auction, null, 'auction cleared');
+  eq(owner(r, FARM), 'fig2', 'the high bidder owns it');
+  eq(money(r, 'fig2'), before - 200, 'and paid exactly the high bid — not the 150$ price');
+  eq(incomeOf(r), 200, 'the standing crop went with the deed');
+  eq(r.game.phase, 'act', 'the lander is back on their own turn, exactly as after a declined buy');
+  eq(r.current_order, 0, 'and it is still their turn');
+  const ended = await call(room, 'end_turn', { playerId: 'p0' });
+  eq(ended.current_order, 1, 'which they can now end normally');
+});
+
+await test('a doubles roll onto the farm still gets its extra turn after the auction', async () => {
+  // 22 + (3,3) = 28. The auction takes the room over in the middle of a turn
+  // that has an extra roll owed to it; `game.doubles` has to survive that.
+  const room = await newRoom();
+  await approachFarm(room, { players: { fig0: { position: 22 } } });
+  const landed = await rollDice(room, 'p0', 3, 3);
+  eq(player(landed, 'fig0').position, FARM);
+  eq(landed.game.phase, 'auction');
+  eq(landed.game.doubles, 1, 'the doubles counter went into the auction');
+
+  for (const pid of ['p1', 'p2', 'p3', 'p0']) await call(room, 'auction_drop', { playerId: pid });
+  const back = await row(room);
+  eq(back.game.doubles, 1, 'and came out of it unchanged');
+  const again = await call(room, 'end_turn', { playerId: 'p0' });
+  eq(again.current_order, 0, 'so the doubles roll is still theirs');
+  assert(types(again).includes('again'), 'and the room was told so');
+});
+
+await test('nobody bids: the farm stays with the bank and the NEXT landing re-auctions it', async () => {
+  const room = await newRoom();
+  await approachFarm(room);
+  const cash = (await row(room)).players.map((p) => p.money);
+  await rollDice(room, 'p0', 2, 3);
+  for (const pid of ['p1', 'p2', 'p3', 'p0']) await call(room, 'auction_drop', { playerId: pid });
+
+  let r = await row(room);
+  eq(r.game.auction, null);
+  eq(r.game.phase, 'act');
+  eq(owner(r, FARM), null, 'the bank keeps it');
+  eq(r.players.map((p) => p.money), cash, 'and not a dollar moved');
+
+  // the lander cannot buy it now either, and cannot re-run the auction they
+  // have just walked away from
+  await rejects(room, 'buy', { playerId: 'p0', cell: String(FARM) },
+    'The farm is only ever sold at auction');
+  await rejects(room, 'auction_start', { playerId: 'p0', cell: FARM },
+    'The farm auctions itself when somebody lands on it');
+
+  // somebody else lands on it: a brand new auction, and a crop 150$ bigger
+  await call(room, 'end_turn', { playerId: 'p0' });
+  await arrange(room, {
+    players: { fig1: { position: 23, money: 2000, inJail: false, jailTurns: 0 } },
+    current_order: 1,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+  r = await rollDice(room, 'p1', 2, 3);
+  eq(r.game.phase, 'auction', 'the next landing opens a fresh one');
+  eq(r.game.auction.startedBy, 'fig1', 'started by whoever landed this time');
+  eq(r.game.auction.order, ['fig2', 'fig3', 'fig0', 'fig1'], 'and rotated from their seat');
+  eq(incomeOf(r), 350, 'each landing waters it whether or not anybody bids');
+});
+
+await test('a Chance card that drops a player on a farm auctions it just the same', async () => {
+  // No Chance card in the deck reaches cell 28, so the farm is moved to one
+  // that a card does reach: c2 is `moveTo 25`, and 14 + (4,5) = 23, a Chance
+  // cell. The rule under test is about the KIND of space, not about the
+  // number 28 — and a card landing is the one route to a cell that does not
+  // go through the roll branch of game_action at all.
+  const room = await newRoom();
+  const board = JSON.parse(JSON.stringify((await row(room)).position));
+  board['25'] = { ...board['25'], farm: true, price: 150, income: 50 };
+  delete board['28'].farm; // exactly one farm on this board
+  await db.query('update public.test set position = $2::jsonb where uuid = $1',
+    [room, JSON.stringify(board)]);
+  await arrange(room, {
+    players: { fig0: { position: 14, money: 2000, inJail: false, jailTurns: 0 } },
+    current_order: 0,
+    game: { phase: 'roll', doubles: 0, dice: null, auction: null, trade: null, winner: null },
+  });
+
+  const r = await rollForCard(room, 'p0', 4, 5, 'c2');
+  eq(player(r, 'fig0').position, 25, 'the card carried them onto the farm');
+  eq(r.position['25'].income, 200, 'the card landing waters it like any other');
+  eq(r.game.phase, 'auction', 'and auctions it like any other');
+  eq(r.game.auction.cell, 25);
+  eq(r.game.auction.startedBy, 'fig0');
+
+  await call(room, 'auction_bid', { playerId: 'p1', amount: 10 });
+  await call(room, 'auction_drop', { playerId: 'p2' });
+  await call(room, 'auction_drop', { playerId: 'p3' });
+  const won = await call(room, 'auction_drop', { playerId: 'p0' });
+  eq(owner(won, 25), 'fig1');
+  eq(won.game.phase, 'act', 'and hands the turn back to the player the card moved');
+});
+
+await test('a table with nothing in its pockets still holds the auction', async () => {
+  // The lander is the one with 0$ — which is exactly why the farm is auctioned
+  // rather than sold: the player who rolled it cannot afford anything, and
+  // under the old rule that simply meant nobody got it.
+  const room = await newRoom();
+  await approachFarm(room, {
+    players: {
+      fig0: { money: 0 },
+      fig1: { money: 0 }, fig2: { money: 0 }, fig3: { money: 40 },
+    },
+  });
+  const r = await rollDice(room, 'p0', 2, 3);
+  eq(r.game.phase, 'auction', 'a broke lander still puts it up for everybody');
+
+  await rejects(room, 'auction_bid', { playerId: 'p1', amount: 10 }, 'Not enough money');
+  await call(room, 'auction_drop', { playerId: 'p1' });
+  await call(room, 'auction_drop', { playerId: 'p2' });
+  await call(room, 'auction_bid', { playerId: 'p3', amount: 40 });
+  const won = await call(room, 'auction_drop', { playerId: 'p0' });
+  eq(owner(won, FARM), 'fig3', 'the only player with any money at all took it');
+  eq(money(won, 'fig3'), 0, 'for everything they had');
+  eq(won.game.phase, 'act');
+});
+
+await test('the automatic auction sweeps a pending trade off the table', async () => {
+  // `auction_start` has always cancelled whatever offer was open — "an auction
+  // replaces whatever was on the table". An auction nobody asked for has to do
+  // the same, or a landing would leave an offer live in a room where nobody
+  // can answer it.
+  const room = await newRoom();
+  await approachFarm(room);
+  await call(room, 'trade_offer', {
+    playerId: 'p0', to: 'fig1', give: { cells: [], cash: 100 }, get: { cells: [], cash: 0 },
+  });
+  eq((await row(room)).game.trade.from, 'fig0', 'an offer is on the table');
+
+  const r = await rollDice(room, 'p0', 2, 3);
+  eq(r.game.phase, 'auction');
+  eq(r.game.trade, null, 'and the landing swept it away');
+  eq((ev(r, 'trade') || {}).status, 'cancelled', 'saying so');
+  eq(money(r, 'fig0'), 2000, 'no cash moved with it');
+});
+
+await test('an owned farm is never auctioned again — the landing just waters it', async () => {
+  const room = await newRoom();
+  await approachFarm(room, { owners: { [FARM]: 'fig1' } });
+  const r = await rollDice(room, 'p0', 2, 3);
+  eq(types(r), ['roll', 'move', 'land', 'farm'], 'no auction_start in sight');
+  eq(r.game.phase, 'act');
+  eq(r.game.auction, null);
+  eq(incomeOf(r), 200);
+});
+
+await test('the debug jump auctions the farm only for the player whose turn it is', async () => {
+  // `move` has no turn check on purpose (TESTING.md 0.4). An auction ends by
+  // handing the move back to whoever started it, so teleporting a player whose
+  // turn it is NOT must not start one — it waters the crop and stops there.
+  const room = await newRoom();
+  await arrange(room, {
+    players: { fig0: { position: 1, money: 1000 }, fig2: { position: 1, money: 1000 } },
+    current_order: 0,
+    game: { phase: 'act', doubles: 0, auction: null, trade: null, winner: null },
+  });
+  let r = await call(room, 'move', { playerId: 'p2', to: FARM });
+  eq(r.game.phase, 'act', 'not their turn: no auction');
+  eq(r.game.auction, null);
+  eq(incomeOf(r), 200, 'but the crop grew, because they did land on it');
+
+  r = await call(room, 'move', { playerId: 'p0', to: FARM });
+  eq(r.game.phase, 'auction', 'the player whose turn it is opens one');
+  eq(r.game.auction.startedBy, 'fig0');
+  eq(incomeOf(r), 350);
 });
 
 await test('the owner landing on it collects the whole counter and resets it to 50', async () => {
